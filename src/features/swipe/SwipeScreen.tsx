@@ -5,7 +5,8 @@ import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../compo
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
 import { fetchRandomConcepts } from '../../services/wikidata';
-import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept } from '../../stores/db';
+import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept } from '../../stores/db';
+import { useToast } from '../../lib/toast';
 import type { Concept, SwipeMode, CategoryKey } from '../../types';
 
 const FALLBACK_CONCEPTS: Concept[] = [
@@ -89,7 +90,7 @@ function CitCat({ catKey, weight }: { catKey: CategoryKey; weight?: number }) {
   );
 }
 
-function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast }: {
+function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast, isFavorite, onToggleFavorite }: {
   concept: Concept;
   tilt: 'right' | 'left' | 'up' | null;
   dragOffset: { x: number; y: number };
@@ -99,6 +100,8 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
   badge?: React.ReactNode;
   leftBorder?: string;
   contrast?: boolean;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
 }) {
   const isDragging = dragOffset.x !== 0 || dragOffset.y !== 0;
   const rotate = isDragging ? `rotate(${dragOffset.x * 0.04 - 0.6}deg)` : 'rotate(-0.6deg)';
@@ -175,6 +178,17 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
             </div>
           </div>
           <Sunburst size={88} color="var(--cit-butter)" behindColor="var(--cit-brick)"/>
+          {onToggleFavorite && (
+            <button onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }} onPointerDown={e => e.stopPropagation()} style={{
+              position: 'absolute', top: 6, right: 6, zIndex: 6,
+              background: isFavorite ? 'var(--cit-butter)' : 'transparent',
+              color: isFavorite ? 'var(--cit-navy-dk)' : 'var(--cit-butter)',
+              border: '2px solid var(--cit-butter)',
+              fontFamily: "'Alfa Slab One', serif", fontSize: 18,
+              padding: '2px 10px', cursor: 'pointer',
+              boxShadow: isFavorite ? '2px 2px 0 var(--cit-navy-dk)' : 'none',
+            }} title={isFavorite ? 'Retirer favori' : 'Marquer favori'}>★</button>
+          )}
         </div>
 
         {/* Body 2-col */}
@@ -562,8 +576,10 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   );
   const [explorationAnchorId, setExplorationAnchorId] = useState<string | null>(null);
 
-  const swipe = useSwipeDeck(FALLBACK_CONCEPTS);
+  const swipe = useSwipeDeck(FALLBACK_CONCEPTS, () => setDetailOpen(true));
   const [rawDeck, setRawDeck] = useState<Concept[]>([]);
+  const [currentFavorite, setCurrentFavorite] = useState(false);
+  const toast = useToast();
 
   // Initial big pool fetch
   useEffect(() => {
@@ -642,6 +658,12 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
   const current = swipe.current;
   const anchor = adopted.find(c => c.id === explorationAnchorId) ?? null;
+
+  // Sync favorite state when current changes
+  useEffect(() => {
+    if (!current) { setCurrentFavorite(false); return; }
+    getCachedConcept(current.id).then(c => setCurrentFavorite(!!c?.isFavorite));
+  }, [current?.id]);
   const activeThematicCats = activeThematicCatKeys;
 
   // Cross mode: use up to 3 most recent adopted as the cross selection
@@ -743,6 +765,12 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                 dragOffset={swipe.drag}
                 animClass={swipe.animClass}
                 onPointerDown={swipe.onPointerDown}
+                isFavorite={currentFavorite}
+                onToggleFavorite={async () => {
+                  await cacheConcept(current);
+                  const next = await toggleFavorite(current.id);
+                  setCurrentFavorite(next);
+                }}
                 {...cardProps}
               />
             ) : null}
@@ -765,7 +793,17 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           </div>
 
           <div style={{ marginTop: 20 }}>
-            <CitizenActions onAction={(v) => v === 'back' ? swipe.back() : swipe.cycle(v)}/>
+            <CitizenActions onAction={(v) => {
+              if (v === 'back') {
+                if (!swipe.canBack) {
+                  toast.show({ tone: 'warning', title: 'Limite de retour arrière', body: 'Vous ne pouvez pas remonter au-delà de 10 actions ou avant le début de la session.' });
+                  return;
+                }
+                swipe.back();
+              } else {
+                swipe.cycle(v);
+              }
+            }}/>
           </div>
 
           {current && (

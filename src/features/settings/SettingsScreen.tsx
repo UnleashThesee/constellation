@@ -218,10 +218,10 @@ function AlgoSliders({ vals, setVals }: {
 }) {
   const sum = vals.explore + vals.random + vals.contrast + vals.trending;
   const items = [
-    { id: 'explore'  as const, label: 'Exploration', sub: 'Tirer vers les zones inconnues',       color: 'var(--cit-brick)' },
-    { id: 'random'   as const, label: 'Aléatoire',   sub: 'Tirage hors-univers',                  color: 'var(--cit-mustard)' },
-    { id: 'contrast' as const, label: 'Contraste',   sub: 'Concepts éloignés de votre profil',    color: 'var(--cit-navy)' },
-    { id: 'trending' as const, label: 'Trending',    sub: 'Ce qui crépite chez les autres',       color: 'oklch(55% 0.20 295)' },
+    { id: 'explore'  as const, label: 'Exploration', sub: 'Tirer vers les zones inconnues',       color: 'var(--cit-brick)',   disabled: false },
+    { id: 'random'   as const, label: 'Aléatoire',   sub: 'Tirage hors-univers',                  color: 'var(--cit-mustard)', disabled: false },
+    { id: 'contrast' as const, label: 'Contraste',   sub: 'Concepts éloignés de votre profil',    color: 'var(--cit-navy)',    disabled: false },
+    { id: 'trending' as const, label: 'Trending',    sub: 'Disponible en version connectée',      color: 'oklch(55% 0.20 295)', disabled: true },
   ];
   // Proportional rebalance : ajuste les 3 autres curseurs proportionnellement
   // pour conserver une somme de 100.
@@ -249,17 +249,19 @@ function AlgoSliders({ vals, setVals }: {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) auto', gap: 16, alignItems: 'stretch' }}>
       {items.map(it => (
-        <div key={it.id} style={{
+        <div key={it.id} title={it.disabled ? 'Disponible en version connectée (mono-utilisateur ici)' : undefined} style={{
           padding: '12px 10px 10px',
-          background: 'var(--cit-cream)',
+          background: it.disabled ? 'var(--cit-paper-dk)' : 'var(--cit-cream)',
           border: '2.5px solid var(--cit-navy-dk)',
           boxShadow: '3px 3px 0 var(--cit-navy-dk)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+          opacity: it.disabled ? 0.5 : 1,
+          pointerEvents: it.disabled ? 'none' : 'auto',
         }}>
           <div className="cit-condensed" style={{ fontSize: 11, fontWeight: 700, color: 'var(--cit-navy-dk)', textAlign: 'center' }}>
             ★ {it.label.toUpperCase()}
           </div>
-          <BigKnob value={vals[it.id]} onChange={v => setOne(it.id, v)} color={it.color}/>
+          <BigKnob value={vals[it.id]} onChange={v => !it.disabled && setOne(it.id, v)} color={it.color}/>
           <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', textAlign: 'center', lineHeight: 1.3 }}>
             {it.sub}
           </div>
@@ -716,6 +718,10 @@ export function SettingsScreen({ onTabChange }: Props) {
             </CitButton>
             <CitButton onClick={() => onTabChange?.('combos')} style={{ justifyContent: 'space-between', width: '100%' }}>
               <span>★ Bibliothèque combinaisons</span>
+              <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>↗</span>
+            </CitButton>
+            <CitButton onClick={() => onTabChange?.('constraints')} style={{ justifyContent: 'space-between', width: '100%' }}>
+              <span>★ Bibliothèque contraintes</span>
               <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>↗</span>
             </CitButton>
             <CitButton onClick={() => onTabChange?.('ideas')} style={{ justifyContent: 'space-between', width: '100%' }}>

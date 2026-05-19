@@ -2,6 +2,7 @@
 // avec la clé API stockée localement par l'utilisateur.
 
 import type { Concept, AppSettings } from '../types';
+import { cacheLlmGet, cacheLlmSet } from '../stores/db';
 
 export interface GeneratedIdea {
   titre: string;
@@ -166,13 +167,23 @@ function extractJson(text: string): unknown {
   throw new LlmError('Impossible de parser le JSON retourné par le LLM', 0, text.slice(0, 400));
 }
 
-async function callLlm(settings: AppSettings, prompt: string): Promise<string> {
+async function callLlm(settings: AppSettings, prompt: string, useCache = true): Promise<string> {
   const key = settings.llmKey?.trim();
   if (!key) throw new LlmError('Clé API absente. Configurez-la dans Réglages.', 401);
+
+  if (useCache) {
+    const cached = await cacheLlmGet(prompt);
+    if (cached) return cached;
+  }
+
   const provider = settings.llmProvider ?? 'claude';
   const model = settings.llmModel ?? DEFAULT_MODELS[provider];
-  if (provider === 'claude') return callClaude(key, model, prompt);
-  return callOpenAI(key, model, prompt);
+  const response = provider === 'claude'
+    ? await callClaude(key, model, prompt)
+    : await callOpenAI(key, model, prompt);
+
+  cacheLlmSet(prompt, response).catch(() => {});
+  return response;
 }
 
 export async function generateIdeas(params: {

@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { IdeaModal } from '../../components/ui/IdeaModal';
+import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES } from '../../lib/categories';
 import { getAllIdeas, getCachedConcept } from '../../stores/db';
+import { relativeDate } from '../../lib/dates';
 import type { Idea, IdeaStatus, Concept } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -76,7 +78,7 @@ function IdeaCard({ idea, conceptsById, onOpen }: {
       )}
       <div style={{ padding: '10px 14px', borderBottom: '2px solid var(--cit-navy-dk)' }}>
         <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>
-          ★ {idea.outputType.toUpperCase()} · {idea.createdAt.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }).toUpperCase()}
+          ★ {idea.outputType.toUpperCase()} · {relativeDate(idea.createdAt).toUpperCase()}
         </div>
         <h3 className="cit-h1" style={{ fontSize: 20, lineHeight: 0.95, margin: '2px 0 0' }}>
           {idea.title}<span style={{ color: 'var(--cit-brick)' }}>!</span>
@@ -130,6 +132,7 @@ export function IdeasScreen({ onTabChange }: Props) {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [conceptsById, setConceptsById] = useState<Record<string, Concept>>({});
   const [openIdea, setOpenIdea] = useState<Idea | null>(null);
+  const [conceptDetail, setConceptDetail] = useState<Concept | null>(null);
 
   const load = async () => {
     const arr = await getAllIdeas();
@@ -254,6 +257,13 @@ export function IdeasScreen({ onTabChange }: Props) {
         open={!!openIdea}
         onClose={() => setOpenIdea(null)}
         onUpdate={load}
+        onOpenConcept={(c) => { setOpenIdea(null); setConceptDetail(c); }}
+      />
+
+      <ConceptDetailModal
+        concept={conceptDetail}
+        open={!!conceptDetail}
+        onClose={() => setConceptDetail(null)}
       />
     </div>
   );

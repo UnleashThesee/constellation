@@ -17,11 +17,12 @@ interface SwipeDeckState {
   back: () => void;
   onPointerDown: (e: React.PointerEvent) => void;
   setDeck: (concepts: Concept[]) => void;
+  canBack: boolean;
 }
 
 const SESSION_ID = `session-${Date.now()}`;
 
-export function useSwipeDeck(initialDeck: Concept[]): SwipeDeckState {
+export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void): SwipeDeckState {
   const [deck, setDeckState] = useState<Concept[]>(initialDeck);
   const [history, setHistory] = useState<SwipeHistoryEntry[]>([]);
   const [counts, setCounts] = useState<SessionStats>({ valid: 0, reject: 0, skip: 0, favs: 0 });
@@ -127,12 +128,16 @@ export function useSwipeDeck(initialDeck: Concept[]): SwipeDeckState {
       if (dx > 120) cycle('valid');
       else if (dx < -120) cycle('reject');
       else if (dy < -120) cycle('skip');
-      else { setDrag({ x: 0, y: 0 }); setTilt(null); }
+      else {
+        setDrag({ x: 0, y: 0 }); setTilt(null);
+        // Tap detection : no significant drag = treat as click → open detail
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) onTap?.();
+      }
     };
 
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-  }, [cycle]);
+  }, [cycle, onTap]);
 
   // Keyboard controls
   useEffect(() => {
@@ -161,5 +166,6 @@ export function useSwipeDeck(initialDeck: Concept[]): SwipeDeckState {
     back,
     onPointerDown,
     setDeck,
+    canBack: history.length > 0 && history.length <= 10,
   };
 }

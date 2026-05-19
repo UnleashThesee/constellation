@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { CitButton, CitPanel } from './CitizenShell';
 import { Stamp, Aster, Sunburst } from './atoms';
 import { CATEGORIES } from '../../lib/categories';
-import { updateIdea, deleteIdea, getCachedConcept, getSettings } from '../../stores/db';
+import { updateIdea, deleteIdea, getCachedConcept, getSettings, saveDeepDive, getDeepDivesForIdea } from '../../stores/db';
 import { deepDiveIdea, LlmError, type DeepDive } from '../../services/llm';
 import { useToast } from '../../lib/toast';
+import { Markdown } from '../../lib/markdown';
 import type { Idea, IdeaStatus, Concept } from '../../types';
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onUpdate: () => void;
+  onOpenConcept?: (concept: Concept) => void;
 }
 
 const STATUS_LABELS: Record<IdeaStatus, string> = {
@@ -28,12 +30,13 @@ const STATUS_COLORS: Record<IdeaStatus, string> = {
   done: 'var(--cit-rust)',
 };
 
-export function IdeaModal({ idea, open, onClose, onUpdate }: Props) {
+export function IdeaModal({ idea, open, onClose, onUpdate, onOpenConcept }: Props) {
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<IdeaStatus>('new');
   const [favorite, setFavorite] = useState(false);
   const [concepts, setConcepts] = useState<Record<string, Concept>>({});
   const [deepDive, setDeepDive] = useState<DeepDive | null>(null);
+  const [previousDeepDives, setPreviousDeepDives] = useState<Array<{ id: string; createdAt: Date }>>([]);
   const [deepDiveLoading, setDeepDiveLoading] = useState(false);
   const [deepDiveError, setDeepDiveError] = useState<string | null>(null);
   const toast = useToast();
@@ -52,6 +55,18 @@ export function IdeaModal({ idea, open, onClose, onUpdate }: Props) {
       const byId: Record<string, Concept> = {};
       cs.forEach(c => { if (c) byId[c.id] = c; });
       setConcepts(byId);
+      const dds = await getDeepDivesForIdea(idea.id);
+      setPreviousDeepDives(dds.map(d => ({ id: d.id, createdAt: d.createdAt })));
+      // load most recent as current
+      if (dds.length > 0) {
+        const latest = dds[0];
+        setDeepDive({
+          planDetaille: latest.planDetaille,
+          variations: latest.variations,
+          references: latest.references,
+          questions: latest.questions,
+        });
+      }
     })();
   }, [open, idea]);
 
@@ -113,6 +128,8 @@ export function IdeaModal({ idea, open, onClose, onUpdate }: Props) {
         constraints: idea.constraints,
       });
       setDeepDive(dd);
+      const saved = await saveDeepDive({ ideaId: idea.id, ...dd });
+      setPreviousDeepDives(prev => [{ id: saved.id, createdAt: saved.createdAt }, ...prev]);
       toast.show({ tone: 'success', title: 'Approfondissement prêt', body: 'Le Bureau a creusé pour vous.' });
     } catch (e) {
       const msg = e instanceof LlmError ? e.message : 'Erreur inconnue';
@@ -179,7 +196,7 @@ export function IdeaModal({ idea, open, onClose, onUpdate }: Props) {
           <div style={{ padding: '18px 24px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ RÉSUMÉ</div>
-              <p className="cit-typed" style={{ fontSize: 13, lineHeight: 1.65, margin: 0 }}>{idea.content}</p>
+              <Markdown>{idea.content}</Markdown>
             </div>
 
             <div>
@@ -298,15 +315,17 @@ export function IdeaModal({ idea, open, onClose, onUpdate }: Props) {
                   if (!c) return null;
                   const cat = CATEGORIES[c.cats[0]?.[0] ?? 'personnages'];
                   return (
-                    <span key={i} style={{
+                    <button key={i} onClick={() => onOpenConcept?.(c)} style={{
                       display: 'inline-flex', alignItems: 'center', gap: 4,
                       padding: '2px 6px 2px 2px',
                       background: 'var(--cit-cream)',
                       border: '2px solid var(--cit-navy-dk)',
                       borderLeft: `6px solid ${cat.oklch}`,
                       fontFamily: "'Oswald', sans-serif", fontSize: 10, fontWeight: 700,
-                      color: 'var(--cit-navy-dk)',
-                    }}>{c.name}<span style={{ color: 'var(--cit-brick)' }}>{it.weight}%</span></span>
+                      color: 'var(--cit-navy-dk)', cursor: 'pointer',
+                    }} title={`Ouvrir la fiche de ${c.name}`}>
+                      {c.name}<span style={{ color: 'var(--cit-brick)' }}>{it.weight}%</span>
+                    </button>
                   );
                 })}
               </div>
@@ -318,6 +337,25 @@ export function IdeaModal({ idea, open, onClose, onUpdate }: Props) {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                   {idea.constraints.map((c, i) => (
                     <Stamp key={i} tone="navy" size={9}>{c}</Stamp>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {previousDeepDives.length > 0 && (
+              <div>
+                <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>
+                  HISTORIQUE APPROFONDISSEMENTS · {previousDeepDives.length}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {previousDeepDives.slice(0, 5).map(dd => (
+                    <div key={dd.id} style={{
+                      fontFamily: "'Special Elite', monospace", fontSize: 10,
+                      color: 'var(--cit-navy-dk)',
+                      padding: '2px 6px',
+                      border: '1.5px solid var(--cit-navy-dk)',
+                      background: 'var(--cit-cream)',
+                    }}>★ {dd.createdAt.toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
                   ))}
                 </div>
               </div>

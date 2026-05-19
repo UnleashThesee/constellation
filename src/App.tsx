@@ -14,6 +14,7 @@ import { AboutScreen } from './features/about/AboutScreen';
 import { SearchScreen } from './features/search/SearchScreen';
 import { PersoScreen } from './features/perso/PersoScreen';
 import { CombosLibraryScreen } from './features/combos/CombosLibraryScreen';
+import { ConstraintsScreen } from './features/constraints/ConstraintsScreen';
 import { ToastProvider } from './lib/toast';
 import { getProfile, getSettings } from './stores/db';
 import { applyPaletteOverrides } from './lib/categories';
@@ -21,7 +22,7 @@ import { applyPaletteOverrides } from './lib/categories';
 type AppState = 'loading' | 'onboarding' | 'post-onboarding' | 'app';
 export type TabId =
   | 'swipe' | 'map' | 'combine' | 'ideas' | 'favs' | 'settings'
-  | 'stats' | 'about' | 'search' | 'perso' | 'combos';
+  | 'stats' | 'about' | 'search' | 'perso' | 'combos' | 'constraints';
 
 function LoadingScreen() {
   return (
@@ -128,6 +129,7 @@ export default function App() {
       case 'search':   return <SearchScreen onTabChange={onTabChange} />;
       case 'perso':    return <PersoScreen onTabChange={onTabChange} />;
       case 'combos':   return <CombosLibraryScreen onTabChange={onTabChange} />;
+      case 'constraints': return <ConstraintsScreen onTabChange={onTabChange} />;
       case 'swipe':
       default:         return <SwipeScreen onTabChange={onTabChange} />;
     }

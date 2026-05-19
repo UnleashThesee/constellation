@@ -3,6 +3,7 @@ import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/C
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights } from '../../lib/categories';
 import { getFavoriteConcepts, db } from '../../stores/db';
+import { setPendingConcepts } from '../../lib/pending';
 import type { Concept, CategoryKey } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -179,6 +180,12 @@ export function FavsScreen({ onTabChange }: Props) {
         active="favs"
         onTabChange={onTabChange}
         right={<>
+          {favs.length >= 2 && (
+            <CitButton size="sm" tone="brick" onClick={() => {
+              setPendingConcepts(favs);
+              onTabChange?.('combine');
+            }}>★ Combinaison avec mes favoris</CitButton>
+          )}
           <CitButton size="sm" onClick={() => onTabChange?.('perso')}>Étiquettes & Tags ↗</CitButton>
           <Stamp tone="brick" rotate={-4}>★ {favs.length} CONCEPT{favs.length > 1 ? 'S' : ''} ÉPINGLÉ{favs.length > 1 ? 'S' : ''}</Stamp>
           <Sunburst size={68} color="var(--cit-mustard)"/>

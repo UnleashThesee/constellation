@@ -11,6 +11,7 @@ import {
 } from '../../stores/db';
 import { fetchWikipediaExtract } from '../../services/wikidata';
 import { useToast } from '../../lib/toast';
+import { Markdown } from '../../lib/markdown';
 import type { Concept, Tag, PersonalCategory } from '../../types';
 
 interface Props {
@@ -259,6 +260,16 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
                 {savedAt ? ` · dernière modif ${savedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}
                 {' · '}{notes.split(/\s+/).filter(Boolean).length} mot{notes.split(/\s+/).filter(Boolean).length > 1 ? 's' : ''}
               </div>
+              {notes.trim() && (
+                <div style={{
+                  marginTop: 12, padding: '10px 14px',
+                  background: 'var(--cit-cream)',
+                  border: '2px dashed var(--cit-navy-dk)',
+                }}>
+                  <div className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)', marginBottom: 6 }}>★ APERÇU MARKDOWN</div>
+                  <Markdown>{notes}</Markdown>
+                </div>
+              )}
             </div>
           </div>
         </div>

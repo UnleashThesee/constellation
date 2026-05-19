@@ -4,9 +4,10 @@ import { Sunburst, Stamp } from '../../components/ui/atoms';
 import {
   getAllPersonalCategories, createPersonalCategory, deletePersonalCategory,
   getConceptsInPersonalCategory,
-  getTagUsage,
+  getTagUsage, db,
 } from '../../stores/db';
 import { useToast } from '../../lib/toast';
+import { setPendingConcepts } from '../../lib/pending';
 import type { PersonalCategory, Concept, Tag } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -47,8 +48,9 @@ function PersoCatTile({ cat, active, count, onClick }: {
   );
 }
 
-function CategoryDetailPanel({ cat, concepts, onClose, onDelete }: {
+function CategoryDetailPanel({ cat, concepts, onClose, onDelete, onLaunchCombo }: {
   cat: PersonalCategory; concepts: Concept[]; onClose: () => void; onDelete: () => void;
+  onLaunchCombo: () => void;
 }) {
   return (
     <div style={{
@@ -104,6 +106,11 @@ function CategoryDetailPanel({ cat, concepts, onClose, onDelete }: {
         )}
 
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 12 }}>
+          {concepts.length >= 2 && (
+            <CitButton tone="brick" style={{ width: '100%', justifyContent: 'center' }} onClick={onLaunchCombo}>
+              ★ Combinaison avec cette étiquette
+            </CitButton>
+          )}
           <CitButton tone="navy" style={{ width: '100%', justifyContent: 'center' }} onClick={onDelete}>
             ✕ Supprimer l'étiquette
           </CitButton>
@@ -311,7 +318,17 @@ export function PersoScreen({ onTabChange }: Props) {
                 ) : tagUsage.filter(t => t.count > 0).map(({ tag, count }) => {
                   const fontSize = Math.min(34, 12 + count * 2);
                   return (
-                    <button key={tag.id} style={{
+                    <button key={tag.id} onClick={async () => {
+                      const links = await db.conceptTags.where('tagId').equals(tag.id).toArray();
+                      const cs = await Promise.all(links.map(l => db.concepts.get(l.conceptId)));
+                      const valid = cs.filter((c): c is Concept => !!c);
+                      if (valid.length < 2) {
+                        toast.show({ tone: 'warning', title: 'Pas assez de concepts', body: `Le tag #${tag.name} a moins de 2 concepts.` });
+                        return;
+                      }
+                      setPendingConcepts(valid);
+                      onTabChange?.('combine');
+                    }} title={`Combinaison avec #${tag.name}`} style={{
                       display: 'inline-flex', alignItems: 'baseline', gap: 6,
                       padding: '4px 10px',
                       background: 'var(--cit-paper)',
@@ -349,6 +366,10 @@ export function PersoScreen({ onTabChange }: Props) {
             concepts={selectedConcepts}
             onClose={() => setSelectedCatId(null)}
             onDelete={() => handleDelete(selectedCat.id, selectedCat.name)}
+            onLaunchCombo={() => {
+              setPendingConcepts(selectedConcepts);
+              onTabChange?.('combine');
+            }}
           />
         )}
       </div>

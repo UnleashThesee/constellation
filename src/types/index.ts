@@ -150,6 +150,29 @@ export interface Annotation {
   updatedAt: Date;
 }
 
+// ---- Contraintes ----
+
+export interface SavedConstraint {
+  id: string;
+  text: string;
+  firstUsedAt: Date;
+  useCount: number;
+  isFavorite: boolean;
+  mappedQid?: string;
+}
+
+// ---- Approfondissements ----
+
+export interface DeepDiveRecord {
+  id: string;
+  ideaId: string;
+  planDetaille: Array<{ etape: string; detail: string }>;
+  variations: Array<{ titre: string; angle: string }>;
+  references: Array<{ source: string; pourquoi: string }>;
+  questions: string[];
+  createdAt: Date;
+}
+
 // ---- Combinaisons sauvegardées ----
 
 export interface SavedCombination {

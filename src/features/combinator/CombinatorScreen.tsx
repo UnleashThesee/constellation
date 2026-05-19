@@ -5,7 +5,7 @@ import { CATEGORIES, conceptDominant, combinationMix } from '../../lib/categorie
 import { getAdoptedConcepts, saveCombination, saveIdea, getSettings } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { generateIdeas, LlmError } from '../../services/llm';
-import { consumePendingCombo } from '../../lib/pending';
+import { consumePendingCombo, consumePendingConcepts } from '../../lib/pending';
 import type { Concept } from '../../types';
 
 const OUTPUT_TYPES = [
@@ -174,10 +174,14 @@ export function CombinatorScreen({ onTabChange }: Props) {
       setUniverse(c);
       // If a combo was queued for re-launch, hydrate the selection from it.
       const pending = consumePendingCombo();
+      const pendingCs = consumePendingConcepts();
       if (pending) {
         setSelection(pending.items.map(i => ({ id: i.conceptId, weight: i.weight })));
         setConstraints(pending.constraints);
         setSavedName(pending.name);
+      } else if (pendingCs && pendingCs.length > 0) {
+        const even = Math.round(100 / pendingCs.length);
+        setSelection(pendingCs.map(p => ({ id: p.id, weight: even })));
       } else if (c.length >= 2) {
         setSelection([{ id: c[0].id, weight: 60 }, { id: c[1].id, weight: 40 }]);
       }
@@ -254,6 +258,7 @@ export function CombinatorScreen({ onTabChange }: Props) {
         onTabChange={onTabChange}
         right={<>
           <CitButton size="sm" onClick={() => onTabChange?.('combos')}>Bibliothèque ↗</CitButton>
+          <CitButton size="sm" onClick={() => onTabChange?.('constraints')}>Contraintes ↗</CitButton>
           <Stamp tone="brick" rotate={-4}>★ {selection.length} CONCEPTS EN COURS</Stamp>
           <Sunburst size={68} color="var(--cit-mustard)"/>
         </>}
@@ -435,7 +440,7 @@ export function CombinatorScreen({ onTabChange }: Props) {
                 resize: 'vertical',
               }}/>
 
-            <button disabled={generating} onClick={async () => {
+            <button disabled={generating || selection.length < 2} onClick={async () => {
               if (selection.length < 2) {
                 toast.show({ tone: 'warning', title: 'Au moins 2 concepts', body: 'Sélectionnez deux concepts au minimum.' });
                 return;
@@ -476,14 +481,14 @@ export function CombinatorScreen({ onTabChange }: Props) {
                 setGenerating(false);
               }
             }} style={{
-              background: generating ? 'var(--cit-navy-dk)' : 'var(--cit-brick)',
+              background: generating || selection.length < 2 ? 'var(--cit-paper-dk)' : 'var(--cit-brick)',
               color: 'var(--cit-cream)',
               border: '3px solid var(--cit-navy-dk)',
               padding: '14px 18px',
               fontFamily: "'Alfa Slab One', serif", fontSize: 22,
               letterSpacing: '.02em',
-              cursor: generating ? 'wait' : 'pointer',
-              opacity: generating ? 0.7 : 1,
+              cursor: generating ? 'wait' : selection.length < 2 ? 'not-allowed' : 'pointer',
+              opacity: generating || selection.length < 2 ? 0.55 : 1,
               boxShadow: 'inset 0 -4px 0 oklch(0% 0 0 / 0.3), 4px 4px 0 var(--cit-navy-dk), 0 8px 14px oklch(0% 0 0 / 0.4)',
               textTransform: 'uppercase',
               textShadow: '1.5px 1.5px 0 var(--cit-navy-dk)',
