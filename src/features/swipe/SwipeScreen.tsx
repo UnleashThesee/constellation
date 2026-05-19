@@ -625,10 +625,11 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     });
   }, []);
 
-  // En mode 'free', re-pick la source à chaque changement de current (donc à chaque verdict)
+  // En mode 'free', re-pick la source à chaque changement de carte courante
+  const currentCardId = swipe.current?.id;
   useEffect(() => {
     if (mode === 'free') setFreeSource(pickSourceFromWeights(algoWeights));
-  }, [mode, algoWeights]);
+  }, [mode, algoWeights, currentCardId]);
 
   // Initial big pool fetch — consomme un éventuel boost-deck en priorité
   useEffect(() => {

@@ -166,6 +166,12 @@ const PROPERTY_LABELS: Record<string, string> = {
 const ALLOWED_PROPS = Object.keys(PROPERTY_LABELS);
 
 /** Récupère 5-7 relations sémantiques pertinentes pour un Q-ID Wikidata. Cache 30j. */
+/** Retourne les Q-IDs des targets de toutes les relations sémantiques (filtré P31/P279/etc.). */
+export async function fetchRelatedQids(qid: string): Promise<string[]> {
+  const relations = await fetchSemanticRelations(qid);
+  return relations.map(r => r.targetQid).filter(Boolean);
+}
+
 export async function fetchSemanticRelations(qid: string): Promise<SemanticRelation[]> {
   if (!qid || !/^Q\d+$/.test(qid)) return [];
   const cacheKey = `semantic:${qid}`;

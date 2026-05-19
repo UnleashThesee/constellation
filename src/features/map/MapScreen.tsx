@@ -7,6 +7,7 @@ import {
   getAllLinks, createLink, deleteLink,
   getAllPersonalCategories, getAllTags, db,
 } from '../../stores/db';
+import { fetchRelatedQids } from '../../services/wikidata';
 import { useToast } from '../../lib/toast';
 import type { Concept, CategoryKey, ConceptLink, PersonalCategory, Tag } from '../../types';
 
@@ -704,6 +705,8 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
                 }}>×</span>
               )}
             </div>
+            {/* Perf mode : si > 200 nœuds, on cache les labels sauf hover/select */}
+            {(nodes.length <= 200 || isSelected || hoverId === n.concept.id) && (
             <div style={{
               position: 'absolute', left: '50%', top: '100%',
               transform: 'translate(-50%, 4px)',
@@ -714,6 +717,7 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
               textShadow: '1px 1px 0 var(--cit-cream)',
               pointerEvents: 'none',
             }}>{n.concept.name}</div>
+            )}
           </div>
         );
       })}
@@ -863,7 +867,46 @@ export function MapScreen({ onTabChange }: Props) {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [discovering, setDiscovering] = useState<{ active: boolean; current: number; total: number; created: number }>({ active: false, current: 0, total: 0, created: 0 });
   const toast = useToast();
+
+  const discoverLinks = async () => {
+    const candidates = adopted.filter(c => c.wikidataId);
+    if (candidates.length < 2) {
+      toast.show({ tone: 'warning', title: 'Pas assez de concepts Wikidata', body: 'Adoptez au moins 2 concepts liés à Wikidata pour découvrir les liaisons.' });
+      return;
+    }
+    // Index par Q-ID pour matching rapide
+    const qidToId = new Map<string, string>();
+    candidates.forEach(c => { if (c.wikidataId) qidToId.set(c.wikidataId, c.id); });
+
+    setDiscovering({ active: true, current: 0, total: candidates.length, created: 0 });
+    let created = 0;
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      setDiscovering(d => ({ ...d, current: i + 1 }));
+      if (!c.wikidataId) continue;
+      try {
+        const relatedQids = await fetchRelatedQids(c.wikidataId);
+        for (const targetQid of relatedQids) {
+          const targetId = qidToId.get(targetQid);
+          if (targetId && targetId !== c.id) {
+            const link = await createLink(c.id, targetId, { type: 'wikidata', strength: 2 });
+            if (link.createdAt && Date.now() - +link.createdAt < 3000) created++;
+          }
+        }
+      } catch { /* skip on error */ }
+      // Petit délai pour Wikidata
+      await new Promise(r => setTimeout(r, 200));
+    }
+    setDiscovering({ active: false, current: 0, total: 0, created });
+    toast.show({
+      tone: 'success',
+      title: 'Découverte terminée',
+      body: `${created} nouveau${created > 1 ? 'x' : ''} lien${created > 1 ? 's' : ''} Wikidata créé${created > 1 ? 's' : ''}.`,
+    });
+    loadAll();
+  };
 
   const loadAll = async () => {
     const [a, r, s, l, pcs, ts, pcLinks, tLinks] = await Promise.all([
@@ -985,6 +1028,11 @@ export function MapScreen({ onTabChange }: Props) {
           active="map"
           onTabChange={onTabChange}
           right={<>
+            <CitButton size="sm" onClick={discoverLinks}>
+              {discovering.active
+                ? `⌛ Découverte ${discovering.current}/${discovering.total}…`
+                : '★ Découvrir liaisons Wikidata'}
+            </CitButton>
             <Stamp tone="brick" rotate={-5} size={12}>★ {adopted.length} NŒUDS ADOPTÉS</Stamp>
             <Sunburst size={68} color="var(--cit-mustard)"/>
           </>}
