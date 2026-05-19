@@ -2,9 +2,20 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
 import { CATEGORIES, conceptDominant, combinationMix } from '../../lib/categories';
-import { getAdoptedConcepts, saveCombination } from '../../stores/db';
+import { getAdoptedConcepts, saveCombination, saveIdea, getSettings } from '../../stores/db';
 import { useToast } from '../../lib/toast';
+import { generateIdeas, LlmError } from '../../services/llm';
 import type { Concept } from '../../types';
+
+const OUTPUT_TYPES = [
+  { id: 'research',  label: 'Papier de recherche' },
+  { id: 'product',   label: 'Produit / application' },
+  { id: 'creative',  label: 'Œuvre créative' },
+  { id: 'essay',     label: 'Essai' },
+  { id: 'question',  label: 'Question philo' },
+  { id: 'memoir',    label: 'Sujet de mémoire' },
+  { id: 'free',      label: 'Brainstorm libre' },
+];
 
 interface Props { onTabChange?: (id: string) => void }
 
@@ -152,6 +163,9 @@ export function CombinatorScreen({ onTabChange }: Props) {
   const [savedName, setSavedName] = useState('');
   const [constraints, setConstraints] = useState<string[]>([]);
   const [constraintInput, setConstraintInput] = useState('');
+  const [outputType, setOutputType] = useState('essay');
+  const [additional, setAdditional] = useState('');
+  const [generating, setGenerating] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -378,18 +392,86 @@ export function CombinatorScreen({ onTabChange }: Props) {
               <span style={{ flex: 1, textAlign: 'left' }}>★ Trouver des concepts proches</span>
               <span className="cit-typed" style={{ fontSize: 10, opacity: 0.7, textTransform: 'none' }}>5–10</span>
             </button>
-            <button onClick={() => onTabChange?.('ideas')} style={{
-              background: 'var(--cit-brick)', color: 'var(--cit-cream)',
+            <div>
+              <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ TYPE DE SORTIE</div>
+              <select value={outputType} onChange={e => setOutputType(e.target.value)} style={{
+                width: '100%', padding: '6px 10px',
+                border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+                fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 600,
+                letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--cit-navy-dk)',
+                boxShadow: '3px 3px 0 var(--cit-navy-dk)',
+              }}>
+                {OUTPUT_TYPES.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </div>
+
+            <textarea value={additional} onChange={e => setAdditional(e.target.value)}
+              placeholder="Contrainte additionnelle libre (optionnel)…"
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '8px 12px', minHeight: 56,
+                border: '2.5px solid var(--cit-navy-dk)',
+                background: 'var(--cit-paper)',
+                fontFamily: "'Special Elite', monospace", fontSize: 12, color: 'var(--cit-navy-dk)',
+                boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 3px 3px 0 var(--cit-navy-dk)',
+                resize: 'vertical',
+              }}/>
+
+            <button disabled={generating} onClick={async () => {
+              if (selection.length < 2) {
+                toast.show({ tone: 'warning', title: 'Au moins 2 concepts', body: 'Sélectionnez deux concepts au minimum.' });
+                return;
+              }
+              const settings = await getSettings();
+              if (!settings?.llmKey) {
+                toast.show({ tone: 'warning', title: 'Clé LLM absente', body: 'Configurez votre clé API dans les Réglages.' });
+                onTabChange?.('settings');
+                return;
+              }
+              setGenerating(true);
+              try {
+                const items = selection
+                  .map(s => ({ concept: byId[s.id], weight: s.weight }))
+                  .filter(it => it.concept !== undefined) as Array<{ concept: Concept; weight: number }>;
+                const ideas = await generateIdeas({
+                  settings,
+                  items,
+                  outputType: OUTPUT_TYPES.find(o => o.id === outputType)?.label ?? 'Essai',
+                  constraints,
+                  additional,
+                });
+                // Persist all generated ideas
+                await Promise.all(ideas.map(g => saveIdea({
+                  title: g.titre ?? 'Idée sans titre',
+                  content: g.resume ?? '',
+                  conceptIdsWithWeights: selection.map(s => ({ conceptId: s.id, weight: s.weight })),
+                  outputType: OUTPUT_TYPES.find(o => o.id === outputType)?.label ?? 'Essai',
+                  constraints,
+                  inheritedOklch: mix.css,
+                })));
+                toast.show({ tone: 'success', title: 'Idées générées', body: `${ideas.length} propositions enregistrées.` });
+                onTabChange?.('ideas');
+              } catch (e) {
+                const msg = e instanceof LlmError ? e.message : 'Erreur réseau.';
+                toast.show({ tone: 'warning', title: 'Échec de la génération', body: msg });
+              } finally {
+                setGenerating(false);
+              }
+            }} style={{
+              background: generating ? 'var(--cit-navy-dk)' : 'var(--cit-brick)',
+              color: 'var(--cit-cream)',
               border: '3px solid var(--cit-navy-dk)',
               padding: '14px 18px',
               fontFamily: "'Alfa Slab One', serif", fontSize: 22,
-              letterSpacing: '.02em', cursor: 'pointer',
+              letterSpacing: '.02em',
+              cursor: generating ? 'wait' : 'pointer',
+              opacity: generating ? 0.7 : 1,
               boxShadow: 'inset 0 -4px 0 oklch(0% 0 0 / 0.3), 4px 4px 0 var(--cit-navy-dk), 0 8px 14px oklch(0% 0 0 / 0.4)',
               textTransform: 'uppercase',
               textShadow: '1.5px 1.5px 0 var(--cit-navy-dk)',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-              <span>★ Générer des idées</span>
+              <span>{generating ? 'CRÉPITAGE…' : '★ Générer des idées'}</span>
               <span className="cit-typed" style={{ fontSize: 10, opacity: 0.8, textTransform: 'none' }}>BUREAU LLM →</span>
             </button>
           </div>

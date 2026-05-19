@@ -62,6 +62,12 @@ export interface AppSettings {
   id?: number;
   theme: 'phosphore' | 'amber' | 'cyan';
   swipeMode: SwipeMode;
+  llmProvider?: 'claude' | 'openai';
+  llmKey?: string;
+  llmModel?: string;
+  algorithmWeights?: { explore: number; random: number; contrast: number; trending: number };
+  algorithmPresets?: Array<{ name: string; weights: { explore: number; random: number; contrast: number; trending: number } }>;
+  paletteOverrides?: Record<string, string>;
 }
 
 export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross';

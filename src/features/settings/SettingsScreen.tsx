@@ -4,8 +4,9 @@ import { Sunburst, Stamp, Aster, FileSeal } from '../../components/ui/atoms';
 import { ColorPickerModal } from '../../components/ui/ColorPickerModal';
 import { CATEGORY_LIST } from '../../lib/categories';
 import { db, getSettings, saveSettings, saveProfile } from '../../stores/db';
+import { testLlmKey } from '../../services/llm';
 import { useToast } from '../../lib/toast';
-import type { Category } from '../../types';
+import type { Category, AppSettings } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
@@ -222,7 +223,28 @@ function AlgoSliders({ vals, setVals }: {
     { id: 'contrast' as const, label: 'Contraste',   sub: 'Concepts éloignés de votre profil',    color: 'var(--cit-navy)' },
     { id: 'trending' as const, label: 'Trending',    sub: 'Ce qui crépite chez les autres',       color: 'oklch(55% 0.20 295)' },
   ];
-  const setOne = (id: keyof typeof vals, v: number) => setVals(p => ({ ...p, [id]: v }));
+  // Proportional rebalance : ajuste les 3 autres curseurs proportionnellement
+  // pour conserver une somme de 100.
+  const setOne = (id: keyof typeof vals, v: number) => setVals(p => {
+    const next = { ...p, [id]: v };
+    const others = (['explore', 'random', 'contrast', 'trending'] as const).filter(k => k !== id);
+    const remaining = 100 - v;
+    const othersSum = others.reduce((s, k) => s + p[k], 0);
+    if (othersSum === 0) {
+      const each = Math.round(remaining / others.length);
+      others.forEach(k => { next[k] = each; });
+    } else {
+      others.forEach(k => { next[k] = Math.round((p[k] / othersSum) * remaining); });
+    }
+    // adjust for rounding to hit exactly 100
+    const total = next.explore + next.random + next.contrast + next.trending;
+    const diff = 100 - total;
+    if (diff !== 0) {
+      const biggest = others.reduce((a, b) => next[a] >= next[b] ? a : b);
+      next[biggest] += diff;
+    }
+    return next;
+  });
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) auto', gap: 16, alignItems: 'stretch' }}>
@@ -391,7 +413,12 @@ export function SettingsScreen({ onTabChange }: Props) {
 
   useEffect(() => {
     getSettings().then(s => {
-      if (s) setTheme(s.theme as string);
+      if (s) {
+        setTheme(s.theme as string);
+        if (s.llmProvider) setLlmProvider(s.llmProvider);
+        if (s.llmKey) setLlmKey(s.llmKey);
+        if (s.algorithmWeights) setAlgoVals(s.algorithmWeights);
+      }
     });
     db.interactions.toArray().then(ints => {
       setStats({
@@ -403,11 +430,61 @@ export function SettingsScreen({ onTabChange }: Props) {
     });
   }, []);
 
-  const save = () => {
-    saveSettings({ theme: theme as 'phosphore' | 'amber' | 'cyan' }).catch(() => {});
+  useEffect(() => { saveSettings({ theme: theme as 'phosphore' | 'amber' | 'cyan' }).catch(() => {}); }, [theme]);
+  useEffect(() => { saveSettings({ llmProvider: llmProvider as 'claude' | 'openai', llmKey }).catch(() => {}); }, [llmProvider, llmKey]);
+  useEffect(() => { saveSettings({ algorithmWeights: algoVals }).catch(() => {}); }, [algoVals]);
+
+  const handleTestKey = async () => {
+    if (!llmKey.trim()) {
+      toast.show({ tone: 'warning', title: 'Clé requise', body: 'Saisissez d\'abord votre clé API.' });
+      return;
+    }
+    toast.show({ tone: 'info', title: 'Test en cours…', body: 'Le Bureau interroge le LLM.' });
+    const result = await testLlmKey({
+      theme: 'phosphore', swipeMode: 'random',
+      llmProvider: llmProvider as 'claude' | 'openai',
+      llmKey,
+    });
+    if (result.ok) {
+      toast.show({ tone: 'success', title: 'Clé valide', body: 'Le LLM a répondu correctement.' });
+    } else {
+      toast.show({ tone: 'warning', title: 'Clé invalide', body: result.error });
+    }
   };
 
-  useEffect(() => { save(); }, [theme]);
+  const handleExport = async () => {
+    const dump: Record<string, unknown> = {};
+    const tables = ['concepts', 'interactions', 'profile', 'settings', 'tags', 'conceptTags', 'personalCategories', 'conceptPersonalCategories', 'annotations', 'combinations', 'ideas'];
+    for (const t of tables) {
+      dump[t] = await (db as unknown as Record<string, { toArray: () => Promise<unknown[]> }>)[t].toArray();
+    }
+    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `constellation-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.show({ tone: 'success', title: 'Export terminé', body: 'Votre univers a été téléchargé en JSON.' });
+  };
+
+  const handleImport = async (file: File) => {
+    if (!confirm('Importer va ÉCRASER votre univers existant. Continuer ?')) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text) as Record<string, unknown[]>;
+      for (const [name, rows] of Object.entries(data)) {
+        const table = (db as unknown as Record<string, { clear: () => Promise<void>; bulkPut: (r: unknown[]) => Promise<unknown> }>)[name];
+        if (!table) continue;
+        await table.clear();
+        if (rows.length) await table.bulkPut(rows);
+      }
+      toast.show({ tone: 'success', title: 'Import réussi', body: 'Rechargement de la page…' });
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      toast.show({ tone: 'warning', title: 'Import échoué', body: e instanceof Error ? e.message : 'Erreur inconnue' });
+    }
+  };
 
   const handleDemolish = async () => {
     await db.delete();
@@ -498,6 +575,9 @@ export function SettingsScreen({ onTabChange }: Props) {
               <TextInput value={llmKey} onChange={setLlmKey} placeholder="sk-… ou sk-ant-…" type="password"/>
             </FormRow>
           </div>
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+            <CitButton tone="navy" onClick={handleTestKey}>★ Tester la clé</CitButton>
+          </div>
         </CitPanel>
 
         <CitPanel title="Curseurs d'algorithme" style={{ marginBottom: 22 }}>
@@ -567,14 +647,23 @@ export function SettingsScreen({ onTabChange }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22, marginBottom: 22 }}>
           <CitPanel title="Données">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <CitButton style={{ justifyContent: 'space-between', width: '100%' }}>
+              <CitButton onClick={handleExport} style={{ justifyContent: 'space-between', width: '100%' }}>
                 <span>Exporter mon univers</span>
                 <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>.JSON</span>
               </CitButton>
-              <CitButton style={{ justifyContent: 'space-between', width: '100%' }}>
-                <span>Importer un univers</span>
-                <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>.JSON</span>
-              </CitButton>
+              <label style={{ display: 'block' }}>
+                <input type="file" accept="application/json" onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) handleImport(f);
+                  e.target.value = '';
+                }} style={{ display: 'none' }}/>
+                <span style={{ display: 'block' }}>
+                  <CitButton style={{ justifyContent: 'space-between', width: '100%', pointerEvents: 'none' }}>
+                    <span>Importer un univers</span>
+                    <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>.JSON</span>
+                  </CitButton>
+                </span>
+              </label>
             </div>
           </CitPanel>
 
