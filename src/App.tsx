@@ -17,6 +17,7 @@ import { CombosLibraryScreen } from './features/combos/CombosLibraryScreen';
 import { ConstraintsScreen } from './features/constraints/ConstraintsScreen';
 import { BoostModal } from './features/boost/BoostModal';
 import { setPendingSwipeDeck } from './lib/pending';
+import { MobileBottomNav } from './components/ui/MobileBottomNav';
 import { ToastProvider } from './lib/toast';
 import { getProfile, getSettings } from './stores/db';
 import { applyPaletteOverrides, CATEGORIES, CATEGORY_LIST } from './lib/categories';
@@ -77,9 +78,34 @@ function OfflineBanner() {
   );
 }
 
+const VALID_TABS: TabId[] = [
+  'swipe', 'map', 'combine', 'ideas', 'favs', 'settings',
+  'stats', 'about', 'search', 'perso', 'combos', 'constraints',
+];
+
+function readTabFromHash(): TabId {
+  const h = (typeof window !== 'undefined' ? window.location.hash.replace(/^#\/?/, '') : '');
+  return VALID_TABS.includes(h as TabId) ? h as TabId : 'swipe';
+}
+
 export default function App() {
   const [state, setState] = useState<AppState>('loading');
-  const [tab, setTab] = useState<TabId>('swipe');
+  const [tab, setTabState] = useState<TabId>(readTabFromHash());
+
+  // Sync tab → URL hash + reverse on hashchange (browser back/forward)
+  useEffect(() => {
+    if (state !== 'app') return;
+    if (`#${tab}` !== window.location.hash) {
+      window.history.replaceState(null, '', `#${tab}`);
+    }
+  }, [tab, state]);
+  useEffect(() => {
+    const onHash = () => setTabState(readTabFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const setTab = (t: TabId) => setTabState(t);
 
   useEffect(() => {
     (async () => {
@@ -149,6 +175,7 @@ export default function App() {
         setPendingSwipeDeck(deck, `Série liée à ${anchor.name}`);
         setTab('swipe');
       }}/>
+      <MobileBottomNav active={tab} onChange={onTabChange}/>
     </ToastProvider>
   );
 }

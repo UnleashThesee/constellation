@@ -254,6 +254,11 @@ html, body, #root { margin: 0; padding: 0; background: var(--bg-deep); color: va
 @keyframes cit-pulse-brick { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
 .cit-pulse-brick { animation: cit-pulse-brick 1.4s ease-in-out infinite; }
 
+@media (max-width: 720px) {
+  .cit-mobile-nav { display: block !important; }
+  .citizen { padding-bottom: 70px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
