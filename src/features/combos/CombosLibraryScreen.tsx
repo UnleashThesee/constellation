@@ -237,7 +237,8 @@ export function CombosLibraryScreen({ onTabChange }: Props) {
               <CombosLibraryCard
                 key={c.id} combo={c} conceptsById={conceptsById}
                 onDelete={() => handleDelete(c.id, c.name)}
-                onRelaunch={() => {
+                onRelaunch={async () => {
+                  await updateCombination(c.id, { lastUsedAt: new Date() });
                   setPendingCombo(c);
                   toast.show({ tone: 'success', title: 'Combinaison chargée', body: `« ${c.name} » prête à relancer.` });
                   onTabChange?.('combine');

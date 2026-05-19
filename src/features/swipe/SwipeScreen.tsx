@@ -5,7 +5,7 @@ import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../compo
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
 import { fetchRandomConcepts } from '../../services/wikidata';
-import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings } from '../../stores/db';
+import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
 import { consumePendingSwipeDeck } from '../../lib/pending';
@@ -603,7 +603,24 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [freeSource, setFreeSource] = useState<SwipeMode>('random');
   const [algoWeights, setAlgoWeights] = useState<{ explore: number; random: number; contrast: number; trending: number } | undefined>(undefined);
   const [showHints, setShowHints] = useState(false);
+  const [todayCounts, setTodayCounts] = useState({ valid: 0, reject: 0, skip: 0, favs: 0 });
   const toast = useToast();
+
+  // Bilan du jour : compteurs depuis minuit local (refresh à chaque verdict)
+  const refreshTodayCounts = async () => {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const ints = await db.interactions.toArray();
+    const todayInts = ints.filter(i => +i.timestamp >= midnight);
+    const favs = (await db.concepts.filter(c => c.isFavorite === true).count()) ?? 0;
+    setTodayCounts({
+      valid:  todayInts.filter(i => i.verdict === 'valid').length,
+      reject: todayInts.filter(i => i.verdict === 'reject').length,
+      skip:   todayInts.filter(i => i.verdict === 'skip').length,
+      favs,
+    });
+  };
+  useEffect(() => { refreshTodayCounts(); }, [swipe.counts]);
 
   // First-use hint
   useEffect(() => {
@@ -831,7 +848,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       }}>
         {/* Left panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <ScorePanel counts={swipe.counts}/>
+          <ScorePanel counts={todayCounts}/>
           <CitPanel title="Alerte bulle" accent="butter">
             <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>
               {mode === 'random'   && <>Mode <strong>ALÉATOIRE</strong>. Le Bureau tire sans tenir compte de votre profil.</>}
