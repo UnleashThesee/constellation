@@ -6,10 +6,12 @@ import {
   cacheConcept, toggleFavorite, getCachedConcept,
   getAnnotation, saveAnnotation,
   getTagsForConcept, addTagToConcept, removeTagFromConcept,
+  getAllPersonalCategories, assignConceptToPersonalCategory, removeConceptFromPersonalCategory,
+  db,
 } from '../../stores/db';
 import { fetchWikipediaExtract } from '../../services/wikidata';
 import { useToast } from '../../lib/toast';
-import type { Concept, Tag } from '../../types';
+import type { Concept, Tag, PersonalCategory } from '../../types';
 
 interface Props {
   concept: Concept | null;
@@ -24,6 +26,8 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
   const [favorite, setFavorite] = useState(false);
   const [extract, setExtract] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [allPersoCats, setAllPersoCats] = useState<PersonalCategory[]>([]);
+  const [assignedPersoCatIds, setAssignedPersoCatIds] = useState<Set<string>>(new Set());
   const toast = useToast();
   const autoSaveTimer = useRef<number | null>(null);
 
@@ -37,6 +41,10 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
       setNotes(ann?.markdown ?? '');
       const t = await getTagsForConcept(concept.id);
       setTags(t);
+      const cats = await getAllPersonalCategories();
+      setAllPersoCats(cats);
+      const links = await db.conceptPersonalCategories.where('conceptId').equals(concept.id).toArray();
+      setAssignedPersoCatIds(new Set(links.map(l => l.categoryId)));
       // Try cached extract first, otherwise fetch
       if (cached?.blurbLong) {
         setExtract(cached.blurbLong);
@@ -339,6 +347,48 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
                 </span>
               ))}
             </div>
+          </div>
+
+          <div>
+            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>ÉTIQUETTES PERSONNELLES</div>
+            {allPersoCats.length === 0 ? (
+              <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
+                Créez d'abord une étiquette depuis l'onglet Favoris → Étiquettes & Tags.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {allPersoCats.map(pc => {
+                  const assigned = assignedPersoCatIds.has(pc.id);
+                  return (
+                    <button key={pc.id} onClick={async () => {
+                      if (assigned) {
+                        await removeConceptFromPersonalCategory(concept.id, pc.id);
+                        setAssignedPersoCatIds(prev => {
+                          const next = new Set(prev); next.delete(pc.id); return next;
+                        });
+                      } else {
+                        await cacheConcept(concept);
+                        await assignConceptToPersonalCategory(concept.id, pc.id);
+                        setAssignedPersoCatIds(prev => new Set(prev).add(pc.id));
+                      }
+                    }} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '2px 8px',
+                      background: assigned ? pc.color : 'transparent',
+                      color: assigned ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
+                      border: '2px solid var(--cit-navy-dk)',
+                      borderLeft: `8px solid ${pc.color}`,
+                      fontFamily: "'Special Elite', monospace", fontSize: 10,
+                      cursor: 'pointer',
+                      boxShadow: assigned ? '2px 2px 0 var(--cit-navy-dk)' : 'none',
+                    }}>
+                      {assigned && <span>✓</span>}
+                      {pc.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>

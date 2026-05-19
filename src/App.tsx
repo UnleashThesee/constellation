@@ -15,7 +15,8 @@ import { SearchScreen } from './features/search/SearchScreen';
 import { PersoScreen } from './features/perso/PersoScreen';
 import { CombosLibraryScreen } from './features/combos/CombosLibraryScreen';
 import { ToastProvider } from './lib/toast';
-import { getProfile } from './stores/db';
+import { getProfile, getSettings } from './stores/db';
+import { applyPaletteOverrides } from './lib/categories';
 
 type AppState = 'loading' | 'onboarding' | 'post-onboarding' | 'app';
 export type TabId =
@@ -80,6 +81,10 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
+        // Apply user palette overrides before rendering any colored UI
+        const settings = await getSettings();
+        applyPaletteOverrides(settings?.paletteOverrides);
+
         const profile = await getProfile();
         if (!profile?.onboardingDone) { setState('onboarding'); return; }
         const skip = await getSkipPostOnboarding();

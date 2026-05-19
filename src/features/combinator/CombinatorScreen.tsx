@@ -5,6 +5,7 @@ import { CATEGORIES, conceptDominant, combinationMix } from '../../lib/categorie
 import { getAdoptedConcepts, saveCombination, saveIdea, getSettings } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { generateIdeas, LlmError } from '../../services/llm';
+import { consumePendingCombo } from '../../lib/pending';
 import type { Concept } from '../../types';
 
 const OUTPUT_TYPES = [
@@ -171,7 +172,13 @@ export function CombinatorScreen({ onTabChange }: Props) {
   useEffect(() => {
     getAdoptedConcepts().then(c => {
       setUniverse(c);
-      if (c.length >= 2) {
+      // If a combo was queued for re-launch, hydrate the selection from it.
+      const pending = consumePendingCombo();
+      if (pending) {
+        setSelection(pending.items.map(i => ({ id: i.conceptId, weight: i.weight })));
+        setConstraints(pending.constraints);
+        setSavedName(pending.name);
+      } else if (c.length >= 2) {
         setSelection([{ id: c[0].id, weight: 60 }, { id: c[1].id, weight: 40 }]);
       }
     });
@@ -378,7 +385,18 @@ export function CombinatorScreen({ onTabChange }: Props) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button style={{
+            <button onClick={() => {
+              if (selection.length < 2) {
+                toast.show({ tone: 'warning', title: 'Au moins 2 concepts', body: 'Sélectionnez deux concepts pour chercher l\'intersection.' });
+                return;
+              }
+              toast.show({
+                tone: 'info',
+                title: 'Mode Croisement activé',
+                body: 'Le Swipe vous proposera des fiches à l\'intersection de cette combinaison.',
+              });
+              onTabChange?.('swipe');
+            }} style={{
               background: 'var(--cit-cream)', color: 'var(--cit-navy-dk)',
               border: '3px solid var(--cit-navy-dk)',
               padding: '10px 14px',
@@ -390,7 +408,7 @@ export function CombinatorScreen({ onTabChange }: Props) {
             }}>
               <span style={{ width: 22, height: 22, background: mix.css, border: '2px solid var(--cit-navy-dk)' }}/>
               <span style={{ flex: 1, textAlign: 'left' }}>★ Trouver des concepts proches</span>
-              <span className="cit-typed" style={{ fontSize: 10, opacity: 0.7, textTransform: 'none' }}>5–10</span>
+              <span className="cit-typed" style={{ fontSize: 10, opacity: 0.7, textTransform: 'none' }}>SWIPE →</span>
             </button>
             <div>
               <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ TYPE DE SORTIE</div>

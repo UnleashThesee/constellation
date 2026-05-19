@@ -563,19 +563,20 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [explorationAnchorId, setExplorationAnchorId] = useState<string | null>(null);
 
   const swipe = useSwipeDeck(FALLBACK_CONCEPTS);
+  const [rawDeck, setRawDeck] = useState<Concept[]>([]);
 
+  // Initial big pool fetch
   useEffect(() => {
     (async () => {
       try {
         const [concepts, excluded] = await Promise.all([
-          fetchRandomConcepts(20),
+          fetchRandomConcepts(40),
           getExcludedConceptIds(30),
         ]);
         const filtered = concepts.filter(c => !excluded.has(c.id));
-        const deck = filtered.length > 0 ? filtered : concepts;
-        // Cache each in Dexie so favorites/annotations/tags work later
-        await Promise.all(deck.map(c => cacheConcept(c)));
-        if (deck.length > 0) swipe.setDeck(deck);
+        const pool = filtered.length > 0 ? filtered : concepts;
+        await Promise.all(pool.map(c => cacheConcept(c)));
+        setRawDeck(pool);
       } catch { /* keep fallback */ } finally {
         setLoading(false);
       }
@@ -589,9 +590,59 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     });
   }, []);
 
+  // Mode-driven deck filtering : the visible deck changes when the user
+  // toggles modes / categories / anchors.
+  const activeThematicCatKeys = (Object.entries(thematicCats).filter(([, on]) => on).map(([k]) => k)) as CategoryKey[];
+  useEffect(() => {
+    if (rawDeck.length === 0) return;
+    let deck: Concept[] = rawDeck;
+
+    switch (mode) {
+      case 'themed': {
+        if (activeThematicCatKeys.length === 0) { deck = rawDeck; break; }
+        const matched = rawDeck.filter(c => c.cats.some(([k]) => activeThematicCatKeys.includes(k as CategoryKey)));
+        deck = matched.length > 0 ? matched : rawDeck;
+        break;
+      }
+      case 'explore': {
+        // anchor's categories drive the filter
+        const anchorConcept = adopted.find(c => c.id === explorationAnchorId);
+        if (!anchorConcept) { deck = rawDeck; break; }
+        const anchorCats = new Set(anchorConcept.cats.map(([k]) => k));
+        const matched = rawDeck.filter(c => c.cats.some(([k]) => anchorCats.has(k)));
+        deck = matched.length > 0 ? matched : rawDeck;
+        break;
+      }
+      case 'contrast': {
+        // concepts that share NO categories with user's adopted ones
+        if (adopted.length === 0) { deck = rawDeck; break; }
+        const userCats = new Set<string>();
+        adopted.forEach(c => c.cats.forEach(([k]) => userCats.add(k)));
+        const matched = rawDeck.filter(c => !c.cats.some(([k]) => userCats.has(k)));
+        deck = matched.length > 0 ? matched : rawDeck;
+        break;
+      }
+      case 'cross': {
+        // concepts that share categories with ALL 3 most-recent adopted
+        const top = adopted.slice(0, 3);
+        if (top.length < 2) { deck = rawDeck; break; }
+        const topCatSets = top.map(c => new Set(c.cats.map(([k]) => k)));
+        const matched = rawDeck.filter(c =>
+          c.cats.some(([k]) => topCatSets.every(cats => cats.has(k)))
+        );
+        deck = matched.length > 0 ? matched : rawDeck;
+        break;
+      }
+      case 'random':
+      default:
+        deck = rawDeck;
+    }
+    swipe.setDeck(deck);
+  }, [mode, activeThematicCatKeys.join(','), explorationAnchorId, rawDeck.length, adopted.length]);
+
   const current = swipe.current;
   const anchor = adopted.find(c => c.id === explorationAnchorId) ?? null;
-  const activeThematicCats = (Object.entries(thematicCats).filter(([, on]) => on).map(([k]) => k)) as CategoryKey[];
+  const activeThematicCats = activeThematicCatKeys;
 
   // Cross mode: use up to 3 most recent adopted as the cross selection
   const crossSelection = useMemo(() => {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster, FileSeal } from '../../components/ui/atoms';
 import { ColorPickerModal } from '../../components/ui/ColorPickerModal';
-import { CATEGORY_LIST } from '../../lib/categories';
+import { CATEGORY_LIST, applyPaletteOverrides } from '../../lib/categories';
 import { db, getSettings, saveSettings, saveProfile } from '../../stores/db';
 import { testLlmKey } from '../../services/llm';
 import { useToast } from '../../lib/toast';
@@ -418,6 +418,7 @@ export function SettingsScreen({ onTabChange }: Props) {
         if (s.llmProvider) setLlmProvider(s.llmProvider);
         if (s.llmKey) setLlmKey(s.llmKey);
         if (s.algorithmWeights) setAlgoVals(s.algorithmWeights);
+        if (s.paletteOverrides) setCatColors(s.paletteOverrides);
       }
     });
     db.interactions.toArray().then(ints => {
@@ -747,11 +748,13 @@ export function SettingsScreen({ onTabChange }: Props) {
         category={colorPickerCat}
         open={!!colorPickerCat}
         onClose={() => setColorPickerCat(null)}
-        onApply={(oklch) => {
-          if (colorPickerCat) {
-            setCatColors(prev => ({ ...prev, [colorPickerCat.key]: oklch }));
-            toast.show({ tone: 'success', title: 'Couleur appliquée', body: `${colorPickerCat.label} → ${oklch}` });
-          }
+        onApply={async (oklch) => {
+          if (!colorPickerCat) return;
+          const next = { ...catColors, [colorPickerCat.key]: oklch };
+          setCatColors(next);
+          applyPaletteOverrides(next);
+          await saveSettings({ paletteOverrides: next });
+          toast.show({ tone: 'success', title: 'Couleur appliquée', body: `${colorPickerCat.label} → ${oklch}` });
         }}
       />
     </div>

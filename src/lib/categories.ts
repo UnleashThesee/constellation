@@ -1,21 +1,55 @@
 import type { Category, CategoryKey } from '../types';
 
-export const CATEGORIES: Record<CategoryKey, Category> = {
-  philosophie: { key: 'philosophie', label: 'Philosophie',      short: 'PHL', oklch: 'oklch(35% 0.13 250)' },
-  sciences:    { key: 'sciences',    label: 'Sciences exactes', short: 'SCI', oklch: 'oklch(50% 0.18 155)' },
-  humaines:    { key: 'humaines',    label: 'Sc. humaines',     short: 'SHM', oklch: 'oklch(65% 0.14 75)'  },
-  economie:    { key: 'economie',    label: 'Économie',         short: 'ECO', oklch: 'oklch(72% 0.16 88)'  },
-  litterature: { key: 'litterature', label: 'Littérature',      short: 'LIT', oklch: 'oklch(45% 0.20 330)' },
-  arts:        { key: 'arts',        label: 'Arts visuels',     short: 'ART', oklch: 'oklch(60% 0.25 350)' },
-  musique:     { key: 'musique',     label: 'Musique',          short: 'MUS', oklch: 'oklch(55% 0.22 28)'  },
-  cinema:      { key: 'cinema',      label: 'Cinéma',           short: 'CIN', oklch: 'oklch(65% 0.18 50)'  },
-  jeuvideo:    { key: 'jeuvideo',    label: 'Jeu vidéo',        short: 'GAM', oklch: 'oklch(55% 0.24 295)' },
-  histoire:    { key: 'histoire',    label: 'Histoire',         short: 'HIS', oklch: 'oklch(42% 0.07 55)'  },
-  geographie:  { key: 'geographie',  label: 'Géographie',       short: 'GEO', oklch: 'oklch(68% 0.13 195)' },
-  personnages: { key: 'personnages', label: 'Personnages',      short: 'PER', oklch: 'oklch(78% 0.06 0)'   },
+const DEFAULT_OKLCH: Record<CategoryKey, string> = {
+  philosophie: 'oklch(35% 0.13 250)',
+  sciences:    'oklch(50% 0.18 155)',
+  humaines:    'oklch(65% 0.14 75)',
+  economie:    'oklch(72% 0.16 88)',
+  litterature: 'oklch(45% 0.20 330)',
+  arts:        'oklch(60% 0.25 350)',
+  musique:     'oklch(55% 0.22 28)',
+  cinema:      'oklch(65% 0.18 50)',
+  jeuvideo:    'oklch(55% 0.24 295)',
+  histoire:    'oklch(42% 0.07 55)',
+  geographie:  'oklch(68% 0.13 195)',
+  personnages: 'oklch(78% 0.06 0)',
 };
 
+const LABELS: Record<CategoryKey, [string, string]> = {
+  philosophie: ['Philosophie',      'PHL'],
+  sciences:    ['Sciences exactes', 'SCI'],
+  humaines:    ['Sc. humaines',     'SHM'],
+  economie:    ['Économie',         'ECO'],
+  litterature: ['Littérature',      'LIT'],
+  arts:        ['Arts visuels',     'ART'],
+  musique:     ['Musique',          'MUS'],
+  cinema:      ['Cinéma',           'CIN'],
+  jeuvideo:    ['Jeu vidéo',        'GAM'],
+  histoire:    ['Histoire',         'HIS'],
+  geographie:  ['Géographie',       'GEO'],
+  personnages: ['Personnages',      'PER'],
+};
+
+const KEYS = Object.keys(DEFAULT_OKLCH) as CategoryKey[];
+
+export const CATEGORIES: Record<CategoryKey, Category> = Object.fromEntries(
+  KEYS.map(k => [k, { key: k, label: LABELS[k][0], short: LABELS[k][1], oklch: DEFAULT_OKLCH[k] }])
+) as Record<CategoryKey, Category>;
+
 export const CATEGORY_LIST = Object.values(CATEGORIES);
+
+/** Apply user overrides — mutates CATEGORIES in place. Call once on app start. */
+export function applyPaletteOverrides(overrides: Record<string, string> | undefined): void {
+  KEYS.forEach(k => {
+    const override = overrides?.[k];
+    CATEGORIES[k].oklch = override ?? DEFAULT_OKLCH[k];
+  });
+}
+
+/** Reset a category to its default OKLCH. */
+export function resetCategoryColor(key: CategoryKey): void {
+  CATEGORIES[key].oklch = DEFAULT_OKLCH[key];
+}
 
 /** Génère un gradient CSS linéaire interpolé depuis des poids de catégories */
 export function gradientForWeights(weights: Array<[CategoryKey, number]>): string {

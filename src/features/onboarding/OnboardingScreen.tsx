@@ -3,7 +3,9 @@ import { Sunburst, FileSeal, Aster, Stamp } from '../../components/ui/atoms';
 import { CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { CATEGORIES } from '../../lib/categories';
 import { fetchOnboardingConcepts } from '../../services/wikidata';
-import { saveProfile } from '../../stores/db';
+import { saveProfile, cacheConcept, recordInteraction, toggleFavorite } from '../../stores/db';
+
+const ONBOARDING_SESSION = `onboarding-${Date.now()}`;
 import type { Concept, SwipeVerdict, CategoryKey } from '../../types';
 
 // ---- Static fallback for offline ----
@@ -150,6 +152,8 @@ function OnboardingQuizz({ onComplete }: { onComplete: (verdicts: Array<{ concep
   const answer = (verdict: SwipeVerdict) => {
     const newVerdicts = [...verdicts, { conceptId: concept.id, verdict }];
     setVerdicts(newVerdicts);
+    // Persist concept + interaction so Stats/Map/Favs reflect the quiz answers
+    cacheConcept(concept).then(() => recordInteraction(concept.id, verdict, ONBOARDING_SESSION)).catch(() => {});
     if (idx >= total - 1) {
       onComplete(newVerdicts);
     } else {
@@ -449,9 +453,33 @@ export function OnboardingScreen({ onComplete }: Props) {
   };
 
   const handleContinue = async () => {
-    // Calcul des poids de catégories depuis les verdicts
+    // Persist each seed as a manual concept marked favorite (high-affinity)
+    for (const seedName of seeds) {
+      const suggest = SEED_SUGGEST.find(s => s.name === seedName);
+      const cat = suggest?.cat ?? 'personnages';
+      const id = `seed-${seedName.toLowerCase().replace(/\s+/g, '-')}`;
+      const concept: Concept = {
+        id,
+        name: seedName,
+        kind: 'Concept-graine',
+        cats: [[cat, 1.0]],
+        blurb: 'Concept choisi à l\'amorçage de votre univers.',
+        refs: [],
+        sourceKind: 'random',
+        sourceTag: 'amorçage',
+        isManual: true,
+        createdAt: new Date(),
+      };
+      await cacheConcept(concept);
+      await recordInteraction(id, 'valid', ONBOARDING_SESSION);
+      await toggleFavorite(id);
+    }
+
+    // Calcul des poids de catégories depuis les verdicts adoptés
     const catScores: Partial<Record<CategoryKey, number>> = {};
-    // Sauvegarder le profil dans Dexie
+    // Pas encore d'accès aux concepts ici pour faire le calcul complet ;
+    // le score réel est calculable à la volée depuis getAdoptedConcepts.
+
     await saveProfile({
       onboardingDone: true,
       onboardingVerdicts: verdicts,

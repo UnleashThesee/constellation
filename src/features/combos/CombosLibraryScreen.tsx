@@ -3,14 +3,16 @@ import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/C
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { getAllCombinations, deleteCombination, getCachedConcept } from '../../stores/db';
 import { useToast } from '../../lib/toast';
+import { setPendingCombo } from '../../lib/pending';
 import type { SavedCombination, Concept } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
-function CombosLibraryCard({ combo, conceptsById, onDelete }: {
+function CombosLibraryCard({ combo, conceptsById, onDelete, onRelaunch }: {
   combo: SavedCombination;
   conceptsById: Record<string, Concept>;
   onDelete: () => void;
+  onRelaunch: () => void;
 }) {
   return (
     <div style={{
@@ -81,7 +83,7 @@ function CombosLibraryCard({ combo, conceptsById, onDelete }: {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <CitButton tone="brick" size="sm" style={{ flex: 1, justifyContent: 'center' }}>★ Relancer</CitButton>
+          <CitButton tone="brick" size="sm" style={{ flex: 1, justifyContent: 'center' }} onClick={onRelaunch}>★ Relancer</CitButton>
           <button onClick={onDelete} style={{
             padding: '4px 10px',
             background: 'var(--cit-cream)', color: 'var(--cit-brick)',
@@ -194,6 +196,11 @@ export function CombosLibraryScreen({ onTabChange }: Props) {
               <CombosLibraryCard
                 key={c.id} combo={c} conceptsById={conceptsById}
                 onDelete={() => handleDelete(c.id, c.name)}
+                onRelaunch={() => {
+                  setPendingCombo(c);
+                  toast.show({ tone: 'success', title: 'Combinaison chargée', body: `« ${c.name} » prête à relancer.` });
+                  onTabChange?.('combine');
+                }}
               />
             ))}
           </div>
