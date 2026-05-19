@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 // Atoms CRT : Led, SegBar, MiniBars, CornerMarks
 
 export function Led({ tone = 'phos', on = true }: { tone?: 'phos' | 'amber' | 'red'; on?: boolean }) {
@@ -90,6 +92,34 @@ export function Aster({ size = 32, rotate = 0 }: { size?: number; rotate?: numbe
       fontFamily: "'Alfa Slab One', serif", fontSize: size * 0.6, color: 'var(--cit-navy-dk)',
       boxShadow: '2px 2px 0 var(--cit-navy-dk)', transform: `rotate(${rotate}deg)`,
     }}>★</span>
+  );
+}
+
+export function StarBurst({ size = 120, rotate = 0, children }: {
+  size?: number; rotate?: number; children?: ReactNode;
+}) {
+  const pts = 12;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r1 = size / 2 - 2;
+  const r2 = size * 0.34;
+  const points = Array.from({ length: pts * 2 }, (_, i) => {
+    const angle = (i * Math.PI) / pts - Math.PI / 2;
+    const r = i % 2 === 0 ? r1 : r2;
+    return `${cx + Math.cos(angle) * r},${cy + Math.sin(angle) * r}`;
+  }).join(' ');
+  return (
+    <div style={{ position: 'relative', width: size, height: size, display: 'inline-block', transform: `rotate(${rotate}deg)` }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ position: 'absolute', inset: 0 }}>
+        <polygon points={points} fill="var(--cit-butter)" stroke="var(--cit-navy-dk)" strokeWidth="2.5" />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
+        fontFamily: "'Alfa Slab One', serif", fontSize: size * 0.1, lineHeight: 1.25,
+        color: 'var(--cit-navy-dk)', letterSpacing: '.04em', textTransform: 'uppercase',
+        padding: '20%',
+      }}>{children}</div>
+    </div>
   );
 }
 

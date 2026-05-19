@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { FileSeal } from './atoms';
 
 const CITIZEN_TABS = [
@@ -80,9 +81,9 @@ export function CitizenFooter({ left, right }: { left?: string; right?: string }
   );
 }
 
-export function CitButton({ children, tone, onClick, size = 'md', kbd, style }: {
-  children: React.ReactNode; tone?: 'brick' | 'butter' | 'navy';
-  onClick?: () => void; size?: 'sm' | 'md'; kbd?: string; style?: React.CSSProperties;
+export function CitButton({ children, tone, onClick, size = 'md', kbd, icon, style }: {
+  children: ReactNode; tone?: 'brick' | 'butter' | 'navy';
+  onClick?: () => void; size?: 'sm' | 'md'; kbd?: string; icon?: ReactNode; style?: React.CSSProperties;
 }) {
   const cls = tone === 'brick' ? 'cit-btn--brick' : tone === 'butter' ? 'cit-btn--butter' : tone === 'navy' ? 'cit-btn--navy' : '';
   return (
@@ -91,6 +92,7 @@ export function CitButton({ children, tone, onClick, size = 'md', kbd, style }: 
       onClick={onClick}
       style={{ padding: size === 'sm' ? '6px 12px' : '10px 18px', fontSize: size === 'sm' ? 13 : 16, ...style }}
     >
+      {icon && <span style={{ width: '1em', height: '1em', display: 'inline-flex', alignItems: 'center', marginRight: 6 }}>{icon}</span>}
       <span>{children}</span>
       {kbd && (
         <span style={{ marginLeft: 4, fontFamily: "'Special Elite', monospace", fontSize: 10, border: '1.5px solid currentColor', padding: '1px 5px', opacity: 0.75 }}>
@@ -102,7 +104,7 @@ export function CitButton({ children, tone, onClick, size = 'md', kbd, style }: 
 }
 
 export function CitPanel({ title, accent = 'cream', shadow = true, children, style }: {
-  title?: string; accent?: 'cream' | 'butter' | 'navy' | 'brick';
+  title?: ReactNode; accent?: 'cream' | 'butter' | 'navy' | 'brick';
   shadow?: boolean; children: React.ReactNode; style?: React.CSSProperties;
 }) {
   const bg = accent === 'butter' ? 'var(--cit-butter)' : accent === 'navy' ? 'var(--cit-navy-dk)' : accent === 'brick' ? 'var(--cit-brick)' : 'var(--cit-cream)';
