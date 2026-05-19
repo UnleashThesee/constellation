@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { OnboardingScreen } from './features/onboarding/OnboardingScreen';
+import {
+  PostOnboardingHome, getSkipPostOnboarding, setSkipPostOnboarding, markPostOnboardingSeen, hasSeenPostOnboarding,
+} from './features/onboarding/PostOnboardingHome';
 import { SwipeScreen } from './features/swipe/SwipeScreen';
 import { MapScreen } from './features/map/MapScreen';
 import { CombinatorScreen } from './features/combinator/CombinatorScreen';
@@ -14,7 +17,7 @@ import { CombosLibraryScreen } from './features/combos/CombosLibraryScreen';
 import { ToastProvider } from './lib/toast';
 import { getProfile } from './stores/db';
 
-type AppState = 'loading' | 'onboarding' | 'app';
+type AppState = 'loading' | 'onboarding' | 'post-onboarding' | 'app';
 export type TabId =
   | 'swipe' | 'map' | 'combine' | 'ideas' | 'favs' | 'settings'
   | 'stats' | 'about' | 'search' | 'perso' | 'combos';
@@ -75,10 +78,19 @@ export default function App() {
   const [tab, setTab] = useState<TabId>('swipe');
 
   useEffect(() => {
-    getProfile().then(profile => {
-      if (profile?.onboardingDone) setState('app');
-      else setState('onboarding');
-    }).catch(() => setState('onboarding'));
+    (async () => {
+      try {
+        const profile = await getProfile();
+        if (!profile?.onboardingDone) { setState('onboarding'); return; }
+        const skip = await getSkipPostOnboarding();
+        const seen = await hasSeenPostOnboarding();
+        // Show post-onboarding home only on first launch after onboarding completion
+        if (!skip && !seen) { setState('post-onboarding'); await markPostOnboardingSeen(); }
+        else setState('app');
+      } catch {
+        setState('onboarding');
+      }
+    })();
   }, []);
 
   const onTabChange = (id: string) => setTab(id as TabId);
@@ -86,7 +98,16 @@ export default function App() {
   if (state === 'loading') return <LoadingScreen />;
   if (state === 'onboarding') return (
     <ToastProvider>
-      <OnboardingScreen onComplete={() => setState('app')} />
+      <OnboardingScreen onComplete={() => setState('post-onboarding')} />
+    </ToastProvider>
+  );
+  if (state === 'post-onboarding') return (
+    <ToastProvider>
+      <OfflineBanner/>
+      <PostOnboardingHome
+        onEnter={() => setState('app')}
+        onSkipForever={async () => { await setSkipPostOnboarding(true); setState('app'); }}
+      />
     </ToastProvider>
   );
 

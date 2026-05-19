@@ -253,6 +253,15 @@ html, body, #root { margin: 0; padding: 0; background: var(--bg-deep); color: va
 .cst-flicker { animation: cst-flicker 5s infinite; }
 @keyframes cit-pulse-brick { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
 .cit-pulse-brick { animation: cit-pulse-brick 1.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 .cst-divider { height: 1px; background: linear-gradient(90deg, transparent, var(--line-bright), transparent); }
 .cst-screen-h { font-family: var(--display); font-size: 28px; letter-spacing: 0.04em; color: var(--phos); text-shadow: 0 0 8px var(--phos-deep); }
 .cst-frame * { scrollbar-width: thin; scrollbar-color: var(--phos-deep) transparent; }

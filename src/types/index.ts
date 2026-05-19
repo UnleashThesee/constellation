@@ -68,6 +68,8 @@ export interface AppSettings {
   algorithmWeights?: { explore: number; random: number; contrast: number; trending: number };
   algorithmPresets?: Array<{ name: string; weights: { explore: number; random: number; contrast: number; trending: number } }>;
   paletteOverrides?: Record<string, string>;
+  skipPostOnboarding?: boolean;
+  hasSeenPostOnboarding?: boolean;
 }
 
 export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross';
