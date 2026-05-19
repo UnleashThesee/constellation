@@ -488,3 +488,59 @@ export async function cacheWikiGet<T = unknown>(key: string): Promise<T | null> 
 export async function cacheWikiSet<T>(key: string, data: T): Promise<void> {
   await db.cacheWiki.put({ key, data, createdAt: new Date() });
 }
+
+// ---- CSV export ----
+
+function escapeCsv(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') {
+    const json = JSON.stringify(v);
+    return `"${json.replace(/"/g, '""')}"`;
+  }
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function rowsToCsv(rows: Array<Record<string, unknown>>): string {
+  if (rows.length === 0) return '';
+  const keys = Array.from(new Set(rows.flatMap(r => Object.keys(r))));
+  const header = keys.join(',');
+  const lines = rows.map(r => keys.map(k => escapeCsv(r[k])).join(','));
+  return `${header}\n${lines.join('\n')}`;
+}
+
+/** Exporte chaque table Dexie en CSV — déclenche un download par table non vide. */
+export async function exportAllAsCsv(): Promise<{ tableName: string; rows: number }[]> {
+  const tables: Array<[string, () => Promise<unknown[]>]> = [
+    ['concepts',                   () => db.concepts.toArray()],
+    ['interactions',               () => db.interactions.toArray()],
+    ['tags',                       () => db.tags.toArray()],
+    ['conceptTags',                () => db.conceptTags.toArray()],
+    ['personalCategories',         () => db.personalCategories.toArray()],
+    ['conceptPersonalCategories',  () => db.conceptPersonalCategories.toArray()],
+    ['annotations',                () => db.annotations.toArray()],
+    ['combinations',               () => db.combinations.toArray()],
+    ['ideas',                      () => db.ideas.toArray()],
+    ['constraints',                () => db.constraints.toArray()],
+    ['deepDives',                  () => db.deepDives.toArray()],
+  ];
+  const results: { tableName: string; rows: number }[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+  for (const [name, fetcher] of tables) {
+    const rows = (await fetcher()) as Array<Record<string, unknown>>;
+    if (rows.length === 0) continue;
+    const csv = rowsToCsv(rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `constellation-${name}-${today}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    results.push({ tableName: name, rows: rows.length });
+    // Petit délai pour éviter que le navigateur n'ignore les downloads multiples
+    await new Promise(r => setTimeout(r, 120));
+  }
+  return results;
+}

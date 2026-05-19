@@ -97,6 +97,28 @@ export function SearchScreen({ onTabChange }: Props) {
           </div>
         )}
 
+        {/* Détection de désambiguïsation : plusieurs résultats avec un nom de base similaire */}
+        {(() => {
+          const baseNameOf = (s: string) => s.split(/[\s(]/)[0].toLowerCase();
+          const counts: Record<string, number> = {};
+          results.forEach(r => { const k = baseNameOf(r.name); counts[k] = (counts[k] ?? 0) + 1; });
+          const ambiguous = Object.values(counts).some(n => n >= 2);
+          if (!ambiguous || results.length === 0) return null;
+          return (
+            <div style={{
+              padding: '8px 12px', marginBottom: 4,
+              background: 'var(--cit-butter)',
+              border: '2px solid var(--cit-navy-dk)',
+              boxShadow: '3px 3px 0 var(--cit-navy-dk)',
+              fontFamily: "'Special Elite', monospace", fontSize: 12,
+              color: 'var(--cit-navy-dk)',
+            }}>
+              ★ <strong>Désambiguïsation</strong> · plusieurs entrées partagent un nom similaire.
+              Lisez attentivement les descriptions avant de choisir.
+            </div>
+          );
+        })()}
+
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {results.map(c => {
             const cat = CATEGORIES[c.cats[0]?.[0] ?? 'personnages'];

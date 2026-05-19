@@ -75,6 +75,7 @@ export interface AppSettings {
   chromaticEnabled?: boolean;
   operatorName?: string;
   skipDelayDays?: number;
+  lastBoostAt?: number;
 }
 
 export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross';

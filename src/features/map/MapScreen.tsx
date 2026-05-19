@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST, conceptDominant, gradientForWeights } from '../../lib/categories';
@@ -366,19 +366,55 @@ function NodeDetailPanel({ node, edges, allNodes, status, onClose, onSecondChanc
   );
 }
 
-function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor }: {
+function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fullscreen, onFullscreenToggle }: {
   nodes: MapNode[]; edges: MapEdge[];
   selectedId: string | null; onSelect: (id: string) => void;
   showEdges: boolean;
   statusFor: (id: string) => NodeStatus;
+  fullscreen: boolean;
+  onFullscreenToggle: () => void;
 }) {
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
+  const panStart = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+
+  const onPanDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('[data-node]')) return;
+    panStart.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+  };
+  const onPanMove = (e: React.PointerEvent) => {
+    if (!panStart.current) return;
+    setPan({
+      x: panStart.current.px + (e.clientX - panStart.current.x),
+      y: panStart.current.py + (e.clientY - panStart.current.y),
+    });
+  };
+  const onPanUp = () => { panStart.current = null; };
+  const onWheel = (e: React.WheelEvent) => {
+    const delta = -e.deltaY * 0.001;
+    setZoom(z => Math.max(0.4, Math.min(3, z + delta)));
+  };
+  const reset = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+
+  const hoverNode = hoverId ? nodes.find(n => n.concept.id === hoverId) : null;
+
   return (
-    <div style={{
-      position: 'relative',
-      background: 'radial-gradient(circle at 50% 50%, var(--cit-paper) 0%, var(--cit-paper-dk) 100%)',
-      border: '3px solid var(--cit-navy-dk)',
-      overflow: 'hidden', height: '100%',
-    }}>
+    <div
+      onPointerDown={onPanDown}
+      onPointerMove={onPanMove}
+      onPointerUp={onPanUp}
+      onPointerLeave={onPanUp}
+      onWheel={onWheel}
+      style={{
+        position: 'relative',
+        background: 'radial-gradient(circle at 50% 50%, var(--cit-paper) 0%, var(--cit-paper-dk) 100%)',
+        border: '3px solid var(--cit-navy-dk)',
+        overflow: 'hidden', height: '100%',
+        cursor: panStart.current ? 'grabbing' : 'grab',
+        touchAction: 'none',
+      }}>
       <div style={{
         position: 'absolute', inset: 0,
         background:
@@ -405,6 +441,13 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor }: 
         {nodes.length} NŒUDS · {edges.length} LIAISONS
       </div>
 
+      {/* Couche transformée (pan + zoom) qui englobe les edges et les nodes */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+        transformOrigin: 'center center',
+        transition: panStart.current ? 'none' : 'transform 0.15s ease',
+      }}>
       {showEdges && (
         <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} preserveAspectRatio="none">
           {edges.map((e, i) => {
@@ -433,7 +476,14 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor }: 
         const radius = n.size + (isSelected ? 6 : 0);
         const opacity = isReject ? 0.3 : isSkip ? 0.5 : 1;
         return (
-          <div key={n.concept.id} onClick={() => onSelect(n.concept.id)}
+          <div key={n.concept.id} data-node
+            onClick={(e) => { e.stopPropagation(); onSelect(n.concept.id); }}
+            onPointerEnter={(e) => {
+              setHoverId(n.concept.id);
+              setHoverPos({ x: e.clientX, y: e.clientY });
+            }}
+            onPointerMove={(e) => setHoverPos({ x: e.clientX, y: e.clientY })}
+            onPointerLeave={() => setHoverId(null)}
             style={{
               position: 'absolute',
               left: `${n.x}%`, top: `${n.y}%`,
@@ -484,6 +534,29 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor }: 
           </div>
         );
       })}
+      </div>{/* fin couche transformée */}
+
+      {/* Tooltip flottante au hover */}
+      {hoverNode && (
+        <div style={{
+          position: 'absolute',
+          left: Math.min(hoverPos.x + 14, 9999),
+          top: Math.max(hoverPos.y - 60, 0),
+          pointerEvents: 'none', zIndex: 6,
+          background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
+          padding: '6px 10px',
+          border: '2px solid var(--cit-navy-dk)',
+          boxShadow: '3px 3px 0 var(--cit-brick)',
+          fontFamily: "'Special Elite', monospace", fontSize: 11,
+          maxWidth: 240,
+        }}>
+          <div className="cit-h1 cit-h1--reverse" style={{ fontSize: 14, lineHeight: 1 }}>{hoverNode.concept.name}</div>
+          <div style={{ color: 'var(--cit-cream)', marginTop: 2 }}>
+            {CATEGORIES[hoverNode.concept.cats[0]?.[0] ?? 'personnages'].label}
+            {' · '}{edges.filter(e => e.a === hoverNode.concept.id || e.b === hoverNode.concept.id).length} liaison{edges.filter(e => e.a === hoverNode.concept.id || e.b === hoverNode.concept.id).length > 1 ? 's' : ''}
+          </div>
+        </div>
+      )}
 
       <div style={{
         position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
@@ -500,6 +573,47 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor }: 
             <span className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-navy-dk)' }}>{c.short}</span>
           </span>
         ))}
+      </div>
+
+      {/* Zoom controls + fullscreen */}
+      <div style={{
+        position: 'absolute', top: 8, right: 8,
+        display: 'flex', flexDirection: 'column', gap: 4, zIndex: 5,
+      }}>
+        <button onClick={(e) => { e.stopPropagation(); setZoom(z => Math.min(3, z + 0.2)); }} style={{
+          width: 36, height: 36, background: 'var(--cit-cream)',
+          border: '2px solid var(--cit-navy-dk)',
+          fontFamily: "'Alfa Slab One', serif", fontSize: 18,
+          color: 'var(--cit-navy-dk)', cursor: 'pointer',
+          boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+        }}>+</button>
+        <button onClick={(e) => { e.stopPropagation(); setZoom(z => Math.max(0.4, z - 0.2)); }} style={{
+          width: 36, height: 36, background: 'var(--cit-cream)',
+          border: '2px solid var(--cit-navy-dk)',
+          fontFamily: "'Alfa Slab One', serif", fontSize: 18,
+          color: 'var(--cit-navy-dk)', cursor: 'pointer',
+          boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+        }}>−</button>
+        <button onClick={(e) => { e.stopPropagation(); reset(); }} title="Recentrer" style={{
+          width: 36, height: 36, background: 'var(--cit-navy-dk)',
+          color: 'var(--cit-butter)',
+          border: '2px solid var(--cit-navy-dk)',
+          fontFamily: "'Alfa Slab One', serif", fontSize: 14,
+          cursor: 'pointer', boxShadow: '2px 2px 0 var(--cit-brick)',
+        }}>⌖</button>
+        <button onClick={(e) => { e.stopPropagation(); onFullscreenToggle(); }} title={fullscreen ? 'Quitter plein écran' : 'Plein écran'} style={{
+          width: 36, height: 36, background: fullscreen ? 'var(--cit-brick)' : 'var(--cit-butter)',
+          color: 'var(--cit-navy-dk)',
+          border: '2px solid var(--cit-navy-dk)',
+          fontFamily: "'Alfa Slab One', serif", fontSize: 16,
+          cursor: 'pointer', boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+        }}>{fullscreen ? '↘' : '↗'}</button>
+        <div style={{
+          padding: '2px 6px', background: 'var(--cit-cream)',
+          border: '2px solid var(--cit-navy-dk)',
+          fontFamily: "'Special Elite', monospace", fontSize: 9, textAlign: 'center',
+          color: 'var(--cit-navy-dk)',
+        }}>{Math.round(zoom * 100)}%</div>
       </div>
     </div>
   );
@@ -519,6 +633,7 @@ export function MapScreen({ onTabChange }: Props) {
   });
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const toast = useToast();
 
   const loadAll = async () => {
@@ -594,27 +709,43 @@ export function MapScreen({ onTabChange }: Props) {
 
   return (
     <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <CitizenMasthead
-        kicker="Voici votre"
-        title="UNIVERS"
-        active="map"
-        onTabChange={onTabChange}
-        right={<>
-          <Stamp tone="brick" rotate={-5} size={12}>★ {adopted.length} NŒUDS ADOPTÉS</Stamp>
-          <Sunburst size={68} color="var(--cit-mustard)"/>
-        </>}
-      />
+      {!fullscreen && (
+        <CitizenMasthead
+          kicker="Voici votre"
+          title="UNIVERS"
+          active="map"
+          onTabChange={onTabChange}
+          right={<>
+            <Stamp tone="brick" rotate={-5} size={12}>★ {adopted.length} NŒUDS ADOPTÉS</Stamp>
+            <Sunburst size={68} color="var(--cit-mustard)"/>
+          </>}
+        />
+      )}
+
+      {adopted.length > 0 && adopted.length < 10 && !fullscreen && (
+        <div style={{
+          padding: '8px 32px',
+          background: 'var(--cit-butter)',
+          borderBottom: '2px solid var(--cit-navy-dk)',
+          textAlign: 'center',
+          fontFamily: "'Special Elite', monospace", fontSize: 12, color: 'var(--cit-navy-dk)',
+        }}>
+          ★ Votre univers commence à prendre forme — continuez à adopter pour faire émerger les liaisons.
+        </div>
+      )}
 
       <div style={{
         flex: 1, display: 'grid',
-        gridTemplateColumns: selected ? '280px 1fr 340px' : '280px 1fr',
+        gridTemplateColumns: fullscreen ? '1fr' : (selected ? '280px 1fr 340px' : '280px 1fr'),
         gap: 0, zIndex: 3, position: 'relative', overflow: 'hidden',
       }}>
-        <MapFilters
-          filters={filters} setFilters={setFilters}
-          search={search} setSearch={setSearch}
-          nodes={allNodes}
-        />
+        {!fullscreen && (
+          <MapFilters
+            filters={filters} setFilters={setFilters}
+            search={search} setSearch={setSearch}
+            nodes={allNodes}
+          />
+        )}
 
         <div style={{ padding: '0 14px' }}>
           <MapGraph
@@ -622,10 +753,12 @@ export function MapScreen({ onTabChange }: Props) {
             selectedId={selectedId} onSelect={setSelectedId}
             showEdges={filters.showEdges}
             statusFor={statusFor}
+            fullscreen={fullscreen}
+            onFullscreenToggle={() => setFullscreen(v => !v)}
           />
         </div>
 
-        {selected && (
+        {selected && !fullscreen && (
           <NodeDetailPanel
             node={selected} edges={edges} allNodes={filteredNodes}
             status={statusFor(selected.concept.id)}

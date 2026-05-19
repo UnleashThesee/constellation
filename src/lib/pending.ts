@@ -27,3 +27,16 @@ export function consumePendingConcepts(): Concept[] | null {
   pendingConcepts = null;
   return c;
 }
+
+/** Deck à injecter dans le SwipeScreen (utilisé par BoostModal pour la série de 20). */
+let pendingSwipeDeck: { deck: Concept[]; label: string } | null = null;
+
+export function setPendingSwipeDeck(deck: Concept[], label: string): void {
+  pendingSwipeDeck = { deck, label };
+}
+
+export function consumePendingSwipeDeck(): { deck: Concept[]; label: string } | null {
+  const c = pendingSwipeDeck;
+  pendingSwipeDeck = null;
+  return c;
+}

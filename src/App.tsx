@@ -15,6 +15,8 @@ import { SearchScreen } from './features/search/SearchScreen';
 import { PersoScreen } from './features/perso/PersoScreen';
 import { CombosLibraryScreen } from './features/combos/CombosLibraryScreen';
 import { ConstraintsScreen } from './features/constraints/ConstraintsScreen';
+import { BoostModal } from './features/boost/BoostModal';
+import { setPendingSwipeDeck } from './lib/pending';
 import { ToastProvider } from './lib/toast';
 import { getProfile, getSettings } from './stores/db';
 import { applyPaletteOverrides, CATEGORIES, CATEGORY_LIST } from './lib/categories';
@@ -139,5 +141,14 @@ export default function App() {
     }
   })();
 
-  return <ToastProvider><OfflineBanner/>{screen}</ToastProvider>;
+  return (
+    <ToastProvider>
+      <OfflineBanner/>
+      {screen}
+      <BoostModal onLaunchSeries={(deck, anchor) => {
+        setPendingSwipeDeck(deck, `Série liée à ${anchor.name}`);
+        setTab('swipe');
+      }}/>
+    </ToastProvider>
+  );
 }

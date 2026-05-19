@@ -3,7 +3,7 @@ import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../compo
 import { Sunburst, Stamp, Aster, FileSeal } from '../../components/ui/atoms';
 import { ColorPickerModal } from '../../components/ui/ColorPickerModal';
 import { CATEGORIES, CATEGORY_LIST, applyPaletteOverrides } from '../../lib/categories';
-import { db, getSettings, saveSettings, saveProfile, getProfile } from '../../stores/db';
+import { db, getSettings, saveSettings, saveProfile, exportAllAsCsv } from '../../stores/db';
 import { testLlmKey } from '../../services/llm';
 import { useToast } from '../../lib/toast';
 import { playSound, setSoundsEnabled, setMasterVolume } from '../../lib/sounds';
@@ -701,6 +701,17 @@ export function SettingsScreen({ onTabChange }: Props) {
               <CitButton onClick={handleExport} style={{ justifyContent: 'space-between', width: '100%' }}>
                 <span>Exporter mon univers</span>
                 <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>.JSON</span>
+              </CitButton>
+              <CitButton onClick={async () => {
+                const results = await exportAllAsCsv();
+                if (results.length === 0) {
+                  toast.show({ tone: 'info', title: 'Rien à exporter', body: 'Aucune table ne contient de données.' });
+                } else {
+                  toast.show({ tone: 'success', title: 'Export CSV terminé', body: `${results.length} fichier${results.length > 1 ? 's' : ''} téléchargé${results.length > 1 ? 's' : ''}.` });
+                }
+              }} style={{ justifyContent: 'space-between', width: '100%' }}>
+                <span>Exporter en CSV (par table)</span>
+                <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>.CSV ×N</span>
               </CitButton>
               <label style={{ display: 'block' }}>
                 <input type="file" accept="application/json" onChange={e => {

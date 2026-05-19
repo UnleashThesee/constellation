@@ -186,6 +186,67 @@ async function callLlm(settings: AppSettings, prompt: string, useCache = true): 
   return response;
 }
 
+export interface SimilarConceptSuggestion {
+  nom: string;
+  description: string;
+  categories: string[];
+  score: number;
+  respectsConstraints: boolean;
+}
+
+function buildSimilarPrompt(params: {
+  items: Array<{ concept: Concept; weight: number }>;
+  constraints: string[];
+  count: number;
+}): string {
+  const lines: string[] = [];
+  lines.push('Tu es un assistant de découverte intellectuelle pour Constellation.');
+  lines.push('');
+  lines.push('CONTEXTE — Voici une combinaison de concepts pondérée :');
+  params.items.forEach(({ concept, weight }) => {
+    lines.push(`- ${concept.name} (poids ${weight}%) — ${concept.blurb}`);
+  });
+  lines.push('');
+  if (params.constraints.length > 0) {
+    lines.push('CONTRAINTES À RESPECTER :');
+    params.constraints.forEach(c => lines.push(`- ${c}`));
+    lines.push('');
+  }
+  lines.push(`Suggère ${params.count} concepts à l'INTERSECTION sémantique de cette combinaison.`);
+  lines.push('Privilégie ceux qui rapprochent les concepts entre eux et qui respectent les contraintes.');
+  lines.push('Score = pertinence 0-100 (100 = parfaitement à l\'intersection).');
+  lines.push('');
+  lines.push('Format JSON :');
+  lines.push('[{');
+  lines.push('  "nom": "...",');
+  lines.push('  "description": "..." (1-2 lignes en français),');
+  lines.push('  "categories": ["philosophie", "littérature", …] (parmi : philosophie, sciences, humaines, economie, litterature, arts, musique, cinema, jeuvideo, histoire, geographie, personnages),');
+  lines.push('  "score": 0-100,');
+  lines.push('  "respectsConstraints": true|false');
+  lines.push('}]');
+  lines.push('');
+  lines.push('Réponds UNIQUEMENT par le tableau JSON.');
+  return lines.join('\n');
+}
+
+export async function suggestSimilarConcepts(params: {
+  settings: AppSettings;
+  items: Array<{ concept: Concept; weight: number }>;
+  constraints: string[];
+  count?: number;
+}): Promise<SimilarConceptSuggestion[]> {
+  const prompt = buildSimilarPrompt({ ...params, count: params.count ?? 7 });
+  const raw = await callLlm(params.settings, prompt);
+  const parsed = extractJson(raw);
+  if (Array.isArray(parsed)) return parsed as SimilarConceptSuggestion[];
+  if (typeof parsed === 'object' && parsed !== null) {
+    for (const v of Object.values(parsed as Record<string, unknown>)) {
+      if (Array.isArray(v)) return v as SimilarConceptSuggestion[];
+    }
+  }
+  throw new LlmError('Format de réponse inattendu', 0);
+}
+
 export async function generateIdeas(params: {
   settings: AppSettings;
   items: Array<{ concept: Concept; weight: number }>;

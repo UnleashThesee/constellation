@@ -8,6 +8,7 @@ import { fetchRandomConcepts } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
+import { consumePendingSwipeDeck } from '../../lib/pending';
 import type { Concept, SwipeMode, CategoryKey } from '../../types';
 
 const FALLBACK_CONCEPTS: Concept[] = [
@@ -580,12 +581,24 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const swipe = useSwipeDeck(FALLBACK_CONCEPTS, () => setDetailOpen(true));
   const [rawDeck, setRawDeck] = useState<Concept[]>([]);
   const [currentFavorite, setCurrentFavorite] = useState(false);
+  const [boostLabel, setBoostLabel] = useState<string | null>(null);
+  const [boostInitial, setBoostInitial] = useState(0);
   const toast = useToast();
 
-  // Initial big pool fetch
+  // Initial big pool fetch — consomme un éventuel boost-deck en priorité
   useEffect(() => {
     (async () => {
       try {
+        // Boost mode : si une série a été préparée, l'utiliser comme deck initial
+        const boostPending = consumePendingSwipeDeck();
+        if (boostPending && boostPending.deck.length > 0) {
+          await Promise.all(boostPending.deck.map(c => cacheConcept(c)));
+          setRawDeck(boostPending.deck);
+          setBoostLabel(boostPending.label);
+          setBoostInitial(boostPending.deck.length);
+          setLoading(false);
+          return;
+        }
         const [concepts, excluded] = await Promise.all([
           fetchRandomConcepts(40),
           getExcludedConceptIds(30),
@@ -707,10 +720,36 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         active="swipe"
         onTabChange={onTabChange}
         right={<>
+          {boostLabel && (
+            <Stamp tone="brick" rotate={-3}>
+              ★ BOOST · {Math.min(boostInitial - swipe.deck.length + 1, boostInitial)}/{boostInitial}
+            </Stamp>
+          )}
           <CitButton size="sm" onClick={() => onTabChange?.('search')}>⌕ Recherche</CitButton>
           <Sunburst size={68} color="var(--cit-mustard)"/>
         </>}
       />
+
+      {boostLabel && (
+        <div style={{
+          padding: '8px 32px',
+          background: 'var(--cit-brick)',
+          color: 'var(--cit-cream)',
+          borderBottom: '2px solid var(--cit-navy-dk)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          position: 'relative', zIndex: 3,
+        }}>
+          <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)', letterSpacing: '.14em' }}>
+            ★ MODE BOOST · {boostLabel.toUpperCase()}
+          </span>
+          <button onClick={() => { setBoostLabel(null); setBoostInitial(0); }} style={{
+            background: 'var(--cit-cream)', color: 'var(--cit-brick)',
+            border: '2px solid var(--cit-navy-dk)',
+            padding: '2px 10px', cursor: 'pointer',
+            fontFamily: "'Alfa Slab One', serif", fontSize: 12,
+          }}>✕ Sortir du boost</button>
+        </div>
+      )}
 
       <ModeBar mode={mode} setMode={setMode} queueSize={swipe.deck.length}/>
 

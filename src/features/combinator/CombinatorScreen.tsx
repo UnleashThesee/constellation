@@ -4,9 +4,14 @@ import { Sunburst, Stamp } from '../../components/ui/atoms';
 import { CATEGORIES, conceptDominant, combinationMix } from '../../lib/categories';
 import { getAdoptedConcepts, saveCombination, saveIdea, getSettings } from '../../stores/db';
 import { useToast } from '../../lib/toast';
-import { generateIdeas, LlmError } from '../../services/llm';
+import { generateIdeas, suggestSimilarConcepts, LlmError, type SimilarConceptSuggestion } from '../../services/llm';
 import { consumePendingCombo, consumePendingConcepts } from '../../lib/pending';
-import type { Concept } from '../../types';
+import { cacheConcept, recordInteraction } from '../../stores/db';
+import { CATEGORIES as CATS } from '../../lib/categories';
+import { playSound } from '../../lib/sounds';
+import type { Concept, CategoryKey } from '../../types';
+
+const SESSION_ID = `combinator-${Date.now()}`;
 
 const OUTPUT_TYPES = [
   { id: 'research',  label: 'Papier de recherche' },
@@ -167,6 +172,9 @@ export function CombinatorScreen({ onTabChange }: Props) {
   const [outputType, setOutputType] = useState('essay');
   const [additional, setAdditional] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [seekingNear, setSeekingNear] = useState(false);
+  const [nearResults, setNearResults] = useState<SimilarConceptSuggestion[] | null>(null);
+  const [nearAdopted, setNearAdopted] = useState<Set<string>>(new Set());
   const toast = useToast();
 
   useEffect(() => {
@@ -390,30 +398,49 @@ export function CombinatorScreen({ onTabChange }: Props) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button onClick={() => {
-              if (selection.length < 2) {
-                toast.show({ tone: 'warning', title: 'Au moins 2 concepts', body: 'Sélectionnez deux concepts pour chercher l\'intersection.' });
+            <button disabled={seekingNear || selection.length < 2} onClick={async () => {
+              if (selection.length < 2) return;
+              const settings = await getSettings();
+              if (!settings?.llmKey) {
+                toast.show({ tone: 'warning', title: 'Clé LLM absente', body: 'Configurez votre clé API dans les Réglages.' });
+                onTabChange?.('settings');
                 return;
               }
-              toast.show({
-                tone: 'info',
-                title: 'Mode Croisement activé',
-                body: 'Le Swipe vous proposera des fiches à l\'intersection de cette combinaison.',
-              });
-              onTabChange?.('swipe');
+              setSeekingNear(true);
+              playSound('llmStart');
+              try {
+                const items = selection
+                  .map(s => ({ concept: byId[s.id], weight: s.weight }))
+                  .filter(it => it.concept !== undefined) as Array<{ concept: Concept; weight: number }>;
+                const suggestions = await suggestSimilarConcepts({ settings, items, constraints, count: 7 });
+                setNearResults(suggestions);
+                playSound('llmDone');
+                toast.show({ tone: 'success', title: 'Concepts proches trouvés', body: `${suggestions.length} suggestions à l'intersection.` });
+              } catch (e) {
+                playSound('llmFail');
+                const msg = e instanceof LlmError ? e.message : 'Erreur réseau.';
+                toast.show({ tone: 'warning', title: 'Échec de la recherche', body: msg });
+              } finally {
+                setSeekingNear(false);
+              }
             }} style={{
-              background: 'var(--cit-cream)', color: 'var(--cit-navy-dk)',
+              background: seekingNear ? 'var(--cit-paper-dk)' : 'var(--cit-cream)',
+              color: 'var(--cit-navy-dk)',
               border: '3px solid var(--cit-navy-dk)',
               padding: '10px 14px',
               fontFamily: "'Alfa Slab One', serif", fontSize: 16,
-              letterSpacing: '.02em', cursor: 'pointer',
+              letterSpacing: '.02em',
+              cursor: seekingNear ? 'wait' : selection.length < 2 ? 'not-allowed' : 'pointer',
+              opacity: seekingNear || selection.length < 2 ? 0.6 : 1,
               boxShadow: 'inset 0 -4px 0 var(--cit-paper-dk), 4px 4px 0 var(--cit-navy-dk)',
               textTransform: 'uppercase',
               display: 'flex', alignItems: 'center', gap: 8,
             }}>
               <span style={{ width: 22, height: 22, background: mix.css, border: '2px solid var(--cit-navy-dk)' }}/>
-              <span style={{ flex: 1, textAlign: 'left' }}>★ Trouver des concepts proches</span>
-              <span className="cit-typed" style={{ fontSize: 10, opacity: 0.7, textTransform: 'none' }}>SWIPE →</span>
+              <span style={{ flex: 1, textAlign: 'left' }}>
+                {seekingNear ? 'RECHERCHE…' : '★ Trouver des concepts proches'}
+              </span>
+              <span className="cit-typed" style={{ fontSize: 10, opacity: 0.7, textTransform: 'none' }}>5–10</span>
             </button>
             <div>
               <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ TYPE DE SORTIE</div>
@@ -629,6 +656,147 @@ export function CombinatorScreen({ onTabChange }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Inline panel : 5-10 concepts proches générés via LLM */}
+      {nearResults && nearResults.length > 0 && (
+        <div style={{
+          padding: '14px 32px 18px',
+          background: 'var(--cit-paper-dk)',
+          borderTop: '3px solid var(--cit-navy-dk)',
+          position: 'relative', zIndex: 3,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span className="cit-condensed" style={{ fontSize: 12, color: 'var(--cit-navy-dk)' }}>
+              ★ {nearResults.length} CONCEPTS PROCHES · CLIQUEZ ★ POUR ADOPTER ★
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <CitButton size="sm" onClick={() => setNearResults(null)}>✕ Fermer</CitButton>
+              <CitButton size="sm" tone="navy" onClick={async () => {
+                const settings = await getSettings();
+                if (!settings?.llmKey) return;
+                setSeekingNear(true);
+                try {
+                  const items = selection
+                    .map(s => ({ concept: byId[s.id], weight: s.weight }))
+                    .filter(it => it.concept !== undefined) as Array<{ concept: Concept; weight: number }>;
+                  const suggestions = await suggestSimilarConcepts({ settings, items, constraints, count: 7 });
+                  setNearResults(suggestions);
+                  setNearAdopted(new Set());
+                } catch (e) {
+                  const msg = e instanceof LlmError ? e.message : 'Erreur';
+                  toast.show({ tone: 'warning', title: 'Échec', body: msg });
+                } finally {
+                  setSeekingNear(false);
+                }
+              }}>↻ Régénérer</CitButton>
+            </div>
+          </div>
+
+          {nearResults.length < 3 && (
+            <div style={{
+              padding: '8px 12px', marginBottom: 10,
+              background: 'var(--cit-brick)', color: 'var(--cit-cream)',
+              border: '2px solid var(--cit-navy-dk)',
+              fontFamily: "'Special Elite', monospace", fontSize: 11,
+            }}>
+              ★ Contrainte trop restrictive ? Le Bureau n'a trouvé que {nearResults.length} candidats.
+              <button onClick={() => setConstraints([])} style={{
+                marginLeft: 8, padding: '2px 8px',
+                background: 'var(--cit-cream)', color: 'var(--cit-brick)',
+                border: '1.5px solid var(--cit-navy-dk)',
+                fontFamily: "'Alfa Slab One', serif", fontSize: 10,
+                cursor: 'pointer',
+              }}>Désactiver les contraintes</button>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+            {nearResults.map((sug, i) => {
+              const adopted = nearAdopted.has(sug.nom);
+              const cats = sug.categories
+                .map(c => CATS[c as CategoryKey])
+                .filter(Boolean);
+              const dominantColor = cats[0]?.oklch ?? 'var(--cit-navy)';
+              return (
+                <div key={i} style={{
+                  background: 'var(--cit-cream)',
+                  border: '3px solid var(--cit-navy-dk)',
+                  borderLeft: `10px solid ${dominantColor}`,
+                  boxShadow: '4px 4px 0 var(--cit-navy-dk)',
+                  padding: '10px 12px',
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                  opacity: adopted ? 0.6 : 1,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}>
+                    <h4 className="cit-h1" style={{ fontSize: 16, lineHeight: 0.95, margin: 0 }}>{sug.nom}</h4>
+                    <span style={{
+                      fontFamily: "'Alfa Slab One', serif", fontSize: 14,
+                      color: 'var(--cit-brick)',
+                    }}>{sug.score}</span>
+                  </div>
+                  <div style={{
+                    height: 6, background: 'var(--cit-paper)',
+                    border: '1.5px solid var(--cit-navy-dk)',
+                  }}>
+                    <div style={{ width: `${sug.score}%`, height: '100%', background: dominantColor }}/>
+                  </div>
+                  <p className="cit-typed" style={{ margin: 0, fontSize: 11, lineHeight: 1.45, color: 'var(--cit-navy-dk)' }}>
+                    {sug.description}
+                  </p>
+                  {sug.respectsConstraints && constraints.length > 0 && (
+                    <span style={{
+                      display: 'inline-block', alignSelf: 'flex-start',
+                      padding: '1px 6px',
+                      background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
+                      fontFamily: "'Oswald', sans-serif", fontSize: 9, fontWeight: 700,
+                      letterSpacing: '.10em', textTransform: 'uppercase',
+                    }}>✓ Respecte les contraintes</span>
+                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                    {cats.slice(0, 3).map(c => (
+                      <span key={c.key} className="cit-condensed" style={{
+                        fontSize: 9, padding: '1px 5px',
+                        background: c.oklch, color: 'var(--cit-cream)',
+                        border: '1.5px solid var(--cit-navy-dk)', fontWeight: 700,
+                        textShadow: '1px 1px 0 oklch(0% 0 0 / 0.4)',
+                      }}>{c.short}</span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 'auto' }}>
+                    <CitButton
+                      size="sm" tone={adopted ? 'navy' : 'brick'}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                      onClick={async () => {
+                        if (adopted) return;
+                        const id = `near-${sug.nom.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+                        const dominantCat = (cats[0]?.key ?? 'personnages') as CategoryKey;
+                        const concept: Concept = {
+                          id, name: sug.nom, blurb: sug.description,
+                          cats: cats.length > 0
+                            ? cats.map(c => [c.key, 1 / cats.length] as [CategoryKey, number])
+                            : [[dominantCat, 1]],
+                          kind: 'Suggestion proche',
+                          refs: [],
+                          sourceKind: 'cross',
+                          sourceTag: 'concepts-proches',
+                          isManual: true,
+                          createdAt: new Date(),
+                        };
+                        await cacheConcept(concept);
+                        await recordInteraction(id, 'valid', SESSION_ID);
+                        setNearAdopted(prev => new Set(prev).add(sug.nom));
+                        playSound('adopt');
+                        toast.show({ tone: 'success', title: 'Concept adopté', body: `« ${sug.nom} » rejoint votre univers.` });
+                      }}>
+                      {adopted ? '✓ Adopté' : '★ Adopter'}
+                    </CitButton>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <CitizenFooter right="★ AJOUTEZ 2–5 CONCEPTS · GLISSEZ LES CURSEURS · ADMIREZ L'AMALGAME"/>
     </div>
