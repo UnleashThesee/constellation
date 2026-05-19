@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST } from '../../lib/categories';
-import { db, getAdoptedConcepts } from '../../stores/db';
-import type { CategoryKey, Interaction, Concept } from '../../types';
+import { db, getAdoptedConcepts, getAllConstraints, getAllCombinations } from '../../stores/db';
+import type { CategoryKey, Interaction, Concept, SavedConstraint } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
@@ -31,11 +31,38 @@ function computeDailyStats(ints: Interaction[]): DayStats[] {
 export function StatsScreen({ onTabChange }: Props) {
   const [ints, setInts] = useState<Interaction[]>([]);
   const [adopted, setAdopted] = useState<Concept[]>([]);
+  const [topConstraints, setTopConstraints] = useState<SavedConstraint[]>([]);
+  const [combosCount, setCombosCount] = useState(0);
 
   useEffect(() => {
     db.interactions.toArray().then(arr => setInts(arr.map(i => ({ ...i, timestamp: new Date(i.timestamp) }))));
     getAdoptedConcepts().then(setAdopted);
+    getAllConstraints().then(cs => setTopConstraints(cs.slice(0, 5)));
+    getAllCombinations().then(cs => setCombosCount(cs.length));
   }, []);
+
+  // Top connected concepts : score = nombre d'overlaps de catégories avec
+  // les autres concepts adoptés (proxy de "centralité" dans l'univers).
+  const topConnected = (() => {
+    if (adopted.length === 0) return [] as Array<{ concept: Concept; score: number }>;
+    const scores = adopted.map(c => {
+      const myCats = new Set(c.cats.map(([k]) => k));
+      let score = 0;
+      for (const other of adopted) {
+        if (other.id === c.id) continue;
+        for (const [k] of other.cats) if (myCats.has(k)) score++;
+      }
+      return { concept: c, score };
+    });
+    return scores.sort((a, b) => b.score - a.score).slice(0, 6);
+  })();
+
+  // Growth curve : cumulative count of 'valid' interactions over time.
+  const growthData = (() => {
+    const validInts = ints.filter(i => i.verdict === 'valid').sort((a, b) => +a.timestamp - +b.timestamp);
+    if (validInts.length === 0) return [] as Array<{ t: number; n: number }>;
+    return validInts.map((i, idx) => ({ t: +i.timestamp, n: idx + 1 }));
+  })();
 
   const total = ints.length;
   const adopt = ints.filter(i => i.verdict === 'valid').length;
@@ -201,14 +228,14 @@ export function StatsScreen({ onTabChange }: Props) {
             )}
           </CitPanel>
 
-          <CitPanel title="Concepts adoptés récemment">
-            {adopted.length === 0 ? (
+          <CitPanel title="Top concepts connectés">
+            {topConnected.length === 0 ? (
               <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
-                Aucun concept adopté pour l'instant.
+                Adoptez plus de concepts pour voir les connexions émerger.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {adopted.slice(0, 6).map((c, i) => {
+                {topConnected.map(({ concept: c, score }, i) => {
                   const cat = CATEGORIES[c.cats[0]?.[0] ?? 'personnages'];
                   return (
                     <div key={c.id} style={{
@@ -224,11 +251,90 @@ export function StatsScreen({ onTabChange }: Props) {
                         textShadow: '1px 1px 0 var(--cit-navy-dk)',
                       }}>{i + 1}</span>
                       <span className="cit-h1" style={{ fontSize: 16, lineHeight: 1 }}>{c.name}</span>
-                      <span className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>{cat.short}</span>
+                      <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-brick)' }}>{score} ↔</span>
                     </div>
                   );
                 })}
               </div>
+            )}
+          </CitPanel>
+        </div>
+
+        {/* Top constraints + Growth curve */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 18, marginBottom: 18 }}>
+          <CitPanel title="Top contraintes utilisées">
+            {topConstraints.length === 0 ? (
+              <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
+                Aucune contrainte mémorisée. Ajoutez-en dans le Croisement.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {topConstraints.map((c, i) => (
+                  <div key={c.id} style={{
+                    display: 'grid', gridTemplateColumns: '28px 1fr auto', gap: 10, alignItems: 'center',
+                    padding: '5px 8px', background: 'var(--cit-paper)',
+                    border: '2px solid var(--cit-navy-dk)',
+                    borderLeft: c.mappedQid ? '8px solid var(--cit-navy)' : '8px solid var(--cit-paper-dk)',
+                  }}>
+                    <span style={{
+                      width: 24, height: 24, background: c.mappedQid ? 'var(--cit-navy-dk)' : 'var(--cit-mustard)',
+                      borderRadius: '50%', border: '1.5px solid var(--cit-navy-dk)',
+                      display: 'grid', placeItems: 'center',
+                      fontFamily: "'Alfa Slab One', serif", fontSize: 11, color: 'var(--cit-cream)',
+                      textShadow: '1px 1px 0 var(--cit-navy-dk)',
+                    }}>{i + 1}</span>
+                    <span className="cit-h1" style={{ fontSize: 14, lineHeight: 1 }}>« {c.text} »</span>
+                    <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-brick)' }}>×{c.useCount}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginTop: 10, fontStyle: 'italic' }}>
+              ★ Bordure navy = mappable Wikidata · mustard = libre (LLM)
+            </div>
+          </CitPanel>
+
+          <CitPanel title="Croissance de votre univers">
+            {growthData.length === 0 ? (
+              <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
+                Aucune donnée de croissance. Adoptez des concepts depuis le Swipe.
+              </div>
+            ) : (
+              <>
+                <div style={{ position: 'relative', height: 140, padding: '10px 8px', background: 'var(--cit-paper)', border: '2.5px solid var(--cit-navy-dk)' }}>
+                  <svg width="100%" height="100%" viewBox="0 0 600 100" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                    <defs>
+                      <pattern id="stats-grid" width="60" height="20" patternUnits="userSpaceOnUse">
+                        <path d="M 60 0 L 0 0 0 20" fill="none" stroke="oklch(0% 0 0 / 0.1)" strokeWidth="1"/>
+                      </pattern>
+                    </defs>
+                    <rect width="600" height="100" fill="url(#stats-grid)"/>
+                    {(() => {
+                      const minT = growthData[0].t;
+                      const maxT = growthData[growthData.length - 1].t;
+                      const maxN = growthData[growthData.length - 1].n;
+                      const spanT = Math.max(1, maxT - minT);
+                      const pts = growthData.map(p => ({
+                        x: ((p.t - minT) / spanT) * 600,
+                        y: 100 - (p.n / maxN) * 90,
+                      }));
+                      const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+                      const fill = path + ` L ${pts[pts.length - 1].x.toFixed(1)} 100 L 0 100 Z`;
+                      return (
+                        <>
+                          <path d={fill} fill="var(--cit-brick)" opacity="0.25"/>
+                          <path d={path} fill="none" stroke="var(--cit-brick)" strokeWidth="3" strokeLinejoin="round"/>
+                          <circle cx={pts[0].x} cy={pts[0].y} r="4" fill="var(--cit-navy-dk)"/>
+                          <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="4" fill="var(--cit-navy-dk)"/>
+                        </>
+                      );
+                    })()}
+                  </svg>
+                </div>
+                <div className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', marginTop: 6, fontStyle: 'italic' }}>
+                  ★ {growthData.length} adoptions cumulées · début {new Date(growthData[0].t).toLocaleDateString('fr-FR')} · {combosCount} combinaison{combosCount > 1 ? 's' : ''} sauvegardée{combosCount > 1 ? 's' : ''}
+                </div>
+              </>
             )}
           </CitPanel>
         </div>

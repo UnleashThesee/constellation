@@ -1,5 +1,5 @@
 import type { Concept, CategoryKey, CategoryWeight } from '../types';
-import { cacheConcept, getCachedConcept } from '../stores/db';
+import { cacheConcept, getCachedConcept, cacheWikiGet, cacheWikiSet } from '../stores/db';
 
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
 const WIKIPEDIA_API_FR = 'https://fr.wikipedia.org/api/rest_v1';
@@ -143,24 +143,32 @@ async function fetchWikipediaThumbnail(frTitle: string): Promise<string | undefi
   }
 }
 
-/** Récupère un extrait Wikipedia (résumé long), depuis fr puis en en fallback. */
+/** Récupère un extrait Wikipedia (résumé long), depuis fr puis en en fallback. Cache TTL 30j. */
 export async function fetchWikipediaExtract(title: string): Promise<string | undefined> {
+  const cacheKey = `wiki-extract:${title}`;
+  const cached = await cacheWikiGet<string>(cacheKey);
+  if (cached) return cached;
+
   const encoded = encodeURIComponent(title.replace(/ /g, '_'));
+  let extract: string | undefined;
   try {
     const res = await fetch(`${WIKIPEDIA_API_FR}/page/summary/${encoded}`);
     if (res.ok) {
       const data = await res.json();
-      if (data.extract) return data.extract as string;
+      if (data.extract) extract = data.extract as string;
     }
   } catch { /* fallthrough */ }
-  try {
-    const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.extract) return data.extract as string;
-    }
-  } catch { /* ignore */ }
-  return undefined;
+  if (!extract) {
+    try {
+      const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.extract) extract = data.extract as string;
+      }
+    } catch { /* ignore */ }
+  }
+  if (extract) cacheWikiSet(cacheKey, extract).catch(() => {});
+  return extract;
 }
 
 // ---- Wikidata entity details ----

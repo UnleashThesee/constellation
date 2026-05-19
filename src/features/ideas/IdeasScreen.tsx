@@ -128,11 +128,14 @@ function IdeaCard({ idea, conceptsById, onOpen }: {
 
 export function IdeasScreen({ onTabChange }: Props) {
   const [filter, setFilter] = useState<'all' | 'fav' | IdeaStatus>('all');
-  const [sort, setSort] = useState<'recent' | 'alpha'>('recent');
+  const [sort, setSort] = useState<'recent' | 'alpha' | 'status'>('recent');
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [conceptsById, setConceptsById] = useState<Record<string, Concept>>({});
   const [openIdea, setOpenIdea] = useState<Idea | null>(null);
   const [conceptDetail, setConceptDetail] = useState<Concept | null>(null);
+  const [search, setSearch] = useState('');
+  const [conceptFilter, setConceptFilter] = useState<string>('');
+  const [constraintFilter, setConstraintFilter] = useState<string>('');
 
   const load = async () => {
     const arr = await getAllIdeas();
@@ -147,14 +150,27 @@ export function IdeasScreen({ onTabChange }: Props) {
 
   useEffect(() => { load(); }, []);
 
-  const filtered = ideas.filter(i =>
-    filter === 'all' ? true :
-    filter === 'fav' ? i.isFavorite :
-    i.status === filter
-  );
+  const filtered = ideas.filter(i => {
+    if (filter !== 'all' && filter !== 'fav' && i.status !== filter) return false;
+    if (filter === 'fav' && !i.isFavorite) return false;
+    if (conceptFilter && !i.conceptIdsWithWeights.some(w => w.conceptId === conceptFilter)) return false;
+    if (constraintFilter && !i.constraints.includes(constraintFilter)) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      if (!i.title.toLowerCase().includes(q) && !i.content.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+  const STATUS_ORDER: Record<IdeaStatus, number> = { new: 0, inprogress: 1, done: 2, abandoned: 3 };
   const sorted = [...filtered].sort((a, b) =>
-    sort === 'alpha' ? a.title.localeCompare(b.title) : +b.createdAt - +a.createdAt
+    sort === 'alpha' ? a.title.localeCompare(b.title)
+    : sort === 'status' ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+    : +b.createdAt - +a.createdAt
   );
+
+  // Available filter values
+  const allConcepts = Array.from(new Set(ideas.flatMap(i => i.conceptIdsWithWeights.map(w => w.conceptId))));
+  const allConstraints = Array.from(new Set(ideas.flatMap(i => i.constraints)));
 
   return (
     <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -214,7 +230,67 @@ export function IdeasScreen({ onTabChange }: Props) {
             }}>
               <option value="recent">PLUS RÉCENTES</option>
               <option value="alpha">ALPHABÉTIQUE</option>
+              <option value="status">PAR STATUT</option>
             </select>
+          </div>
+        )}
+
+        {ideas.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '6px 0', marginBottom: 14,
+            borderBottom: '1.5px dashed var(--cit-navy-dk)', flexWrap: 'wrap',
+          }}>
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="⌕ Recherche titre ou contenu…"
+              style={{
+                flex: 1, minWidth: 240,
+                padding: '6px 12px',
+                border: '2px solid var(--cit-navy-dk)',
+                background: 'var(--cit-paper)',
+                fontFamily: "'Special Elite', monospace", fontSize: 12,
+                color: 'var(--cit-navy-dk)',
+                boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 2px 2px 0 var(--cit-navy-dk)',
+              }}/>
+
+            {allConcepts.length > 0 && (
+              <select value={conceptFilter} onChange={e => setConceptFilter(e.target.value)} style={{
+                border: '2px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+                padding: '4px 8px',
+                fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 600,
+                letterSpacing: '.10em', textTransform: 'uppercase',
+                color: 'var(--cit-navy-dk)', cursor: 'pointer',
+              }}>
+                <option value="">★ TOUS CONCEPTS</option>
+                {allConcepts.map(cid => {
+                  const c = conceptsById[cid];
+                  return <option key={cid} value={cid}>{c?.name ?? cid.slice(0, 12)}</option>;
+                })}
+              </select>
+            )}
+
+            {allConstraints.length > 0 && (
+              <select value={constraintFilter} onChange={e => setConstraintFilter(e.target.value)} style={{
+                border: '2px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+                padding: '4px 8px',
+                fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 600,
+                letterSpacing: '.10em', textTransform: 'uppercase',
+                color: 'var(--cit-navy-dk)', cursor: 'pointer',
+              }}>
+                <option value="">★ TOUTES CONTRAINTES</option>
+                {allConstraints.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+
+            {(search || conceptFilter || constraintFilter) && (
+              <button onClick={() => { setSearch(''); setConceptFilter(''); setConstraintFilter(''); }} style={{
+                background: 'var(--cit-brick)', color: 'var(--cit-cream)',
+                border: '2px solid var(--cit-navy-dk)',
+                padding: '4px 10px', cursor: 'pointer',
+                fontFamily: "'Oswald', sans-serif", fontSize: 10, fontWeight: 700,
+                letterSpacing: '.12em', textTransform: 'uppercase',
+              }}>✕ Reset</button>
+            )}
           </div>
         )}
 
