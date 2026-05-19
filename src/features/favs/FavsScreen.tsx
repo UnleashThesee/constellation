@@ -162,6 +162,7 @@ export function FavsScreen({ onTabChange }: Props) {
         active="favs"
         onTabChange={onTabChange}
         right={<>
+          <CitButton size="sm" onClick={() => onTabChange?.('perso')}>Étiquettes & Tags ↗</CitButton>
           <Stamp tone="brick" rotate={-4}>★ {favs.length} CONCEPT{favs.length > 1 ? 'S' : ''} ÉPINGLÉ{favs.length > 1 ? 'S' : ''}</Stamp>
           <Sunburst size={68} color="var(--cit-mustard)"/>
         </>}

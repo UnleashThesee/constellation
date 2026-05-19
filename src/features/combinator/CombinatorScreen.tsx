@@ -228,6 +228,7 @@ export function CombinatorScreen({ onTabChange }: Props) {
         active="combine"
         onTabChange={onTabChange}
         right={<>
+          <CitButton size="sm" onClick={() => onTabChange?.('combos')}>Bibliothèque ↗</CitButton>
           <Stamp tone="brick" rotate={-4}>★ {selection.length} CONCEPTS EN COURS</Stamp>
           <Sunburst size={68} color="var(--cit-mustard)"/>
         </>}

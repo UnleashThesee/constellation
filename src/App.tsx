@@ -6,10 +6,18 @@ import { CombinatorScreen } from './features/combinator/CombinatorScreen';
 import { IdeasScreen } from './features/ideas/IdeasScreen';
 import { FavsScreen } from './features/favs/FavsScreen';
 import { SettingsScreen } from './features/settings/SettingsScreen';
+import { StatsScreen } from './features/stats/StatsScreen';
+import { AboutScreen } from './features/about/AboutScreen';
+import { SearchScreen } from './features/search/SearchScreen';
+import { PersoScreen } from './features/perso/PersoScreen';
+import { CombosLibraryScreen } from './features/combos/CombosLibraryScreen';
+import { ToastProvider } from './lib/toast';
 import { getProfile } from './stores/db';
 
 type AppState = 'loading' | 'onboarding' | 'app';
-export type TabId = 'swipe' | 'map' | 'combine' | 'ideas' | 'favs' | 'settings';
+export type TabId =
+  | 'swipe' | 'map' | 'combine' | 'ideas' | 'favs' | 'settings'
+  | 'stats' | 'about' | 'search' | 'perso' | 'combos';
 
 function LoadingScreen() {
   return (
@@ -48,15 +56,28 @@ export default function App() {
   const onTabChange = (id: string) => setTab(id as TabId);
 
   if (state === 'loading') return <LoadingScreen />;
-  if (state === 'onboarding') return <OnboardingScreen onComplete={() => setState('app')} />;
+  if (state === 'onboarding') return (
+    <ToastProvider>
+      <OnboardingScreen onComplete={() => setState('app')} />
+    </ToastProvider>
+  );
 
-  switch (tab) {
-    case 'map':      return <MapScreen onTabChange={onTabChange} />;
-    case 'combine':  return <CombinatorScreen onTabChange={onTabChange} />;
-    case 'ideas':    return <IdeasScreen onTabChange={onTabChange} />;
-    case 'favs':     return <FavsScreen onTabChange={onTabChange} />;
-    case 'settings': return <SettingsScreen onTabChange={onTabChange} />;
-    case 'swipe':
-    default:         return <SwipeScreen onTabChange={onTabChange} />;
-  }
+  const screen = (() => {
+    switch (tab) {
+      case 'map':      return <MapScreen onTabChange={onTabChange} />;
+      case 'combine':  return <CombinatorScreen onTabChange={onTabChange} />;
+      case 'ideas':    return <IdeasScreen onTabChange={onTabChange} />;
+      case 'favs':     return <FavsScreen onTabChange={onTabChange} />;
+      case 'settings': return <SettingsScreen onTabChange={onTabChange} />;
+      case 'stats':    return <StatsScreen onTabChange={onTabChange} />;
+      case 'about':    return <AboutScreen onTabChange={onTabChange} />;
+      case 'search':   return <SearchScreen onTabChange={onTabChange} />;
+      case 'perso':    return <PersoScreen onTabChange={onTabChange} />;
+      case 'combos':   return <CombosLibraryScreen onTabChange={onTabChange} />;
+      case 'swipe':
+      default:         return <SwipeScreen onTabChange={onTabChange} />;
+    }
+  })();
+
+  return <ToastProvider>{screen}</ToastProvider>;
 }

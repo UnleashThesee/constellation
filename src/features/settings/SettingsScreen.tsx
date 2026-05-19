@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster, FileSeal } from '../../components/ui/atoms';
+import { ColorPickerModal } from '../../components/ui/ColorPickerModal';
 import { CATEGORY_LIST } from '../../lib/categories';
 import { db, getSettings, saveSettings, saveProfile } from '../../stores/db';
+import { useToast } from '../../lib/toast';
+import type { Category } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
@@ -381,7 +384,10 @@ export function SettingsScreen({ onTabChange }: Props) {
   const [algoVals, setAlgoVals] = useState({ explore: 35, random: 25, contrast: 25, trending: 15 });
   const [notifs, setNotifs] = useState({ daily: true, weekly: false, contrast: true, idea: true });
   const [demolishOpen, setDemolishOpen] = useState(false);
+  const [colorPickerCat, setColorPickerCat] = useState<Category | null>(null);
   const [stats, setStats] = useState({ adopted: 0, rejected: 0, skipped: 0, days: 1 });
+  const [catColors, setCatColors] = useState<Record<string, string>>({});
+  const toast = useToast();
 
   useEffect(() => {
     getSettings().then(s => {
@@ -506,27 +512,31 @@ export function SettingsScreen({ onTabChange }: Props) {
             Les fiches multi-catégories interpolent en OKLCH.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            {CATEGORY_LIST.map(c => (
-              <div key={c.key} style={{
-                display: 'grid', gridTemplateColumns: '32px 1fr', gap: 10, alignItems: 'center',
-                padding: '8px 10px',
-                background: 'var(--cit-cream)',
-                border: '2.5px solid var(--cit-navy-dk)',
-                boxShadow: '3px 3px 0 var(--cit-navy-dk)',
-              }}>
-                <span style={{
-                  width: 32, height: 32, background: c.oklch,
-                  border: '2px solid var(--cit-navy-dk)',
-                  boxShadow: 'inset 0 0 0 2px var(--cit-cream), inset 0 0 0 3px var(--cit-navy-dk)',
-                }}/>
-                <div>
-                  <div className="cit-condensed" style={{ fontSize: 11, fontWeight: 700, color: 'var(--cit-navy-dk)' }}>{c.label}</div>
-                  <div className="cit-typed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)' }}>
-                    {c.oklch.replace(/oklch\(|\)/g, '').slice(0, 24)}
+            {CATEGORY_LIST.map(c => {
+              const color = catColors[c.key] ?? c.oklch;
+              return (
+                <button key={c.key} onClick={() => setColorPickerCat(c)} style={{
+                  display: 'grid', gridTemplateColumns: '32px 1fr', gap: 10, alignItems: 'center',
+                  padding: '8px 10px',
+                  background: 'var(--cit-cream)',
+                  border: '2.5px solid var(--cit-navy-dk)',
+                  boxShadow: '3px 3px 0 var(--cit-navy-dk)',
+                  cursor: 'pointer', textAlign: 'left',
+                }}>
+                  <span style={{
+                    width: 32, height: 32, background: color,
+                    border: '2px solid var(--cit-navy-dk)',
+                    boxShadow: 'inset 0 0 0 2px var(--cit-cream), inset 0 0 0 3px var(--cit-navy-dk)',
+                  }}/>
+                  <div>
+                    <div className="cit-condensed" style={{ fontSize: 11, fontWeight: 700, color: 'var(--cit-navy-dk)' }}>{c.label}</div>
+                    <div className="cit-typed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)' }}>
+                      {color.replace(/oklch\(|\)/g, '').slice(0, 24)}
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </CitPanel>
 
@@ -596,6 +606,35 @@ export function SettingsScreen({ onTabChange }: Props) {
           </div>
         </div>
 
+        <CitPanel title="Plus d'écrans" style={{ marginBottom: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            <CitButton tone="navy" onClick={() => onTabChange?.('stats')} style={{ justifyContent: 'space-between', width: '100%' }}>
+              <span>★ Statistiques</span>
+              <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>↗</span>
+            </CitButton>
+            <CitButton tone="butter" onClick={() => onTabChange?.('about')} style={{ justifyContent: 'space-between', width: '100%' }}>
+              <span>★ À propos & Aide</span>
+              <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>↗</span>
+            </CitButton>
+            <CitButton onClick={() => onTabChange?.('search')} style={{ justifyContent: 'space-between', width: '100%' }}>
+              <span>⌕ Recherche manuelle</span>
+              <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>↗</span>
+            </CitButton>
+            <CitButton onClick={() => onTabChange?.('perso')} style={{ justifyContent: 'space-between', width: '100%' }}>
+              <span>★ Étiquettes & Tags</span>
+              <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>↗</span>
+            </CitButton>
+            <CitButton onClick={() => onTabChange?.('combos')} style={{ justifyContent: 'space-between', width: '100%' }}>
+              <span>★ Bibliothèque combinaisons</span>
+              <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>↗</span>
+            </CitButton>
+            <CitButton onClick={() => onTabChange?.('ideas')} style={{ justifyContent: 'space-between', width: '100%' }}>
+              <span>★ Idées sauvegardées</span>
+              <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>↗</span>
+            </CitButton>
+          </div>
+        </CitPanel>
+
         <div style={{
           padding: '12px 18px', background: 'var(--cit-paper-dk)',
           border: '2.5px dashed var(--cit-navy-dk)',
@@ -614,6 +653,18 @@ export function SettingsScreen({ onTabChange }: Props) {
       <CitizenFooter right="★ TOUTES LES MODIFICATIONS SONT SAUVÉES AUTOMATIQUEMENT"/>
 
       <DemolishModal open={demolishOpen} onCancel={() => setDemolishOpen(false)} onConfirm={handleDemolish}/>
+
+      <ColorPickerModal
+        category={colorPickerCat}
+        open={!!colorPickerCat}
+        onClose={() => setColorPickerCat(null)}
+        onApply={(oklch) => {
+          if (colorPickerCat) {
+            setCatColors(prev => ({ ...prev, [colorPickerCat.key]: oklch }));
+            toast.show({ tone: 'success', title: 'Couleur appliquée', body: `${colorPickerCat.label} → ${oklch}` });
+          }
+        }}
+      />
     </div>
   );
 }

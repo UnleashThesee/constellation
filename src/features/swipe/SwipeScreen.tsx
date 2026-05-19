@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSwipeDeck } from './useSwipeDeck';
 import { Sunburst, Stamp, StarBurst, PixelDie, Aster } from '../../components/ui/atoms';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
+import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
 import { fetchRandomConcepts } from '../../services/wikidata';
 import { getAdoptedConcepts } from '../../stores/db';
@@ -553,6 +554,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [mode, setMode] = useState<SwipeMode>('random');
   const [loading, setLoading] = useState(true);
   const [adopted, setAdopted] = useState<Concept[]>([]);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [thematicCats, setThematicCats] = useState<Record<string, boolean>>(
     { philosophie: true, sciences: false, humaines: false, economie: false,
       litterature: true, arts: false, musique: false, cinema: false,
@@ -619,7 +621,10 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         title="CITOYEN"
         active="swipe"
         onTabChange={onTabChange}
-        right={<Sunburst size={68} color="var(--cit-mustard)"/>}
+        right={<>
+          <CitButton size="sm" onClick={() => onTabChange?.('search')}>⌕ Recherche</CitButton>
+          <Sunburst size={68} color="var(--cit-mustard)"/>
+        </>}
       />
 
       <ModeBar mode={mode} setMode={setMode} queueSize={swipe.deck.length}/>
@@ -701,6 +706,21 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
             <CitizenActions onAction={(v) => v === 'back' ? swipe.back() : swipe.cycle(v)}/>
           </div>
 
+          {current && (
+            <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center' }}>
+              <button onClick={() => setDetailOpen(true)} style={{
+                background: 'transparent',
+                color: 'var(--cit-navy-dk)',
+                border: '2px solid var(--cit-navy-dk)',
+                padding: '6px 14px',
+                fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+                letterSpacing: '.14em', textTransform: 'uppercase',
+                cursor: 'pointer',
+                boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+              }}>★ Voir la fiche complète ↗</button>
+            </div>
+          )}
+
           {mode === 'random' && (
             <div className="cit-script" style={{
               fontSize: 22, color: 'var(--cit-navy)', marginTop: 14,
@@ -730,6 +750,12 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       </div>
 
       <CitizenFooter right={FOOTERS[mode]}/>
+
+      <ConceptDetailModal
+        concept={current ?? null}
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+      />
     </div>
   );
 }
