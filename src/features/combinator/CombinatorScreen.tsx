@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
 import { CATEGORIES, conceptDominant, combinationMix } from '../../lib/categories';
-import { getAdoptedConcepts, saveCombination, saveIdea, getSettings } from '../../stores/db';
+import { getAdoptedConcepts, saveCombination, saveIdea, getSettings, incrementCombinationIdeasCount, getAllConstraints } from '../../stores/db';
+import type { SavedConstraint } from '../../types';
 import { useToast } from '../../lib/toast';
 import { generateIdeas, suggestSimilarConcepts, LlmError, type SimilarConceptSuggestion } from '../../services/llm';
 import { consumePendingCombo, consumePendingConcepts } from '../../lib/pending';
@@ -175,7 +176,28 @@ export function CombinatorScreen({ onTabChange }: Props) {
   const [seekingNear, setSeekingNear] = useState(false);
   const [nearResults, setNearResults] = useState<SimilarConceptSuggestion[] | null>(null);
   const [nearAdopted, setNearAdopted] = useState<Set<string>>(new Set());
+  const [loadedComboId, setLoadedComboId] = useState<string | null>(null);
+  const [recentConstraints, setRecentConstraints] = useState<SavedConstraint[]>([]);
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const toast = useToast();
+
+  // Placeholder rotatif (3-4 exemples cycliques toutes les 4s)
+  const PLACEHOLDERS = [
+    'des auteurs uniquement',
+    "des œuvres d'art",
+    'des concepts du XXe siècle',
+    'des courants philosophiques',
+    'rien qui soit américain',
+  ];
+  useEffect(() => {
+    const id = setInterval(() => setPlaceholderIdx(i => (i + 1) % PLACEHOLDERS.length), 4000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Charge les 5 dernières contraintes utilisées
+  useEffect(() => {
+    getAllConstraints().then(arr => setRecentConstraints(arr.slice(0, 5)));
+  }, []);
 
   useEffect(() => {
     getAdoptedConcepts().then(c => {
@@ -187,6 +209,7 @@ export function CombinatorScreen({ onTabChange }: Props) {
         setSelection(pending.items.map(i => ({ id: i.conceptId, weight: i.weight })));
         setConstraints(pending.constraints);
         setSavedName(pending.name);
+        setLoadedComboId(pending.id);
       } else if (pendingCs && pendingCs.length > 0) {
         const even = Math.round(100 / pendingCs.length);
         setSelection(pendingCs.map(p => ({ id: p.id, weight: even })));
@@ -498,7 +521,10 @@ export function CombinatorScreen({ onTabChange }: Props) {
                   outputType: OUTPUT_TYPES.find(o => o.id === outputType)?.label ?? 'Essai',
                   constraints,
                   inheritedOklch: mix.css,
+                  combinationId: loadedComboId ?? undefined,
                 })));
+                // Incrémente le compteur ideasGeneratedCount si on est sur une combo sauvegardée
+                if (loadedComboId) await incrementCombinationIdeasCount(loadedComboId, ideas.length);
                 toast.show({ tone: 'success', title: 'Idées générées', body: `${ideas.length} propositions enregistrées.` });
                 onTabChange?.('ideas');
               } catch (e) {
@@ -585,7 +611,7 @@ export function CombinatorScreen({ onTabChange }: Props) {
                     setConstraintInput('');
                   }
                 }}
-                placeholder="auteurs uniquement, XXe siècle…"
+                placeholder={PLACEHOLDERS[placeholderIdx]}
                 style={{
                   flex: 1, padding: '6px 10px',
                   border: '2.5px solid var(--cit-navy-dk)',
@@ -630,6 +656,33 @@ export function CombinatorScreen({ onTabChange }: Props) {
                 </span>
               ))}
             </div>
+            {recentConstraints.length > 0 && (
+              <>
+                <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4, marginTop: 8 }}>
+                  ★ VOS DERNIÈRES CONTRAINTES
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                  {recentConstraints.map(rc => (
+                    <button key={rc.id}
+                      onClick={() => setConstraints(prev => prev.includes(rc.text) ? prev : [...prev, rc.text])}
+                      title={`Utilisée ${rc.useCount}× · ${rc.mappedQid ?? 'libre (LLM)'}`}
+                      style={{
+                        padding: '2px 8px',
+                        border: '2px solid var(--cit-navy-dk)',
+                        background: rc.mappedQid ? 'var(--cit-navy-dk)' : 'var(--cit-butter)',
+                        color: rc.mappedQid ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
+                        fontFamily: "'Special Elite', monospace", fontSize: 10,
+                        cursor: 'pointer',
+                        boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                      }}>
+                      {rc.text}
+                      <span style={{ opacity: 0.7, fontSize: 9 }}>×{rc.useCount}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ SUGGESTIONS</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {['auteurs', 'œuvres', 'XXe siècle', 'concepts abstraits', 'lieux', 'personnes vivantes'].map(s => (

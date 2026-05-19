@@ -9,7 +9,7 @@ import {
   getAllPersonalCategories, assignConceptToPersonalCategory, removeConceptFromPersonalCategory,
   db,
 } from '../../stores/db';
-import { fetchWikipediaExtract } from '../../services/wikidata';
+import { fetchWikipediaExtract, fetchSemanticRelations, type SemanticRelation } from '../../services/wikidata';
 import { useToast } from '../../lib/toast';
 import { Markdown } from '../../lib/markdown';
 import type { Concept, Tag, PersonalCategory } from '../../types';
@@ -29,6 +29,7 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [allPersoCats, setAllPersoCats] = useState<PersonalCategory[]>([]);
   const [assignedPersoCatIds, setAssignedPersoCatIds] = useState<Set<string>>(new Set());
+  const [relations, setRelations] = useState<SemanticRelation[]>([]);
   const toast = useToast();
   const autoSaveTimer = useRef<number | null>(null);
 
@@ -46,6 +47,11 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
       setAllPersoCats(cats);
       const links = await db.conceptPersonalCategories.where('conceptId').equals(concept.id).toArray();
       setAssignedPersoCatIds(new Set(links.map(l => l.categoryId)));
+      // Charge les vraies relations Wikidata si on a un Q-ID
+      setRelations([]);
+      if (concept.wikidataId) {
+        fetchSemanticRelations(concept.wikidataId).then(setRelations).catch(() => {});
+      }
       // Try cached extract first, otherwise fetch
       if (cached?.blurbLong) {
         setExtract(cached.blurbLong);
@@ -133,7 +139,7 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
             display: 'grid', placeItems: 'center', overflow: 'hidden',
           }}>
             {portraitIsUrl ? (
-              <img src={concept.portrait} alt={concept.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+              <img src={concept.portrait} alt={concept.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
             ) : (
               <>
                 <div style={{
@@ -214,7 +220,36 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
               )}
             </div>
 
-            {concept.refs.length > 0 && (
+            {relations.length > 0 && (
+              <div>
+                <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>
+                  ★ RELATIONS WIKIDATA · {relations.length}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {relations.map((r, i) => (
+                    <a key={i} href={`https://www.wikidata.org/wiki/${r.targetQid}`} target="_blank" rel="noopener noreferrer" style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '4px 10px',
+                      background: 'var(--cit-cream)',
+                      border: '2px solid var(--cit-navy-dk)',
+                      borderLeft: '6px solid var(--cit-navy)',
+                      fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+                      letterSpacing: '.08em',
+                      color: 'var(--cit-navy-dk)',
+                      boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+                      textDecoration: 'none',
+                    }} title={`${r.propertyId} · ${r.propertyLabel} → ${r.targetQid}`}>
+                      <span style={{ color: 'var(--cit-brick)', fontSize: 9, textTransform: 'uppercase' }}>
+                        {r.propertyLabel}
+                      </span>
+                      <span style={{ textTransform: 'uppercase' }}>{r.targetLabel}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {concept.refs.length > 0 && relations.length === 0 && (
               <div>
                 <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>
                   ★ RÉFÉRENCES · {concept.refs.length}

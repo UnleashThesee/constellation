@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { CitButton, CitPanel } from './CitizenShell';
 import { Stamp, Aster, Sunburst } from './atoms';
 import { CATEGORIES } from '../../lib/categories';
-import { updateIdea, deleteIdea, getCachedConcept, getSettings, saveDeepDive, getDeepDivesForIdea } from '../../stores/db';
-import { deepDiveIdea, LlmError, type DeepDive } from '../../services/llm';
+import { updateIdea, deleteIdea, getCachedConcept, getSettings, saveDeepDive, getDeepDivesForIdea, saveIdea } from '../../stores/db';
+import { deepDiveIdea, generateIdeas, LlmError, type DeepDive } from '../../services/llm';
 import { useToast } from '../../lib/toast';
 import { Markdown } from '../../lib/markdown';
+import { playSound } from '../../lib/sounds';
 import type { Idea, IdeaStatus, Concept } from '../../types';
 
 interface Props {
@@ -37,6 +38,7 @@ export function IdeaModal({ idea, open, onClose, onUpdate, onOpenConcept }: Prop
   const [concepts, setConcepts] = useState<Record<string, Concept>>({});
   const [deepDive, setDeepDive] = useState<DeepDive | null>(null);
   const [previousDeepDives, setPreviousDeepDives] = useState<Array<{ id: string; createdAt: Date }>>([]);
+  const [regenerating, setRegenerating] = useState(false);
   const [deepDiveLoading, setDeepDiveLoading] = useState(false);
   const [deepDiveError, setDeepDiveError] = useState<string | null>(null);
   const toast = useToast();
@@ -109,6 +111,56 @@ export function IdeaModal({ idea, open, onClose, onUpdate, onOpenConcept }: Prop
     toast.show({ tone: 'info', title: 'Idée supprimée', body: `« ${idea.title} »` });
     onUpdate();
     onClose();
+  };
+
+  const handleDismiss = async () => {
+    // "Pas pour moi" = passe en statut 'abandoned' (filtrable mais conservé)
+    await updateIdea(idea.id, { status: 'abandoned' });
+    setStatus('abandoned');
+    toast.show({ tone: 'info', title: 'Idée écartée', body: `« ${idea.title} » marquée 'abandonnée'.` });
+    onUpdate();
+  };
+
+  const handleRegenerate = async () => {
+    if (regenerating) return;
+    const settings = await getSettings();
+    if (!settings?.llmKey) {
+      toast.show({ tone: 'warning', title: 'Clé LLM absente', body: 'Configurez votre clé dans Réglages.' });
+      return;
+    }
+    setRegenerating(true);
+    playSound('llmStart');
+    try {
+      const items = idea.conceptIdsWithWeights
+        .map(i => ({ concept: concepts[i.conceptId], weight: i.weight }))
+        .filter(it => it.concept !== undefined) as Array<{ concept: Concept; weight: number }>;
+      const newIdeas = await generateIdeas({
+        settings,
+        items,
+        outputType: idea.outputType,
+        constraints: idea.constraints,
+        additional: '',
+      });
+      await Promise.all(newIdeas.map(g => saveIdea({
+        title: g.titre ?? 'Idée sans titre',
+        content: g.resume ?? '',
+        conceptIdsWithWeights: idea.conceptIdsWithWeights,
+        outputType: idea.outputType,
+        constraints: idea.constraints,
+        inheritedOklch: idea.inheritedOklch,
+        combinationId: idea.combinationId,
+      })));
+      playSound('llmDone');
+      toast.show({ tone: 'success', title: 'Idées régénérées', body: `${newIdeas.length} nouvelles propositions ajoutées.` });
+      onUpdate();
+      onClose();
+    } catch (e) {
+      playSound('llmFail');
+      const msg = e instanceof LlmError ? e.message : 'Erreur réseau';
+      toast.show({ tone: 'warning', title: 'Échec de la régénération', body: msg });
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   const handleDeepDive = async () => {
@@ -364,6 +416,12 @@ export function IdeaModal({ idea, open, onClose, onUpdate, onOpenConcept }: Prop
             <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <CitButton tone={favorite ? 'brick' : 'butter'} onClick={handleFav}>
                 {favorite ? '★ Retirer favori' : '☆ Marquer favori'}
+              </CitButton>
+              <CitButton size="sm" onClick={handleRegenerate}>
+                {regenerating ? '⌛ Régénération…' : '↻ Régénérer depuis combinaison'}
+              </CitButton>
+              <CitButton size="sm" onClick={handleDismiss}>
+                ✕ Pas pour moi
               </CitButton>
               <CitButton tone="navy" size="sm" onClick={handleDelete}>
                 ✕ Supprimer

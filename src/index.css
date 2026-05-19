@@ -44,6 +44,60 @@
   --cit-rust:     oklch(58% 0.14 45);
 }
 
+/* === Thèmes alternatifs === */
+.theme-cit-phos {
+  --cit-paper:    oklch(20% 0.04 145);
+  --cit-paper-2:  oklch(18% 0.04 145);
+  --cit-paper-dk: oklch(15% 0.04 145);
+  --cit-cream:    oklch(96% 0.18 140);
+  --cit-navy:     oklch(80% 0.18 140);
+  --cit-navy-dk:  oklch(70% 0.18 140);
+  --cit-navy-lt:  oklch(60% 0.16 140);
+  --cit-butter:   oklch(85% 0.20 140);
+  --cit-mustard:  oklch(75% 0.20 140);
+  --cit-brick:    oklch(55% 0.22 25);
+  --cit-rust:     oklch(70% 0.16 50);
+}
+.theme-cit-amber {
+  --cit-paper:    oklch(18% 0.06 60);
+  --cit-paper-2:  oklch(15% 0.06 60);
+  --cit-paper-dk: oklch(12% 0.05 60);
+  --cit-cream:    oklch(92% 0.14 80);
+  --cit-navy:     oklch(75% 0.16 75);
+  --cit-navy-dk:  oklch(65% 0.16 75);
+  --cit-navy-lt:  oklch(55% 0.14 70);
+  --cit-butter:   oklch(80% 0.18 80);
+  --cit-mustard:  oklch(70% 0.18 75);
+  --cit-brick:    oklch(50% 0.20 25);
+  --cit-rust:     oklch(60% 0.18 45);
+}
+.theme-cit-dossier {
+  --cit-paper:    oklch(78% 0.06 75);
+  --cit-paper-2:  oklch(73% 0.07 70);
+  --cit-paper-dk: oklch(65% 0.08 65);
+  --cit-cream:    oklch(92% 0.04 80);
+  --cit-navy:     oklch(38% 0.08 50);
+  --cit-navy-dk:  oklch(28% 0.06 50);
+  --cit-navy-lt:  oklch(48% 0.10 55);
+  --cit-butter:   oklch(78% 0.18 70);
+  --cit-mustard:  oklch(68% 0.18 65);
+  --cit-brick:    oklch(45% 0.22 30);
+  --cit-rust:     oklch(55% 0.16 40);
+}
+.theme-cit-bristol {
+  --cit-paper:    oklch(94% 0.02 85);
+  --cit-paper-2:  oklch(90% 0.025 80);
+  --cit-paper-dk: oklch(84% 0.04 75);
+  --cit-cream:    oklch(98% 0.015 90);
+  --cit-navy:     oklch(35% 0.10 240);
+  --cit-navy-dk:  oklch(25% 0.10 240);
+  --cit-navy-lt:  oklch(45% 0.12 240);
+  --cit-butter:   oklch(78% 0.15 90);
+  --cit-mustard:  oklch(68% 0.15 85);
+  --cit-brick:    oklch(45% 0.20 25);
+  --cit-rust:     oklch(55% 0.16 45);
+}
+
 .theme-amber {
   --bg-deep:     oklch(11% 0.022 55);
   --bg:          oklch(15% 0.028 55);

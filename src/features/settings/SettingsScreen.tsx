@@ -7,6 +7,7 @@ import { db, getSettings, saveSettings, saveProfile, exportAllAsCsv } from '../.
 import { testLlmKey } from '../../services/llm';
 import { useToast } from '../../lib/toast';
 import { playSound, setSoundsEnabled, setMasterVolume } from '../../lib/sounds';
+import { applyThemeClass } from '../../App';
 import type { Category, AppSettings } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -180,11 +181,11 @@ function Stat({ label, value }: { label: string; value: string }) {
 // ---- Theme swatches ----
 
 const THEMES = [
-  { id: 'phos',    name: 'Phosphore Vert',  sub: 'Terminal 1979',   preview: { background: 'linear-gradient(135deg, oklch(15% 0.02 150), oklch(28% 0.06 145))' } },
-  { id: 'amber',   name: 'Phosphore Ambré', sub: 'IBM 5151, 1981', preview: { background: 'linear-gradient(135deg, oklch(15% 0.025 60), oklch(35% 0.10 65))' } },
-  { id: 'dossier', name: 'Dossier Kraft',   sub: 'Archive 1962',   preview: { background: 'linear-gradient(135deg, oklch(78% 0.06 75), oklch(60% 0.08 65))' } },
-  { id: 'bristol', name: 'Bibliothèque',    sub: 'Cartothèque 62', preview: { background: 'linear-gradient(135deg, oklch(35% 0.07 50), oklch(94% 0.02 85) 60%)' } },
-  { id: 'citizen', name: 'Citoyen !',       sub: 'Pulp 1957',      preview: { background: 'linear-gradient(135deg, var(--cit-navy-dk) 0%, var(--cit-navy-dk) 50%, var(--cit-butter) 50%, var(--cit-brick) 100%)' } },
+  { id: 'citizen', name: 'Citoyen !',       sub: 'Pulp 1957',      preview: { background: 'linear-gradient(135deg, oklch(20% 0.07 250) 0%, oklch(20% 0.07 250) 50%, oklch(80% 0.15 88) 50%, oklch(48% 0.18 28) 100%)' } },
+  { id: 'phos',    name: 'Phosphore Vert',  sub: 'Terminal 1979',  preview: { background: 'linear-gradient(135deg, oklch(15% 0.04 145), oklch(70% 0.18 140))' } },
+  { id: 'amber',   name: 'Phosphore Ambré', sub: 'IBM 5151, 1981', preview: { background: 'linear-gradient(135deg, oklch(15% 0.06 60), oklch(65% 0.16 75))' } },
+  { id: 'dossier', name: 'Dossier Kraft',   sub: 'Archive 1962',   preview: { background: 'linear-gradient(135deg, oklch(78% 0.06 75), oklch(28% 0.06 50))' } },
+  { id: 'bristol', name: 'Bibliothèque',    sub: 'Cartothèque 62', preview: { background: 'linear-gradient(135deg, oklch(94% 0.02 85), oklch(25% 0.10 240))' } },
 ];
 
 function ThemeSwatch({ name, sub, preview, active, onClick }: {
@@ -443,7 +444,7 @@ export function SettingsScreen({ onTabChange }: Props) {
     });
   }, []);
 
-  useEffect(() => { saveSettings({ theme: theme as 'phosphore' | 'amber' | 'cyan' }).catch(() => {}); }, [theme]);
+  useEffect(() => { saveSettings({ theme }).catch(() => {}); applyThemeClass(theme); }, [theme]);
   useEffect(() => { saveSettings({ llmProvider: llmProvider as 'claude' | 'openai', llmKey }).catch(() => {}); }, [llmProvider, llmKey]);
   useEffect(() => { saveSettings({ algorithmWeights: algoVals }).catch(() => {}); }, [algoVals]);
   useEffect(() => { saveSettings({ operatorName: name }).catch(() => {}); }, [name]);

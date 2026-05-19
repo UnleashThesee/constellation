@@ -143,7 +143,79 @@ async function fetchWikipediaThumbnail(frTitle: string): Promise<string | undefi
   }
 }
 
-/** Récupère un extrait Wikipedia (résumé long), depuis fr puis en en fallback. Cache TTL 30j. */
+// ---- Wikidata semantic relations ----
+
+export interface SemanticRelation {
+  propertyId: string;       // P31, P279, etc.
+  propertyLabel: string;    // "instance de", "sous-classe de", etc.
+  targetQid: string;        // Q42
+  targetLabel: string;      // "Douglas Adams"
+}
+
+const PROPERTY_LABELS: Record<string, string> = {
+  P31:  'est un·e',           // instance of
+  P279: 'sous-classe de',      // subclass of
+  P361: 'partie de',           // part of
+  P527: 'comprend',            // has part
+  P737: 'influencé·e par',     // influenced by
+  P135: 'mouvement',           // movement
+  P136: 'genre',               // genre
+  P101: 'champ',               // field of work
+};
+
+const ALLOWED_PROPS = Object.keys(PROPERTY_LABELS);
+
+/** Récupère 5-7 relations sémantiques pertinentes pour un Q-ID Wikidata. Cache 30j. */
+export async function fetchSemanticRelations(qid: string): Promise<SemanticRelation[]> {
+  if (!qid || !/^Q\d+$/.test(qid)) return [];
+  const cacheKey = `semantic:${qid}`;
+  const cached = await cacheWikiGet<SemanticRelation[]>(cacheKey);
+  if (cached) return cached;
+
+  const sparql = `
+SELECT ?prop ?propLabel ?target ?targetLabel WHERE {
+  VALUES ?prop { ${ALLOWED_PROPS.map(p => `wdt:${p}`).join(' ')} }
+  wd:${qid} ?prop ?target .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en" }
+}
+LIMIT 12`;
+
+  try {
+    const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    type Binding = {
+      prop?: { value: string };
+      target?: { value: string };
+      targetLabel?: { value: string };
+    };
+    const bindings = (data.results?.bindings ?? []) as Binding[];
+    const relations: SemanticRelation[] = bindings
+      .map(b => {
+        const propUri = b.prop?.value ?? '';
+        const targetUri = b.target?.value ?? '';
+        const propertyId = propUri.split('/').pop()?.replace('direct/', '') ?? '';
+        const targetQid = targetUri.split('/').pop() ?? '';
+        const targetLabel = b.targetLabel?.value ?? targetQid;
+        return {
+          propertyId,
+          propertyLabel: PROPERTY_LABELS[propertyId] ?? propertyId,
+          targetQid,
+          targetLabel,
+        };
+      })
+      // Skip results where target label looks like a Q-ID (no human label found)
+      .filter(r => r.targetQid && !/^Q\d+$/.test(r.targetLabel))
+      .slice(0, 7);
+
+    if (relations.length > 0) await cacheWikiSet(cacheKey, relations);
+    return relations;
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchWikipediaExtract(title: string): Promise<string | undefined> {
   const cacheKey = `wiki-extract:${title}`;
   const cached = await cacheWikiGet<string>(cacheKey);

@@ -22,6 +22,17 @@ import { ToastProvider } from './lib/toast';
 import { getProfile, getSettings } from './stores/db';
 import { applyPaletteOverrides, CATEGORIES, CATEGORY_LIST } from './lib/categories';
 
+const THEME_CLASSES = ['theme-cit-phos', 'theme-cit-amber', 'theme-cit-dossier', 'theme-cit-bristol'];
+export function applyThemeClass(theme: string): void {
+  if (typeof document === 'undefined') return;
+  THEME_CLASSES.forEach(c => document.body.classList.remove(c));
+  // 'citizen' (par défaut) = aucune classe ; les autres = classe correspondante
+  if (theme === 'phos') document.body.classList.add('theme-cit-phos');
+  else if (theme === 'amber') document.body.classList.add('theme-cit-amber');
+  else if (theme === 'dossier') document.body.classList.add('theme-cit-dossier');
+  else if (theme === 'bristol') document.body.classList.add('theme-cit-bristol');
+}
+
 type AppState = 'loading' | 'onboarding' | 'post-onboarding' | 'app';
 export type TabId =
   | 'swipe' | 'map' | 'combine' | 'ideas' | 'favs' | 'settings'
@@ -117,6 +128,8 @@ export default function App() {
         } else {
           applyPaletteOverrides(settings?.paletteOverrides);
         }
+        // Apply theme class on <body>
+        applyThemeClass(typeof settings?.theme === 'string' ? settings.theme : 'citizen');
 
         const profile = await getProfile();
         if (!profile?.onboardingDone) { setState('onboarding'); return; }

@@ -58,9 +58,11 @@ export interface UserProfile {
   updatedAt: Date;
 }
 
+export type ThemeKey = 'citizen' | 'phos' | 'amber' | 'dossier' | 'bristol';
+
 export interface AppSettings {
   id?: number;
-  theme: 'phosphore' | 'amber' | 'cyan';
+  theme: ThemeKey | string;
   swipeMode: SwipeMode;
   llmProvider?: 'claude' | 'openai';
   llmKey?: string;

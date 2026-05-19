@@ -206,7 +206,7 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
               overflow: 'hidden',
             }}>
               {portraitIsUrl ? (
-                <img src={concept.portrait} alt={concept.name}
+                <img src={concept.portrait} alt={concept.name} loading="lazy"
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
               ) : (
                 <>

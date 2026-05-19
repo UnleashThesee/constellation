@@ -341,6 +341,34 @@ export async function deleteCombination(id: string): Promise<void> {
   await db.combinations.delete(id);
 }
 
+export async function updateCombination(id: string, updates: Partial<SavedCombination>): Promise<void> {
+  await db.combinations.update(id, updates);
+}
+
+export async function duplicateCombination(id: string): Promise<SavedCombination | null> {
+  const original = await db.combinations.get(id);
+  if (!original) return null;
+  const copy: SavedCombination = {
+    ...original,
+    id: uid(),
+    name: `${original.name} (copie)`,
+    createdAt: new Date(),
+    lastUsedAt: new Date(),
+    ideasGeneratedCount: 0,
+  };
+  await db.combinations.put(copy);
+  return copy;
+}
+
+export async function incrementCombinationIdeasCount(id: string, count: number): Promise<void> {
+  const c = await db.combinations.get(id);
+  if (!c) return;
+  await db.combinations.update(id, {
+    ideasGeneratedCount: c.ideasGeneratedCount + count,
+    lastUsedAt: new Date(),
+  });
+}
+
 // ---- ideas ----
 
 export async function saveIdea(i: Omit<Idea, 'id' | 'createdAt' | 'updatedAt' | 'isFavorite' | 'status' | 'notes' | 'tags'> & Partial<Pick<Idea, 'id' | 'isFavorite' | 'status' | 'notes' | 'tags'>>): Promise<Idea> {

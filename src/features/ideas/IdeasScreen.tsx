@@ -108,6 +108,18 @@ function IdeaCard({ idea, conceptsById, onOpen }: {
             );
           })}
         </div>
+        {idea.constraints.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            {idea.constraints.slice(0, 3).map((cn, i) => (
+              <span key={i} className="cit-condensed" style={{
+                fontSize: 9, padding: '1px 6px',
+                background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
+                border: '1.5px solid var(--cit-navy-dk)',
+                fontWeight: 700,
+              }}>✓ {cn}</span>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{
             padding: '1px 7px',
@@ -136,6 +148,7 @@ export function IdeasScreen({ onTabChange }: Props) {
   const [search, setSearch] = useState('');
   const [conceptFilter, setConceptFilter] = useState<string>('');
   const [constraintFilter, setConstraintFilter] = useState<string>('');
+  const [tagFilter, setTagFilter] = useState<string>('');
 
   const load = async () => {
     const arr = await getAllIdeas();
@@ -155,6 +168,7 @@ export function IdeasScreen({ onTabChange }: Props) {
     if (filter === 'fav' && !i.isFavorite) return false;
     if (conceptFilter && !i.conceptIdsWithWeights.some(w => w.conceptId === conceptFilter)) return false;
     if (constraintFilter && !i.constraints.includes(constraintFilter)) return false;
+    if (tagFilter && !i.tags.includes(tagFilter)) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       if (!i.title.toLowerCase().includes(q) && !i.content.toLowerCase().includes(q)) return false;
@@ -171,6 +185,7 @@ export function IdeasScreen({ onTabChange }: Props) {
   // Available filter values
   const allConcepts = Array.from(new Set(ideas.flatMap(i => i.conceptIdsWithWeights.map(w => w.conceptId))));
   const allConstraints = Array.from(new Set(ideas.flatMap(i => i.constraints)));
+  const allTags = Array.from(new Set(ideas.flatMap(i => i.tags)));
 
   return (
     <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -282,8 +297,21 @@ export function IdeasScreen({ onTabChange }: Props) {
               </select>
             )}
 
-            {(search || conceptFilter || constraintFilter) && (
-              <button onClick={() => { setSearch(''); setConceptFilter(''); setConstraintFilter(''); }} style={{
+            {allTags.length > 0 && (
+              <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} style={{
+                border: '2px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+                padding: '4px 8px',
+                fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 600,
+                letterSpacing: '.10em', textTransform: 'uppercase',
+                color: 'var(--cit-navy-dk)', cursor: 'pointer',
+              }}>
+                <option value="">★ TOUS TAGS</option>
+                {allTags.map(t => <option key={t} value={t}>#{t}</option>)}
+              </select>
+            )}
+
+            {(search || conceptFilter || constraintFilter || tagFilter) && (
+              <button onClick={() => { setSearch(''); setConceptFilter(''); setConstraintFilter(''); setTagFilter(''); }} style={{
                 background: 'var(--cit-brick)', color: 'var(--cit-cream)',
                 border: '2px solid var(--cit-navy-dk)',
                 padding: '4px 10px', cursor: 'pointer',

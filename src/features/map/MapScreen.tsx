@@ -2,9 +2,13 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST, conceptDominant, gradientForWeights } from '../../lib/categories';
-import { getAdoptedConcepts, getConceptsByVerdict, giveSecondChance, getAllLinks, createLink, deleteLink } from '../../stores/db';
+import {
+  getAdoptedConcepts, getConceptsByVerdict, giveSecondChance,
+  getAllLinks, createLink, deleteLink,
+  getAllPersonalCategories, getAllTags, db,
+} from '../../stores/db';
 import { useToast } from '../../lib/toast';
-import type { Concept, CategoryKey, ConceptLink } from '../../types';
+import type { Concept, CategoryKey, ConceptLink, PersonalCategory, Tag } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
@@ -194,6 +198,8 @@ function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: (
 
 interface Filters {
   cats: Record<string, boolean>;
+  personalCats: Set<string>;   // empty = no filter active
+  tags: Set<string>;            // empty = no filter active
   favsOnly: boolean;
   showEdges: boolean;
   showRejected: boolean;
@@ -202,11 +208,15 @@ interface Filters {
 
 type NodeStatus = 'adopted' | 'rejected' | 'skipped';
 
-function MapFilters({ filters, setFilters, search, setSearch, nodes }: {
+function MapFilters({ filters, setFilters, search, setSearch, nodes, personalCats, tags, conceptToPersonalCats, conceptToTags }: {
   filters: Filters;
   setFilters: (f: Filters | ((p: Filters) => Filters)) => void;
   search: string; setSearch: (s: string) => void;
   nodes: MapNode[];
+  personalCats: PersonalCategory[];
+  tags: Tag[];
+  conceptToPersonalCats: Map<string, Set<string>>;
+  conceptToTags: Map<string, Set<string>>;
 }) {
   return (
     <div style={{
@@ -279,6 +289,58 @@ function MapFilters({ filters, setFilters, search, setSearch, nodes }: {
             );
           })}
         </div>
+
+        {personalCats.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ Étiquettes personnelles</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {personalCats.map(pc => {
+                const count = nodes.filter(n => conceptToPersonalCats.get(n.concept.id)?.has(pc.id)).length;
+                const checked = filters.personalCats.has(pc.id);
+                return (
+                  <CheckBox key={pc.id}
+                    checked={checked}
+                    color={pc.color}
+                    label={pc.name}
+                    count={count}
+                    onClick={() => setFilters(f => {
+                      const next = new Set(f.personalCats);
+                      if (next.has(pc.id)) next.delete(pc.id); else next.add(pc.id);
+                      return { ...f, personalCats: next };
+                    })}/>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {tags.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ Tags personnels</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {tags.map(t => {
+                const count = nodes.filter(n => conceptToTags.get(n.concept.id)?.has(t.id)).length;
+                if (count === 0) return null;
+                const checked = filters.tags.has(t.id);
+                return (
+                  <button key={t.id} onClick={() => setFilters(f => {
+                    const next = new Set(f.tags);
+                    if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
+                    return { ...f, tags: next };
+                  })} style={{
+                    padding: '2px 8px',
+                    background: checked ? 'var(--cit-navy-dk)' : 'transparent',
+                    color: checked ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
+                    border: '2px solid var(--cit-navy-dk)',
+                    fontFamily: "'Special Elite', monospace", fontSize: 11,
+                    cursor: 'pointer',
+                    boxShadow: checked ? '2px 2px 0 var(--cit-brick)' : 'none',
+                  }}>#{t.name} <span style={{ opacity: 0.7 }}>{count}</span></button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 'auto', padding: '10px 14px', background: 'var(--cit-paper-dk)', borderTop: '2px solid var(--cit-navy-dk)' }}>
@@ -341,7 +403,7 @@ function NodeDetailPanel({ node, edges, allNodes, status, links, linkingFrom, on
         background: 'var(--cit-butter)', height: 180, overflow: 'hidden',
       }}>
         {node.concept.portrait?.startsWith('http') ? (
-          <img src={node.concept.portrait} alt={node.concept.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+          <img src={node.concept.portrait} alt={node.concept.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
         ) : (
           <>
             <div style={{
@@ -507,6 +569,17 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
 
   const hoverNode = hoverId ? nodes.find(n => n.concept.id === hoverId) : null;
 
+  // Calcule l'ensemble des nœuds connectés au nœud sélectionné
+  const connectedSet = useMemo(() => {
+    if (!selectedId) return null;
+    const s = new Set<string>([selectedId]);
+    edges.forEach(e => {
+      if (e.a === selectedId) s.add(e.b);
+      else if (e.b === selectedId) s.add(e.a);
+    });
+    return s;
+  }, [selectedId, edges]);
+
   return (
     <div
       onPointerDown={onPanDown}
@@ -562,14 +635,15 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
             const B = nodes.find(n => n.concept.id === e.b);
             if (!A || !B) return null;
             const isSelected = selectedId === e.a || selectedId === e.b;
+            const dimmed = selectedId !== null && !isSelected;
             return (
               <line key={i}
                 x1={`${A.x}%`} y1={`${A.y}%`}
                 x2={`${B.x}%`} y2={`${B.y}%`}
                 stroke={isSelected ? 'var(--cit-brick)' : 'var(--cit-navy-dk)'}
-                strokeWidth={isSelected ? 2.2 : 1.2}
+                strokeWidth={isSelected ? 2.5 : 1.2}
                 strokeDasharray={isSelected ? '' : '3 3'}
-                opacity={isSelected ? 1 : 0.5}/>
+                opacity={dimmed ? 0.1 : (isSelected ? 1 : 0.5)}/>
             );
           })}
         </svg>
@@ -581,7 +655,9 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
         const isReject = status === 'rejected';
         const isSkip = status === 'skipped';
         const radius = n.size + (isSelected ? 6 : 0);
-        const opacity = isReject ? 0.3 : isSkip ? 0.5 : 1;
+        const baseOpacity = isReject ? 0.3 : isSkip ? 0.5 : 1;
+        const dimmed = connectedSet !== null && !connectedSet.has(n.concept.id);
+        const opacity = dimmed ? 0.15 : baseOpacity;
         return (
           <div key={n.concept.id} data-node
             onClick={(e) => { e.stopPropagation(); onSelect(n.concept.id); }}
@@ -732,9 +808,15 @@ export function MapScreen({ onTabChange }: Props) {
   const [skipped, setSkipped] = useState<Concept[]>([]);
   const [manualLinks, setManualLinks] = useState<ConceptLink[]>([]);
   const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
+  const [personalCats, setPersonalCats] = useState<PersonalCategory[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [conceptToPersonalCats, setConceptToPersonalCats] = useState<Map<string, Set<string>>>(new Map());
+  const [conceptToTags, setConceptToTags] = useState<Map<string, Set<string>>>(new Map());
   const [loaded, setLoaded] = useState(false);
   const [filters, setFilters] = useState<Filters>({
     cats: Object.fromEntries(CATEGORY_LIST.map(c => [c.key, true])),
+    personalCats: new Set(),
+    tags: new Set(),
     favsOnly: false,
     showEdges: true,
     showRejected: false,
@@ -746,13 +828,31 @@ export function MapScreen({ onTabChange }: Props) {
   const toast = useToast();
 
   const loadAll = async () => {
-    const [a, r, s, l] = await Promise.all([
+    const [a, r, s, l, pcs, ts, pcLinks, tLinks] = await Promise.all([
       getAdoptedConcepts(),
       getConceptsByVerdict('reject'),
       getConceptsByVerdict('skip'),
       getAllLinks(),
+      getAllPersonalCategories(),
+      getAllTags(),
+      db.conceptPersonalCategories.toArray(),
+      db.conceptTags.toArray(),
     ]);
-    setAdopted(a); setRejected(r); setSkipped(s); setManualLinks(l); setLoaded(true);
+    setAdopted(a); setRejected(r); setSkipped(s); setManualLinks(l);
+    setPersonalCats(pcs); setTags(ts);
+    const cpcMap = new Map<string, Set<string>>();
+    pcLinks.forEach(link => {
+      if (!cpcMap.has(link.conceptId)) cpcMap.set(link.conceptId, new Set());
+      cpcMap.get(link.conceptId)!.add(link.categoryId);
+    });
+    setConceptToPersonalCats(cpcMap);
+    const ctMap = new Map<string, Set<string>>();
+    tLinks.forEach(link => {
+      if (!ctMap.has(link.conceptId)) ctMap.set(link.conceptId, new Set());
+      ctMap.get(link.conceptId)!.add(link.tagId);
+    });
+    setConceptToTags(ctMap);
+    setLoaded(true);
   };
 
   useEffect(() => { loadAll().catch(() => setLoaded(true)); }, []);
@@ -775,9 +875,17 @@ export function MapScreen({ onTabChange }: Props) {
     const dominantCat = n.concept.cats[0]?.[0] as CategoryKey | undefined;
     if (dominantCat && !filters.cats[dominantCat]) return false;
     if (filters.favsOnly && !n.concept.isFavorite) return false;
+    if (filters.personalCats.size > 0) {
+      const myPcs = conceptToPersonalCats.get(n.concept.id);
+      if (!myPcs || ![...filters.personalCats].some(id => myPcs.has(id))) return false;
+    }
+    if (filters.tags.size > 0) {
+      const myTags = conceptToTags.get(n.concept.id);
+      if (!myTags || ![...filters.tags].some(id => myTags.has(id))) return false;
+    }
     if (search && !n.concept.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  }), [allNodes, filters, search]);
+  }), [allNodes, filters, search, conceptToPersonalCats, conceptToTags]);
 
   const inferredEdges = useMemo(() => buildEdges(filteredNodes), [filteredNodes]);
   // Combine inferred edges + manual links (deduplicated)
@@ -867,6 +975,10 @@ export function MapScreen({ onTabChange }: Props) {
             filters={filters} setFilters={setFilters}
             search={search} setSearch={setSearch}
             nodes={allNodes}
+            personalCats={personalCats}
+            tags={tags}
+            conceptToPersonalCats={conceptToPersonalCats}
+            conceptToTags={conceptToTags}
           />
         )}
 

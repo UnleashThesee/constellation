@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights } from '../../lib/categories';
-import { getFavoriteConcepts, db } from '../../stores/db';
+import { getFavoriteConcepts, db, toggleFavorite, cacheConcept } from '../../stores/db';
 import { setPendingConcepts } from '../../lib/pending';
+import { dominantColor } from '../../lib/categories';
+import { playSound } from '../../lib/sounds';
 import type { Concept, CategoryKey } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
-function FavTile({ fav }: { fav: Concept }) {
+function FavTile({ fav, onToggleFav }: { fav: Concept; onToggleFav: () => void }) {
   const portrait = fav.name.split(' ').slice(0, 2).join(' ').toUpperCase();
   return (
     <div style={{
@@ -21,13 +23,21 @@ function FavTile({ fav }: { fav: Concept }) {
       <span style={{ position: 'absolute', top: -10, right: -10, zIndex: 3 }}>
         <Aster size={28} rotate={12}/>
       </span>
+      <button onClick={onToggleFav} title="Retirer des favoris" style={{
+        position: 'absolute', top: 8, left: 8, zIndex: 4,
+        background: 'var(--cit-butter)', color: 'var(--cit-navy-dk)',
+        border: '2px solid var(--cit-navy-dk)',
+        fontFamily: "'Alfa Slab One', serif", fontSize: 14,
+        padding: '2px 8px', cursor: 'pointer',
+        boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+      }}>★</button>
 
       <div style={{
         height: 140, background: 'var(--cit-butter)',
         position: 'relative', borderBottom: '3px solid var(--cit-navy-dk)', overflow: 'hidden',
       }}>
         {fav.portrait?.startsWith('http') ? (
-          <img src={fav.portrait} alt={fav.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+          <img src={fav.portrait} alt={fav.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
         ) : (
           <>
             <div style={{
@@ -146,13 +156,25 @@ function FeaturedCover({ fav }: { fav: Concept }) {
 export function FavsScreen({ onTabChange }: Props) {
   const [favs, setFavs] = useState<Concept[]>([]);
   const [catFilter, setCatFilter] = useState<'all' | CategoryKey>('all');
+  const [sort, setSort] = useState<'recent' | 'alpha' | 'color'>('recent');
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     getFavoriteConcepts().then(c => { setFavs(c); setLoaded(true); }).catch(() => setLoaded(true));
   }, []);
 
-  const filtered = catFilter === 'all' ? favs : favs.filter(f => f.cats.some(([k]) => k === catFilter));
+  const filteredRaw = catFilter === 'all' ? favs : favs.filter(f => f.cats.some(([k]) => k === catFilter));
+  // hue extractor for OKLCH color sort
+  const hueOf = (c: Concept): number => {
+    const oklch = dominantColor(c.cats);
+    const m = oklch.match(/oklch\([\d.]+%\s+[\d.]+\s+([\d.]+)\)/);
+    return m ? parseFloat(m[1]) : 0;
+  };
+  const filtered = [...filteredRaw].sort((a, b) =>
+    sort === 'alpha' ? a.name.localeCompare(b.name)
+    : sort === 'color' ? hueOf(a) - hueOf(b)
+    : +(b.createdAt ?? 0) - +(a.createdAt ?? 0)
+  );
 
   // « Coup de cœur de la semaine » : favori avec le plus d'interactions sur 7 derniers jours
   const [featuredId, setFeaturedId] = useState<string | null>(null);
@@ -227,6 +249,19 @@ export function FavsScreen({ onTabChange }: Props) {
             </button>
           );
         })}
+        <div style={{ flex: 1 }}/>
+        <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)' }}>TRIER :</span>
+        <select value={sort} onChange={e => setSort(e.target.value as typeof sort)} style={{
+          border: '2px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+          padding: '4px 8px',
+          fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 600,
+          letterSpacing: '.12em', textTransform: 'uppercase',
+          color: 'var(--cit-navy-dk)', cursor: 'pointer',
+        }}>
+          <option value="recent">PLUS RÉCENTS</option>
+          <option value="alpha">ALPHABÉTIQUE</option>
+          <option value="color">PAR COULEUR</option>
+        </select>
       </div>
 
       <div style={{
@@ -253,7 +288,16 @@ export function FavsScreen({ onTabChange }: Props) {
         {featured && <FeaturedCover fav={featured}/>}
         {rest.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 18 }}>
-            {rest.map(fav => <FavTile key={fav.id} fav={fav}/>)}
+            {rest.map(fav => (
+              <FavTile key={fav.id} fav={fav} onToggleFav={async () => {
+                await cacheConcept(fav);
+                await toggleFavorite(fav.id);
+                playSound('favorite');
+                // Re-fetch
+                const arr = await getFavoriteConcepts();
+                setFavs(arr);
+              }}/>
+            ))}
           </div>
         )}
       </div>

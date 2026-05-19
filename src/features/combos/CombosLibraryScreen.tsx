@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
-import { getAllCombinations, deleteCombination, getCachedConcept } from '../../stores/db';
+import { getAllCombinations, deleteCombination, getCachedConcept, duplicateCombination, updateCombination } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { setPendingCombo } from '../../lib/pending';
 import type { SavedCombination, Concept } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
-function CombosLibraryCard({ combo, conceptsById, onDelete, onRelaunch }: {
+function CombosLibraryCard({ combo, conceptsById, onDelete, onRelaunch, onDuplicate, onToggleArchive, onToggleFavorite }: {
   combo: SavedCombination;
   conceptsById: Record<string, Concept>;
   onDelete: () => void;
   onRelaunch: () => void;
+  onDuplicate: () => void;
+  onToggleArchive: () => void;
+  onToggleFavorite: () => void;
 }) {
   return (
     <div style={{
@@ -84,8 +87,31 @@ function CombosLibraryCard({ combo, conceptsById, onDelete, onRelaunch }: {
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           <CitButton tone="brick" size="sm" style={{ flex: 1, justifyContent: 'center' }} onClick={onRelaunch}>★ Relancer</CitButton>
-          <button onClick={onDelete} style={{
-            padding: '4px 10px',
+          <button onClick={onToggleFavorite} title={combo.isFavorite ? 'Retirer des favoris' : 'Marquer favori'} style={{
+            padding: '4px 8px',
+            background: combo.isFavorite ? 'var(--cit-butter)' : 'var(--cit-cream)',
+            color: 'var(--cit-navy-dk)',
+            border: '2px solid var(--cit-navy-dk)',
+            fontFamily: "'Alfa Slab One', serif", fontSize: 12,
+            cursor: 'pointer',
+          }}>★</button>
+          <button onClick={onDuplicate} title="Dupliquer" style={{
+            padding: '4px 8px',
+            background: 'var(--cit-cream)', color: 'var(--cit-navy-dk)',
+            border: '2px solid var(--cit-navy-dk)',
+            fontFamily: "'Alfa Slab One', serif", fontSize: 12,
+            cursor: 'pointer',
+          }}>⎘</button>
+          <button onClick={onToggleArchive} title={combo.status === 'active' ? 'Archiver' : 'Réactiver'} style={{
+            padding: '4px 8px',
+            background: combo.status === 'archived' ? 'var(--cit-navy-dk)' : 'var(--cit-cream)',
+            color: combo.status === 'archived' ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
+            border: '2px solid var(--cit-navy-dk)',
+            fontFamily: "'Alfa Slab One', serif", fontSize: 11,
+            cursor: 'pointer',
+          }}>{combo.status === 'archived' ? '↑' : '↓'}</button>
+          <button onClick={onDelete} title="Supprimer" style={{
+            padding: '4px 8px',
             background: 'var(--cit-cream)', color: 'var(--cit-brick)',
             border: '2px solid var(--cit-navy-dk)',
             fontFamily: "'Alfa Slab One', serif", fontSize: 12,
@@ -99,6 +125,7 @@ function CombosLibraryCard({ combo, conceptsById, onDelete, onRelaunch }: {
 
 export function CombosLibraryScreen({ onTabChange }: Props) {
   const [filter, setFilter] = useState<'all' | 'fav' | 'active' | 'archived'>('all');
+  const [constraintFilter, setConstraintFilter] = useState<string>('');
   const [combos, setCombos] = useState<SavedCombination[]>([]);
   const [conceptsById, setConceptsById] = useState<Record<string, Concept>>({});
   const toast = useToast();
@@ -116,12 +143,14 @@ export function CombosLibraryScreen({ onTabChange }: Props) {
 
   useEffect(() => { load(); }, []);
 
-  const items = combos.filter(c =>
-    filter === 'all' ? true :
-    filter === 'fav' ? c.isFavorite :
-    filter === 'active' ? c.status === 'active' :
-    filter === 'archived' ? c.status === 'archived' : true
-  );
+  const items = combos.filter(c => {
+    if (filter === 'fav' && !c.isFavorite) return false;
+    if (filter === 'active' && c.status !== 'active') return false;
+    if (filter === 'archived' && c.status !== 'archived') return false;
+    if (constraintFilter && !c.constraints.includes(constraintFilter)) return false;
+    return true;
+  });
+  const allConstraints = Array.from(new Set(combos.flatMap(c => c.constraints)));
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Supprimer définitivement « ${name} » ?`)) return;
@@ -166,6 +195,18 @@ export function CombosLibraryScreen({ onTabChange }: Props) {
             boxShadow: filter === f.id ? '2px 2px 0 var(--cit-brick)' : 'none',
           }}>{f.label}</button>
         ))}
+        {allConstraints.length > 0 && (
+          <select value={constraintFilter} onChange={e => setConstraintFilter(e.target.value)} style={{
+            border: '2px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+            padding: '4px 8px',
+            fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 600,
+            letterSpacing: '.10em', textTransform: 'uppercase',
+            color: 'var(--cit-navy-dk)', cursor: 'pointer',
+          }}>
+            <option value="">★ TOUTES CONTRAINTES</option>
+            {allConstraints.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
         <div style={{ flex: 1 }}/>
         <CitButton tone="brick" onClick={() => onTabChange?.('combine')}>+ Nouvelle combinaison</CitButton>
       </div>
@@ -200,6 +241,22 @@ export function CombosLibraryScreen({ onTabChange }: Props) {
                   setPendingCombo(c);
                   toast.show({ tone: 'success', title: 'Combinaison chargée', body: `« ${c.name} » prête à relancer.` });
                   onTabChange?.('combine');
+                }}
+                onDuplicate={async () => {
+                  const copy = await duplicateCombination(c.id);
+                  if (copy) {
+                    toast.show({ tone: 'success', title: 'Combinaison dupliquée', body: `« ${copy.name} » créée.` });
+                    load();
+                  }
+                }}
+                onToggleArchive={async () => {
+                  await updateCombination(c.id, { status: c.status === 'active' ? 'archived' : 'active' });
+                  toast.show({ tone: 'info', title: c.status === 'active' ? 'Archivée' : 'Réactivée' });
+                  load();
+                }}
+                onToggleFavorite={async () => {
+                  await updateCombination(c.id, { isFavorite: !c.isFavorite });
+                  load();
                 }}
               />
             ))}
