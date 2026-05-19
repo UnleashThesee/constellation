@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights } from '../../lib/categories';
-import { getAdoptedConcepts } from '../../stores/db';
+import { getFavoriteConcepts, db } from '../../stores/db';
 import type { Concept, CategoryKey } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -148,11 +148,28 @@ export function FavsScreen({ onTabChange }: Props) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    getAdoptedConcepts().then(c => { setFavs(c); setLoaded(true); }).catch(() => setLoaded(true));
+    getFavoriteConcepts().then(c => { setFavs(c); setLoaded(true); }).catch(() => setLoaded(true));
   }, []);
 
   const filtered = catFilter === 'all' ? favs : favs.filter(f => f.cats.some(([k]) => k === catFilter));
-  const [featured, ...rest] = filtered;
+
+  // « Coup de cœur de la semaine » : favori avec le plus d'interactions sur 7 derniers jours
+  const [featuredId, setFeaturedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (filtered.length === 0) { setFeaturedId(null); return; }
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    db.interactions.toArray().then(ints => {
+      const counts: Record<string, number> = {};
+      ints.forEach(i => {
+        if (+i.timestamp >= weekAgo) counts[i.conceptId] = (counts[i.conceptId] ?? 0) + 1;
+      });
+      const sorted = filtered.slice().sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0));
+      setFeaturedId(sorted[0]?.id ?? filtered[0]?.id ?? null);
+    });
+  }, [filtered.map(f => f.id).join(',')]);
+
+  const featured = filtered.find(f => f.id === featuredId) ?? filtered[0];
+  const rest = filtered.filter(f => f.id !== featured?.id);
 
   return (
     <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -219,7 +236,7 @@ export function FavsScreen({ onTabChange }: Props) {
             <Sunburst size={80} color="var(--cit-mustard)"/>
             <h2 className="cit-h1" style={{ fontSize: 36, marginTop: 16 }}>Pas encore de favoris</h2>
             <p className="cit-typed" style={{ fontSize: 13, color: 'var(--cit-navy-lt)', marginTop: 8 }}>
-              Adoptez des concepts via l'écran de swipe pour les retrouver ici.
+              Cliquez sur ★ depuis la fiche détaillée d'un concept pour l'épingler comme favori.
             </p>
             <div style={{ marginTop: 18 }}>
               <CitButton tone="brick" onClick={() => onTabChange?.('swipe')}>★ ALLER AU SWIPE</CitButton>

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST, conceptDominant, gradientForWeights } from '../../lib/categories';
-import { getAdoptedConcepts } from '../../stores/db';
+import { getAdoptedConcepts, getConceptsByVerdict, giveSecondChance } from '../../stores/db';
+import { useToast } from '../../lib/toast';
 import type { Concept, CategoryKey } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -128,7 +129,11 @@ interface Filters {
   cats: Record<string, boolean>;
   favsOnly: boolean;
   showEdges: boolean;
+  showRejected: boolean;
+  showSkipped: boolean;
 }
+
+type NodeStatus = 'adopted' | 'rejected' | 'skipped';
 
 function MapFilters({ filters, setFilters, search, setSearch, nodes }: {
   filters: Filters;
@@ -175,7 +180,10 @@ function MapFilters({ filters, setFilters, search, setSearch, nodes }: {
 
         <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ Affichage</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
-          <Toggle label="Voir les liaisons" on={filters.showEdges} onClick={() => setFilters(f => ({ ...f, showEdges: !f.showEdges }))}/>
+          <Toggle label="Favoris uniquement"  on={filters.favsOnly}     onClick={() => setFilters(f => ({ ...f, favsOnly: !f.favsOnly }))}/>
+          <Toggle label="Inclure les rejetés" on={filters.showRejected} onClick={() => setFilters(f => ({ ...f, showRejected: !f.showRejected }))}/>
+          <Toggle label="Inclure les passés"  on={filters.showSkipped}  onClick={() => setFilters(f => ({ ...f, showSkipped: !f.showSkipped }))}/>
+          <Toggle label="Voir les liaisons"   on={filters.showEdges}    onClick={() => setFilters(f => ({ ...f, showEdges: !f.showEdges }))}/>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -219,8 +227,11 @@ function MapFilters({ filters, setFilters, search, setSearch, nodes }: {
   );
 }
 
-function NodeDetailPanel({ node, edges, allNodes, onClose }: {
-  node: MapNode | null; edges: MapEdge[]; allNodes: MapNode[]; onClose: () => void;
+function NodeDetailPanel({ node, edges, allNodes, status, onClose, onSecondChance }: {
+  node: MapNode | null; edges: MapEdge[]; allNodes: MapNode[];
+  status: NodeStatus;
+  onClose: () => void;
+  onSecondChance: () => void;
 }) {
   if (!node) return null;
   const portrait = node.concept.name.split(' ').slice(0, 2).join(' ').toUpperCase();
@@ -332,22 +343,34 @@ function NodeDetailPanel({ node, edges, allNodes, onClose }: {
         )}
 
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 8 }}>
-          <CitButton tone="butter" size="sm" style={{ width: '100%', justifyContent: 'center' }}>
-            ★ Marquer favori
-          </CitButton>
-          <CitButton tone="navy" size="sm" style={{ width: '100%', justifyContent: 'center' }}>
-            Ouvrir sur Wikipédia ↗
-          </CitButton>
+          {status === 'rejected' && (
+            <CitButton tone="brick" size="sm" style={{ width: '100%', justifyContent: 'center' }} onClick={onSecondChance}>
+              ↻ Donner une seconde chance
+            </CitButton>
+          )}
+          {status === 'skipped' && (
+            <CitButton tone="butter" size="sm" style={{ width: '100%', justifyContent: 'center' }} onClick={onSecondChance}>
+              ↻ Remettre en circulation
+            </CitButton>
+          )}
+          {node.concept.wikidataId && (
+            <a href={`https://www.wikidata.org/wiki/${node.concept.wikidataId}`} target="_blank" rel="noopener noreferrer">
+              <CitButton tone="navy" size="sm" style={{ width: '100%', justifyContent: 'center' }}>
+                Ouvrir sur Wikidata ↗
+              </CitButton>
+            </a>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function MapGraph({ nodes, edges, selectedId, onSelect, showEdges }: {
+function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor }: {
   nodes: MapNode[]; edges: MapEdge[];
   selectedId: string | null; onSelect: (id: string) => void;
   showEdges: boolean;
+  statusFor: (id: string) => NodeStatus;
 }) {
   return (
     <div style={{
@@ -404,7 +427,11 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges }: {
 
       {nodes.map(n => {
         const isSelected = selectedId === n.concept.id;
+        const status = statusFor(n.concept.id);
+        const isReject = status === 'rejected';
+        const isSkip = status === 'skipped';
         const radius = n.size + (isSelected ? 6 : 0);
+        const opacity = isReject ? 0.3 : isSkip ? 0.5 : 1;
         return (
           <div key={n.concept.id} onClick={() => onSelect(n.concept.id)}
             style={{
@@ -413,6 +440,8 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges }: {
               transform: 'translate(-50%, -50%)',
               cursor: 'pointer',
               zIndex: isSelected ? 4 : 2,
+              opacity,
+              filter: isReject ? 'grayscale(0.6)' : isSkip ? 'hue-rotate(180deg) saturate(0.5)' : 'none',
             }}>
             <div style={{
               width: radius * 2, height: radius * 2,
@@ -423,7 +452,25 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges }: {
                 ? '4px 4px 0 var(--cit-navy-dk), 0 0 0 8px oklch(96% 0.02 85 / 0.6)'
                 : '3px 3px 0 var(--cit-navy-dk)',
               transition: 'all .2s ease',
-            }}/>
+              position: 'relative',
+            }}>
+              {n.concept.isFavorite && (
+                <span style={{
+                  position: 'absolute', top: -8, right: -8,
+                  fontFamily: "'Alfa Slab One', serif", fontSize: 14,
+                  color: 'var(--cit-mustard)',
+                  textShadow: '1px 1px 0 var(--cit-navy-dk)',
+                }}>★</span>
+              )}
+              {isReject && (
+                <span style={{
+                  position: 'absolute', inset: 0,
+                  fontFamily: "'Alfa Slab One', serif", color: 'var(--cit-brick)',
+                  display: 'grid', placeItems: 'center', fontSize: radius * 1.4,
+                  lineHeight: 1,
+                }}>×</span>
+              )}
+            </div>
             <div style={{
               position: 'absolute', left: '50%', top: '100%',
               transform: 'translate(-50%, 4px)',
@@ -460,23 +507,49 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges }: {
 
 export function MapScreen({ onTabChange }: Props) {
   const [adopted, setAdopted] = useState<Concept[]>([]);
+  const [rejected, setRejected] = useState<Concept[]>([]);
+  const [skipped, setSkipped] = useState<Concept[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [filters, setFilters] = useState<Filters>({
     cats: Object.fromEntries(CATEGORY_LIST.map(c => [c.key, true])),
     favsOnly: false,
     showEdges: true,
+    showRejected: false,
+    showSkipped: false,
   });
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const toast = useToast();
 
-  useEffect(() => {
-    getAdoptedConcepts().then(c => { setAdopted(c); setLoaded(true); }).catch(() => setLoaded(true));
-  }, []);
+  const loadAll = async () => {
+    const [a, r, s] = await Promise.all([
+      getAdoptedConcepts(),
+      getConceptsByVerdict('reject'),
+      getConceptsByVerdict('skip'),
+    ]);
+    setAdopted(a); setRejected(r); setSkipped(s); setLoaded(true);
+  };
 
-  const allNodes = useMemo(() => layoutNodes(adopted), [adopted]);
+  useEffect(() => { loadAll().catch(() => setLoaded(true)); }, []);
+
+  const statusFor = (id: string): NodeStatus =>
+    adopted.find(c => c.id === id) ? 'adopted'
+    : rejected.find(c => c.id === id) ? 'rejected'
+    : 'skipped';
+
+  // Combine concepts based on toggles
+  const allConcepts = useMemo(() => {
+    const list = [...adopted];
+    if (filters.showRejected) list.push(...rejected);
+    if (filters.showSkipped) list.push(...skipped);
+    return list;
+  }, [adopted, rejected, skipped, filters.showRejected, filters.showSkipped]);
+
+  const allNodes = useMemo(() => layoutNodes(allConcepts), [allConcepts]);
   const filteredNodes = useMemo(() => allNodes.filter(n => {
     const dominantCat = n.concept.cats[0]?.[0] as CategoryKey | undefined;
     if (dominantCat && !filters.cats[dominantCat]) return false;
+    if (filters.favsOnly && !n.concept.isFavorite) return false;
     if (search && !n.concept.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }), [allNodes, filters, search]);
@@ -548,11 +621,25 @@ export function MapScreen({ onTabChange }: Props) {
             nodes={filteredNodes} edges={edges}
             selectedId={selectedId} onSelect={setSelectedId}
             showEdges={filters.showEdges}
+            statusFor={statusFor}
           />
         </div>
 
         {selected && (
-          <NodeDetailPanel node={selected} edges={edges} allNodes={filteredNodes} onClose={() => setSelectedId(null)}/>
+          <NodeDetailPanel
+            node={selected} edges={edges} allNodes={filteredNodes}
+            status={statusFor(selected.concept.id)}
+            onClose={() => setSelectedId(null)}
+            onSecondChance={async () => {
+              await giveSecondChance(selected.concept.id);
+              toast.show({
+                tone: 'success', title: 'Concept réhabilité',
+                body: `« ${selected.concept.name} » pourra à nouveau apparaître au swipe.`,
+              });
+              setSelectedId(null);
+              loadAll();
+            }}
+          />
         )}
       </div>
 

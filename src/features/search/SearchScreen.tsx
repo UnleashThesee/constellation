@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
+import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
-import { CATEGORIES } from '../../lib/categories';
+import { CATEGORIES, CATEGORY_LIST } from '../../lib/categories';
 import { searchConcepts } from '../../services/wikidata';
-import { cacheConcept, recordInteraction, getAdoptedConcepts } from '../../stores/db';
+import { cacheConcept, recordInteraction, getAdoptedConcepts, createFreeConcept } from '../../stores/db';
 import { useToast } from '../../lib/toast';
-import type { Concept } from '../../types';
+import type { Concept, CategoryKey } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
@@ -16,6 +16,10 @@ export function SearchScreen({ onTabChange }: Props) {
   const [results, setResults] = useState<Concept[]>([]);
   const [loading, setLoading] = useState(false);
   const [adopted, setAdopted] = useState<Set<string>>(new Set());
+  const [showFreeForm, setShowFreeForm] = useState(false);
+  const [freeName, setFreeName] = useState('');
+  const [freeBlurb, setFreeBlurb] = useState('');
+  const [freeCat, setFreeCat] = useState<CategoryKey>('philosophie');
   const toast = useToast();
 
   useEffect(() => {
@@ -167,12 +171,87 @@ export function SearchScreen({ onTabChange }: Props) {
               <div>
                 <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)' }}>★ AUCUN RÉSULTAT</div>
                 <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', marginTop: 2 }}>
-                  Le Bureau n'a rien trouvé sur Wikidata. Essayez d'autres mots-clés.
+                  Le Bureau n'a rien trouvé sur Wikidata. Créez plutôt un concept libre.
                 </div>
               </div>
+              <CitButton tone="navy" onClick={() => { setShowFreeForm(true); setFreeName(query.trim()); }}>+ Concept libre</CitButton>
             </div>
           )}
         </div>
+
+        {/* Concept libre form */}
+        <div style={{
+          padding: '12px 18px',
+          background: 'var(--cit-paper-dk)',
+          border: '3px dashed var(--cit-navy-dk)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 18,
+        }}>
+          <div>
+            <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)' }}>★ CONCEPT INTROUVABLE ?</div>
+            <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', marginTop: 2 }}>
+              Le Bureau peut créer un dossier sur mesure si Wikidata ne suffit pas.
+            </div>
+          </div>
+          <CitButton tone="navy" onClick={() => setShowFreeForm(s => !s)}>
+            {showFreeForm ? '× Annuler' : '+ Créer un concept libre'}
+          </CitButton>
+        </div>
+
+        {showFreeForm && (
+          <CitPanel title="Nouveau concept libre">
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+              <div>
+                <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ NOM (obligatoire)</div>
+                <input value={freeName} onChange={e => setFreeName(e.target.value)} placeholder="Ex. : Mon concept perso" style={{
+                  width: '100%', boxSizing: 'border-box', padding: '8px 12px',
+                  border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-paper)',
+                  fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)',
+                  boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 3px 3px 0 var(--cit-navy-dk)',
+                }}/>
+              </div>
+              <div>
+                <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ CATÉGORIE</div>
+                <select value={freeCat} onChange={e => setFreeCat(e.target.value as CategoryKey)} style={{
+                  width: '100%', padding: '8px 12px',
+                  border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+                  fontFamily: "'Oswald', sans-serif", fontSize: 12, fontWeight: 600,
+                  letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--cit-navy-dk)',
+                  boxShadow: '3px 3px 0 var(--cit-navy-dk)',
+                }}>
+                  {CATEGORY_LIST.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ DESCRIPTION</div>
+              <textarea value={freeBlurb} onChange={e => setFreeBlurb(e.target.value)} placeholder="Quelques phrases…" style={{
+                width: '100%', boxSizing: 'border-box', padding: '8px 12px', minHeight: 80,
+                border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-paper)',
+                fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)',
+                boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 3px 3px 0 var(--cit-navy-dk)',
+                resize: 'vertical',
+              }}/>
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <CitButton onClick={() => { setShowFreeForm(false); setFreeName(''); setFreeBlurb(''); }}>Annuler</CitButton>
+              <CitButton tone="brick" onClick={async () => {
+                if (!freeName.trim()) {
+                  toast.show({ tone: 'warning', title: 'Nom requis', body: 'Donnez un nom à votre concept.' });
+                  return;
+                }
+                const c = await createFreeConcept({
+                  name: freeName.trim(),
+                  blurb: freeBlurb.trim() || 'Concept créé manuellement.',
+                  cats: [[freeCat, 1.0]],
+                });
+                await recordInteraction(c.id, 'valid', SESSION_ID);
+                setAdopted(prev => new Set(prev).add(c.id));
+                toast.show({ tone: 'success', title: 'Concept créé', body: `« ${c.name} » rejoint votre univers.` });
+                setShowFreeForm(false); setFreeName(''); setFreeBlurb('');
+              }}>★ Créer & adopter</CitButton>
+            </div>
+          </CitPanel>
+        )}
       </div>
 
       <CitizenFooter right="ENTRÉE = ADOPTER · ESC = ANNULER"/>

@@ -1,8 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CitButton } from './CitizenShell';
 import { Aster } from './atoms';
 import { CATEGORIES, gradientForWeights } from '../../lib/categories';
-import type { Concept } from '../../types';
+import {
+  cacheConcept, toggleFavorite, getCachedConcept,
+  getAnnotation, saveAnnotation,
+  getTagsForConcept, addTagToConcept, removeTagFromConcept,
+} from '../../stores/db';
+import { fetchWikipediaExtract } from '../../services/wikidata';
+import { useToast } from '../../lib/toast';
+import type { Concept, Tag } from '../../types';
 
 interface Props {
   concept: Concept | null;
@@ -12,9 +19,50 @@ interface Props {
 
 export function ConceptDetailModal({ concept, open, onClose }: Props) {
   const [notes, setNotes] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [tagInput, setTagInput] = useState('');
+  const [favorite, setFavorite] = useState(false);
+  const [extract, setExtract] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const toast = useToast();
+  const autoSaveTimer = useRef<number | null>(null);
 
+  // Load persistent state when concept changes
+  useEffect(() => {
+    if (!open || !concept) return;
+    (async () => {
+      const cached = await getCachedConcept(concept.id);
+      setFavorite(!!cached?.isFavorite);
+      const ann = await getAnnotation(concept.id);
+      setNotes(ann?.markdown ?? '');
+      const t = await getTagsForConcept(concept.id);
+      setTags(t);
+      // Try cached extract first, otherwise fetch
+      if (cached?.blurbLong) {
+        setExtract(cached.blurbLong);
+      } else {
+        setExtract(null);
+        fetchWikipediaExtract(concept.name).then(ext => {
+          if (ext && ext !== concept.blurb) {
+            setExtract(ext);
+            cacheConcept({ ...concept, blurbLong: ext });
+          }
+        });
+      }
+    })();
+  }, [open, concept]);
+
+  // Autosave notes (debounced 800ms)
+  useEffect(() => {
+    if (!concept || !open) return;
+    if (autoSaveTimer.current) window.clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = window.setTimeout(() => {
+      saveAnnotation(concept.id, notes).then(() => setSavedAt(new Date())).catch(() => {});
+    }, 800);
+    return () => { if (autoSaveTimer.current) window.clearTimeout(autoSaveTimer.current); };
+  }, [notes, concept, open]);
+
+  // ESC handler
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -27,10 +75,29 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
   const portraitIsUrl = concept.portrait?.startsWith('http');
   const portrait = portraitIsUrl ? null : concept.name.toUpperCase();
 
-  const addTag = () => {
+  const addTag = async () => {
     const v = tagInput.trim().replace(/^#/, '');
-    if (v && !tags.includes(v)) setTags(prev => [...prev, v]);
+    if (!v) return;
+    await cacheConcept(concept); // ensure concept persists before linking
+    const tag = await addTagToConcept(concept.id, v);
+    setTags(prev => prev.find(t => t.id === tag.id) ? prev : [...prev, tag]);
     setTagInput('');
+  };
+
+  const removeTag = async (tagId: string) => {
+    await removeTagFromConcept(concept.id, tagId);
+    setTags(prev => prev.filter(t => t.id !== tagId));
+  };
+
+  const onFavoriteToggle = async () => {
+    await cacheConcept(concept);
+    const next = await toggleFavorite(concept.id);
+    setFavorite(next);
+    toast.show({
+      tone: 'success',
+      title: next ? 'Marqué favori' : 'Retiré des favoris',
+      body: `« ${concept.name} »`,
+    });
   };
 
   return (
@@ -86,12 +153,16 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
                 borderTop: '2px solid var(--cit-butter)',
               }}>{concept.years}</div>
             )}
-            <span style={{ position: 'absolute', top: -12, right: -12 }}>
-              <Aster size={32} rotate={15}/>
-            </span>
+            {favorite && (
+              <span style={{ position: 'absolute', top: -12, right: -12 }}>
+                <Aster size={32} rotate={15}/>
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <CitButton tone="brick" style={{ width: '100%', justifyContent: 'center' }}>★ Favori activé</CitButton>
+            <CitButton tone={favorite ? 'brick' : 'butter'} onClick={onFavoriteToggle} style={{ width: '100%', justifyContent: 'center' }}>
+              {favorite ? '★ Favori activé' : '☆ Marquer favori'}
+            </CitButton>
             {concept.wikidataId && (
               <a href={`https://www.wikidata.org/wiki/${concept.wikidataId}`} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
                 <CitButton tone="navy" size="sm" style={{ width: '100%', justifyContent: 'center' }}>
@@ -99,6 +170,11 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
                 </CitButton>
               </a>
             )}
+            <a href={`https://fr.wikipedia.org/wiki/${encodeURIComponent(concept.name.replace(/ /g, '_'))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
+              <CitButton size="sm" style={{ width: '100%', justifyContent: 'center' }}>
+                Wikipédia ↗
+              </CitButton>
+            </a>
           </div>
         </div>
 
@@ -108,7 +184,7 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
             <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.4 }}/>
             <div style={{ position: 'relative', zIndex: 1 }}>
               <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)' }}>
-                ★ FICHE COMPLÈTE · {concept.rec ?? concept.id} ★
+                ★ FICHE COMPLÈTE · {concept.rec ?? concept.id.slice(0, 8)} ★
               </div>
               <h2 className="cit-h1 cit-h1--reverse" style={{ fontSize: 40, lineHeight: 0.9, margin: '2px 0' }}>
                 {concept.name}<span style={{ color: 'var(--cit-butter)' }}>!</span>
@@ -122,6 +198,11 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
             <div>
               <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ NOTICE — Wikidata / Wikipédia</div>
               <p className="cit-typed" style={{ margin: 0, fontSize: 13, lineHeight: 1.65 }}>{concept.blurb}</p>
+              {extract && extract !== concept.blurb && (
+                <p className="cit-typed" style={{ margin: '8px 0 0', fontSize: 13, lineHeight: 1.65, color: 'var(--cit-navy-dk)' }}>
+                  {extract}
+                </p>
+              )}
             </div>
 
             {concept.refs.length > 0 && (
@@ -148,12 +229,12 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
 
             <div style={{ flex: 1 }}>
               <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>
-                ★ ANNOTATION LIBRE — MARKDOWN (éditable)
+                ★ ANNOTATION LIBRE — MARKDOWN (sauvegarde auto)
               </div>
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                placeholder={'# Vos notes\n\nÉcrivez librement…'}
+                placeholder={'# Vos notes\n\nÉcrivez librement — sauvegarde locale automatique…'}
                 style={{
                   width: '100%', boxSizing: 'border-box',
                   border: '2.5px solid var(--cit-navy-dk)',
@@ -166,7 +247,9 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
                   resize: 'vertical',
                 }}/>
               <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginTop: 4, fontStyle: 'italic' }}>
-                ★ Sauvegarde locale · {notes.split(/\s+/).filter(Boolean).length} mot{notes.split(/\s+/).filter(Boolean).length > 1 ? 's' : ''}
+                ★ Sauvegarde locale
+                {savedAt ? ` · dernière modif ${savedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                {' · '}{notes.split(/\s+/).filter(Boolean).length} mot{notes.split(/\s+/).filter(Boolean).length > 1 ? 's' : ''}
               </div>
             </div>
           </div>
@@ -225,6 +308,7 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
                   fontFamily: "'Special Elite', monospace", fontSize: 11,
                   color: 'var(--cit-navy-dk)',
                   boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 2px 2px 0 var(--cit-navy-dk)',
+                  width: 0,
                 }}/>
               <button onClick={addTag} style={{
                 padding: '6px 10px', background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
@@ -239,15 +323,15 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
                   Aucun tag.
                 </span>
               ) : tags.map(t => (
-                <span key={t} style={{
+                <span key={t.id} style={{
                   fontFamily: "'Special Elite', monospace", fontSize: 10,
                   padding: '1px 6px',
                   border: '1.5px solid var(--cit-navy-dk)',
                   color: 'var(--cit-navy-dk)',
                   display: 'inline-flex', alignItems: 'center', gap: 4,
                 }}>
-                  #{t}
-                  <button onClick={() => setTags(prev => prev.filter(x => x !== t))} style={{
+                  #{t.name}
+                  <button onClick={() => removeTag(t.id)} style={{
                     background: 'transparent', border: 'none',
                     color: 'var(--cit-brick)', cursor: 'pointer',
                     fontSize: 10, padding: 0,
@@ -260,8 +344,9 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
           <div>
             <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>HISTORIQUE</div>
             <div className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)', lineHeight: 1.5 }}>
-              ★ Vu pour la première fois<br/>★ Source : {concept.sourceKind ?? 'random'}<br/>
-              {concept.wikidataId && <>★ ID Wikidata : {concept.wikidataId}</>}
+              ★ Source : {concept.sourceKind ?? 'random'}<br/>
+              {concept.wikidataId && <>★ Wikidata : {concept.wikidataId}<br/></>}
+              {concept.isManual && <>★ Concept créé manuellement<br/></>}
             </div>
           </div>
         </div>

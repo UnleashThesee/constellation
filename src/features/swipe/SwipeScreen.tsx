@@ -5,7 +5,7 @@ import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../compo
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
 import { fetchRandomConcepts } from '../../services/wikidata';
-import { getAdoptedConcepts } from '../../stores/db';
+import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept } from '../../stores/db';
 import type { Concept, SwipeMode, CategoryKey } from '../../types';
 
 const FALLBACK_CONCEPTS: Concept[] = [
@@ -565,10 +565,21 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const swipe = useSwipeDeck(FALLBACK_CONCEPTS);
 
   useEffect(() => {
-    fetchRandomConcepts(10)
-      .then(concepts => { if (concepts.length > 0) swipe.setDeck(concepts); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    (async () => {
+      try {
+        const [concepts, excluded] = await Promise.all([
+          fetchRandomConcepts(20),
+          getExcludedConceptIds(30),
+        ]);
+        const filtered = concepts.filter(c => !excluded.has(c.id));
+        const deck = filtered.length > 0 ? filtered : concepts;
+        // Cache each in Dexie so favorites/annotations/tags work later
+        await Promise.all(deck.map(c => cacheConcept(c)));
+        if (deck.length > 0) swipe.setDeck(deck);
+      } catch { /* keep fallback */ } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   useEffect(() => {

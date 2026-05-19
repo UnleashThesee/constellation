@@ -26,12 +26,15 @@ export interface Concept {
   kind: string; // Auteur, Œuvre, Courant, Personnage, Théorie…
   cats: CategoryWeight[];
   blurb: string;
-  portrait?: string; // URL image Wikimedia ou placeholder text
+  blurbLong?: string;        // extrait Wikipedia long
+  portrait?: string;          // URL image Wikimedia ou placeholder text
   refs: string[];
   coord?: string;
   rec?: string;
   sourceKind?: SourceKind;
   sourceTag?: string;
+  isFavorite?: boolean;
+  isManual?: boolean;         // créé manuellement (concept libre)
   createdAt?: Date;
 }
 
@@ -101,4 +104,76 @@ export interface WikipediaSummary {
   extract: string;
   thumbnail?: { source: string; width: number; height: number };
   content_urls?: { desktop?: { page: string } };
+}
+
+// ---- Tags, étiquettes personnelles, annotations ----
+
+export interface Tag {
+  id: string;
+  name: string;
+  color?: string;
+  createdAt: Date;
+}
+
+export interface ConceptTag {
+  id?: number;
+  conceptId: string;
+  tagId: string;
+}
+
+export interface PersonalCategory {
+  id: string;
+  name: string;
+  color: string;
+  createdAt: Date;
+}
+
+export interface ConceptPersonalCategory {
+  id?: number;
+  conceptId: string;
+  categoryId: string;
+}
+
+export interface Annotation {
+  id?: number;
+  conceptId: string;
+  markdown: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ---- Combinaisons sauvegardées ----
+
+export interface SavedCombination {
+  id: string;
+  name: string;
+  items: Array<{ conceptId: string; weight: number }>;
+  constraints: string[];
+  mixOklch: string;
+  createdAt: Date;
+  lastUsedAt: Date;
+  isFavorite: boolean;
+  ideasGeneratedCount: number;
+  status: 'active' | 'archived';
+}
+
+// ---- Idées générées ----
+
+export type IdeaStatus = 'new' | 'inprogress' | 'abandoned' | 'done';
+
+export interface Idea {
+  id: string;
+  title: string;
+  content: string;
+  conceptIdsWithWeights: Array<{ conceptId: string; weight: number }>;
+  outputType: string;
+  constraints: string[];
+  status: IdeaStatus;
+  notes: string;
+  tags: string[];
+  inheritedOklch?: string;
+  combinationId?: string;
+  isFavorite: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }

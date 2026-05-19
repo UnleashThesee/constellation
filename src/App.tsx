@@ -42,6 +42,34 @@ function LoadingScreen() {
   );
 }
 
+function OfflineBanner() {
+  const [offline, setOffline] = useState(!navigator.onLine);
+  useEffect(() => {
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
+  if (!offline) return null;
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 2000,
+      background: 'var(--cit-brick)', color: 'var(--cit-cream)',
+      padding: '6px 18px', textAlign: 'center',
+      fontFamily: "'Oswald', sans-serif", fontSize: 12, fontWeight: 700,
+      letterSpacing: '.14em', textTransform: 'uppercase',
+      borderBottom: '3px solid var(--cit-navy-dk)',
+      boxShadow: '0 4px 0 var(--cit-navy-dk)',
+    }}>
+      ★ HORS-LIGNE · LE BUREAU FONCTIONNE SUR CACHE LOCAL UNIQUEMENT ★
+    </div>
+  );
+}
+
 export default function App() {
   const [state, setState] = useState<AppState>('loading');
   const [tab, setTab] = useState<TabId>('swipe');
@@ -79,5 +107,5 @@ export default function App() {
     }
   })();
 
-  return <ToastProvider>{screen}</ToastProvider>;
+  return <ToastProvider><OfflineBanner/>{screen}</ToastProvider>;
 }

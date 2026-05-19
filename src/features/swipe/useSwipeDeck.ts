@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Concept, SwipeVerdict, SwipeHistoryEntry, SessionStats } from '../../types';
-import { recordInteraction } from '../../stores/db';
+import { recordInteraction, cacheConcept } from '../../stores/db';
 
 interface Particle { id: number; dx: number; dy: number; left: number; top: number; }
 
@@ -66,8 +66,8 @@ export function useSwipeDeck(initialDeck: Concept[]): SwipeDeckState {
       setTimeout(() => setParticles([]), 700);
     }
 
-    // Record in DB (fire and forget)
-    recordInteraction(current.id, verdict, SESSION_ID).catch(() => {});
+    // Persist concept then record interaction (fire and forget)
+    cacheConcept(current).then(() => recordInteraction(current.id, verdict, SESSION_ID)).catch(() => {});
 
     setTimeout(() => {
       setDeckState(d => {

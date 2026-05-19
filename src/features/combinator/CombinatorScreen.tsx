@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
 import { CATEGORIES, conceptDominant, combinationMix } from '../../lib/categories';
-import { getAdoptedConcepts } from '../../stores/db';
+import { getAdoptedConcepts, saveCombination } from '../../stores/db';
+import { useToast } from '../../lib/toast';
 import type { Concept } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -149,6 +150,9 @@ export function CombinatorScreen({ onTabChange }: Props) {
   const [selection, setSelection] = useState<SelItem[]>([]);
   const [search, setSearch] = useState('');
   const [savedName, setSavedName] = useState('');
+  const [constraints, setConstraints] = useState<string[]>([]);
+  const [constraintInput, setConstraintInput] = useState('');
+  const toast = useToast();
 
   useEffect(() => {
     getAdoptedConcepts().then(c => {
@@ -414,9 +418,98 @@ export function CombinatorScreen({ onTabChange }: Props) {
               border: '2.5px solid var(--cit-navy-dk)',
               boxShadow: '3px 3px 0 var(--cit-navy-dk)',
             }}/>
-            <CitButton tone="navy" style={{ width: '100%', justifyContent: 'center' }}>
+            <CitButton tone="navy" style={{ width: '100%', justifyContent: 'center' }} onClick={async () => {
+              if (!savedName.trim()) {
+                toast.show({ tone: 'warning', title: 'Nom requis', body: 'Donnez un nom à votre combinaison avant de sauvegarder.' });
+                return;
+              }
+              if (selection.length < 2) {
+                toast.show({ tone: 'warning', title: 'Au moins 2 concepts', body: 'Sélectionnez au moins deux concepts à croiser.' });
+                return;
+              }
+              await saveCombination({
+                name: savedName.trim(),
+                items: selection.map(s => ({ conceptId: s.id, weight: s.weight })),
+                constraints,
+                mixOklch: mix.css,
+              });
+              toast.show({ tone: 'success', title: 'Combinaison sauvegardée', body: `« ${savedName} » archivée dans la bibliothèque.` });
+              setSavedName('');
+            }}>
               ★ Sauver dans le registre
             </CitButton>
+          </CitPanel>
+
+          <CitPanel title="Contraintes">
+            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>
+              ★ Filtres optionnels en langage naturel
+            </div>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+              <input value={constraintInput} onChange={e => setConstraintInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && constraintInput.trim()) {
+                    e.preventDefault();
+                    setConstraints(prev => [...prev, constraintInput.trim()]);
+                    setConstraintInput('');
+                  }
+                }}
+                placeholder="auteurs uniquement, XXe siècle…"
+                style={{
+                  flex: 1, padding: '6px 10px',
+                  border: '2.5px solid var(--cit-navy-dk)',
+                  background: 'var(--cit-paper)',
+                  fontFamily: "'Special Elite', monospace", fontSize: 11,
+                  color: 'var(--cit-navy-dk)',
+                  boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 2px 2px 0 var(--cit-navy-dk)',
+                  width: 0,
+                }}/>
+              <button onClick={() => {
+                if (constraintInput.trim()) {
+                  setConstraints(prev => [...prev, constraintInput.trim()]);
+                  setConstraintInput('');
+                }
+              }} style={{
+                padding: '6px 10px', background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
+                border: '2.5px solid var(--cit-navy-dk)',
+                fontFamily: "'Alfa Slab One', serif", fontSize: 12,
+                cursor: 'pointer',
+              }}>+</button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+              {constraints.length === 0 ? (
+                <span className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
+                  Aucune contrainte.
+                </span>
+              ) : constraints.map((c, i) => (
+                <span key={i} style={{
+                  fontFamily: "'Special Elite', monospace", fontSize: 10,
+                  padding: '2px 6px',
+                  border: '1.5px solid var(--cit-navy-dk)',
+                  background: 'var(--cit-butter)',
+                  color: 'var(--cit-navy-dk)',
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                }}>
+                  {c}
+                  <button onClick={() => setConstraints(prev => prev.filter((_, j) => j !== i))} style={{
+                    background: 'transparent', border: 'none',
+                    color: 'var(--cit-brick)', cursor: 'pointer',
+                    fontSize: 10, padding: 0,
+                  }}>✕</button>
+                </span>
+              ))}
+            </div>
+            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ SUGGESTIONS</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {['auteurs', 'œuvres', 'XXe siècle', 'concepts abstraits', 'lieux', 'personnes vivantes'].map(s => (
+                <button key={s} onClick={() => setConstraints(prev => prev.includes(s) ? prev : [...prev, s])} style={{
+                  padding: '2px 8px',
+                  border: '1.5px dashed var(--cit-navy-dk)',
+                  background: 'transparent',
+                  color: 'var(--cit-navy-dk)', cursor: 'pointer',
+                  fontFamily: "'Special Elite', monospace", fontSize: 10,
+                }}>{s}</button>
+              ))}
+            </div>
           </CitPanel>
 
           <CitPanel title="Astuce du Bureau" accent="butter">

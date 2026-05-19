@@ -1,25 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
+import {
+  getAllPersonalCategories, createPersonalCategory, deletePersonalCategory,
+  getConceptsInPersonalCategory,
+  getTagUsage,
+} from '../../stores/db';
+import { useToast } from '../../lib/toast';
+import type { PersonalCategory, Concept, Tag } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
-interface PersoCat { id: string; name: string; color: string; count: number; lastUsed: string }
-interface PersoTag { name: string; count: number; color: string }
-
-const DEFAULT_CATS: PersoCat[] = [
-  { id: 'p1', name: 'à lire un jour',   color: 'oklch(58% 0.22 25)',  count: 0, lastUsed: '—' },
-  { id: 'p2', name: 'projet en cours',  color: 'oklch(35% 0.13 250)', count: 0, lastUsed: '—' },
-  { id: 'p3', name: 'café du dimanche', color: 'oklch(70% 0.16 82)',  count: 0, lastUsed: '—' },
+const PRESET_COLORS = [
+  'oklch(35% 0.13 250)', 'oklch(48% 0.20 28)',  'oklch(70% 0.16 88)',
+  'oklch(50% 0.18 155)', 'oklch(45% 0.20 330)', 'oklch(60% 0.25 350)',
 ];
 
-const DEFAULT_TAGS: PersoTag[] = [
-  { name: 'à recroiser',    count: 0, color: 'oklch(35% 0.13 250)' },
-  { name: 'underrated',     count: 0, color: 'oklch(48% 0.20 28)' },
-  { name: 'à vulgariser',   count: 0, color: 'oklch(70% 0.16 82)' },
-];
-
-function PersoCatTile({ cat, active, onClick }: { cat: PersoCat; active: boolean; onClick: () => void }) {
+function PersoCatTile({ cat, active, count, onClick }: {
+  cat: PersonalCategory; active: boolean; count: number; onClick: () => void;
+}) {
   return (
     <button onClick={onClick} style={{
       display: 'grid', gridTemplateColumns: '44px 1fr auto', gap: 14, alignItems: 'center',
@@ -36,11 +35,11 @@ function PersoCatTile({ cat, active, onClick }: { cat: PersoCat; active: boolean
         fontFamily: "'Alfa Slab One', serif", fontSize: 22, color: 'var(--cit-cream)',
         textShadow: '1.5px 1.5px 0 var(--cit-navy-dk)',
         boxShadow: 'inset 0 0 0 3px var(--cit-cream), inset 0 0 0 4px var(--cit-navy-dk)',
-      }}>{cat.count}</div>
+      }}>{count}</div>
       <div>
         <div className="cit-h1" style={{ fontSize: 20, lineHeight: 0.95 }}>{cat.name}</div>
         <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginTop: 2 }}>
-          ★ Dernière utilisation · {cat.lastUsed}
+          ★ Créée le {cat.createdAt.toLocaleDateString('fr-FR')}
         </div>
       </div>
       <span style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 18, color: 'var(--cit-brick)', lineHeight: 1 }}>›</span>
@@ -48,7 +47,9 @@ function PersoCatTile({ cat, active, onClick }: { cat: PersoCat; active: boolean
   );
 }
 
-function CategoryDetailPanel({ cat, onClose }: { cat: PersoCat; onClose: () => void }) {
+function CategoryDetailPanel({ cat, concepts, onClose, onDelete }: {
+  cat: PersonalCategory; concepts: Concept[]; onClose: () => void; onDelete: () => void;
+}) {
   return (
     <div style={{
       background: 'var(--cit-cream)',
@@ -72,7 +73,7 @@ function CategoryDetailPanel({ cat, onClose }: { cat: PersoCat; onClose: () => v
             {cat.name}<span style={{ color: 'var(--cit-butter)' }}>!</span>
           </div>
           <div className="cit-typed" style={{ fontSize: 11, marginTop: 4, color: 'var(--cit-cream)' }}>
-            {cat.count} concepts · dernière utilisation {cat.lastUsed}
+            {concepts.length} concept{concepts.length > 1 ? 's' : ''} rangé{concepts.length > 1 ? 's' : ''}
           </div>
         </div>
         <button onClick={onClose} style={{
@@ -84,28 +85,27 @@ function CategoryDetailPanel({ cat, onClose }: { cat: PersoCat; onClose: () => v
       </div>
 
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-        <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>★ CONCEPTS RANGÉS</div>
-        {cat.count === 0 ? (
+        <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>★ CONCEPTS</div>
+        {concepts.length === 0 ? (
           <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
-            Aucun concept rangé dans cette étiquette pour l'instant.
+            Aucun concept rangé. Allez en ajouter depuis la fiche détaillée d'un concept.
           </div>
-        ) : null}
-        <button style={{
-          padding: '6px 10px', background: 'transparent',
-          border: '2px dashed var(--cit-navy-dk)',
-          fontFamily: "'Special Elite', monospace", fontSize: 12,
-          color: 'var(--cit-navy-dk)', cursor: 'pointer',
-        }}>+ Ranger un concept dans cette étiquette</button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {concepts.map(c => (
+              <div key={c.id} style={{
+                padding: '4px 8px', background: 'var(--cit-paper)',
+                border: '2px solid var(--cit-navy-dk)',
+                fontFamily: "'Special Elite', monospace", fontSize: 11,
+                color: 'var(--cit-navy-dk)',
+              }}>{c.name}</div>
+            ))}
+          </div>
+        )}
 
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 12 }}>
-          <CitButton tone="brick" style={{ width: '100%', justifyContent: 'center' }}>
-            ★ Lancer une combinaison avec cette étiquette
-          </CitButton>
-          <CitButton style={{ width: '100%', justifyContent: 'center' }}>
-            Renommer / changer la couleur
-          </CitButton>
-          <CitButton tone="navy" style={{ width: '100%', justifyContent: 'center' }}>
-            Supprimer l'étiquette
+          <CitButton tone="navy" style={{ width: '100%', justifyContent: 'center' }} onClick={onDelete}>
+            ✕ Supprimer l'étiquette
           </CitButton>
         </div>
       </div>
@@ -115,9 +115,57 @@ function CategoryDetailPanel({ cat, onClose }: { cat: PersoCat; onClose: () => v
 
 export function PersoScreen({ onTabChange }: Props) {
   const [view, setView] = useState<'categories' | 'tags'>('categories');
-  const [selectedCat, setSelectedCat] = useState<PersoCat | null>(DEFAULT_CATS[0]);
-  const cats = DEFAULT_CATS;
-  const tags = DEFAULT_TAGS;
+  const [cats, setCats] = useState<PersonalCategory[]>([]);
+  const [tagUsage, setTagUsage] = useState<Array<{ tag: Tag; count: number }>>([]);
+  const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
+  const [selectedConcepts, setSelectedConcepts] = useState<Concept[]>([]);
+  const [conceptCounts, setConceptCounts] = useState<Record<string, number>>({});
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
+  const toast = useToast();
+
+  const loadAll = async () => {
+    const [catList, tagList] = await Promise.all([getAllPersonalCategories(), getTagUsage()]);
+    setCats(catList);
+    setTagUsage(tagList);
+    const counts: Record<string, number> = {};
+    await Promise.all(catList.map(async c => {
+      const arr = await getConceptsInPersonalCategory(c.id);
+      counts[c.id] = arr.length;
+    }));
+    setConceptCounts(counts);
+    if (catList.length > 0 && !selectedCatId) setSelectedCatId(catList[0].id);
+  };
+
+  useEffect(() => { loadAll(); }, []);
+
+  useEffect(() => {
+    if (!selectedCatId) { setSelectedConcepts([]); return; }
+    getConceptsInPersonalCategory(selectedCatId).then(setSelectedConcepts);
+  }, [selectedCatId]);
+
+  const selectedCat = cats.find(c => c.id === selectedCatId) ?? null;
+
+  const handleCreate = async () => {
+    if (!newName.trim()) {
+      toast.show({ tone: 'warning', title: 'Nom requis', body: 'Donnez un nom à l\'étiquette.' });
+      return;
+    }
+    const cat = await createPersonalCategory(newName.trim(), newColor);
+    toast.show({ tone: 'success', title: 'Étiquette créée', body: `« ${cat.name} » ajoutée à votre grammaire.` });
+    setShowCreateForm(false); setNewName(''); setNewColor(PRESET_COLORS[0]);
+    setSelectedCatId(cat.id);
+    loadAll();
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Supprimer définitivement l'étiquette « ${name} » ?`)) return;
+    await deletePersonalCategory(id);
+    toast.show({ tone: 'info', title: 'Étiquette supprimée', body: `« ${name} »` });
+    setSelectedCatId(null);
+    loadAll();
+  };
 
   return (
     <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -127,7 +175,9 @@ export function PersoScreen({ onTabChange }: Props) {
         active="favs"
         onTabChange={onTabChange}
         right={<>
-          <Stamp tone="brick" rotate={-3}>{view === 'categories' ? `${cats.length} ÉTIQUETTES` : `${tags.length} TAGS`}</Stamp>
+          <Stamp tone="brick" rotate={-3}>
+            {view === 'categories' ? `${cats.length} ÉTIQUETTE${cats.length > 1 ? 'S' : ''}` : `${tagUsage.length} TAG${tagUsage.length > 1 ? 'S' : ''}`}
+          </Stamp>
           <Sunburst size={68} color="var(--cit-mustard)"/>
         </>}
       />
@@ -138,7 +188,7 @@ export function PersoScreen({ onTabChange }: Props) {
         </span>
         {[
           { id: 'categories' as const, label: 'Étiquettes', count: cats.length },
-          { id: 'tags' as const,       label: 'Tags',       count: tags.length },
+          { id: 'tags' as const,       label: 'Tags',       count: tagUsage.length },
         ].map(t => (
           <button key={t.id} onClick={() => setView(t.id)} style={{
             background: view === t.id ? 'var(--cit-navy-dk)' : 'transparent',
@@ -170,13 +220,66 @@ export function PersoScreen({ onTabChange }: Props) {
                 <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)' }}>
                   ★ ÉTIQUETTES PERSONNELLES · PARALLÈLES AUX 12 CATÉGORIES OFFICIELLES
                 </div>
-                <CitButton tone="butter">+ Créer une étiquette</CitButton>
+                <CitButton tone="butter" onClick={() => setShowCreateForm(true)}>+ Créer une étiquette</CitButton>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
-                {cats.map(c => (
-                  <PersoCatTile key={c.id} cat={c} active={selectedCat?.id === c.id} onClick={() => setSelectedCat(c)}/>
-                ))}
-              </div>
+
+              {showCreateForm && (
+                <CitPanel title="Nouvelle étiquette" style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'end' }}>
+                    <div>
+                      <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>NOM</div>
+                      <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="thèse 2027, à lire un jour…" style={{
+                        width: '100%', boxSizing: 'border-box', padding: '8px 12px',
+                        border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-paper)',
+                        fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)',
+                        boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 3px 3px 0 var(--cit-navy-dk)',
+                      }}/>
+                    </div>
+                    <div>
+                      <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>COULEUR</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {PRESET_COLORS.map(c => (
+                          <button key={c} onClick={() => setNewColor(c)} style={{
+                            width: 30, height: 30, background: c,
+                            border: newColor === c ? '3px solid var(--cit-brick)' : '2px solid var(--cit-navy-dk)',
+                            cursor: 'pointer', padding: 0,
+                          }}/>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                    <CitButton onClick={() => { setShowCreateForm(false); setNewName(''); }}>Annuler</CitButton>
+                    <CitButton tone="brick" onClick={handleCreate}>★ Créer</CitButton>
+                  </div>
+                </CitPanel>
+              )}
+
+              {cats.length === 0 ? (
+                <div style={{
+                  padding: '60px 40px', textAlign: 'center',
+                  background: 'var(--cit-cream)',
+                  border: '3px dashed var(--cit-navy-dk)',
+                  boxShadow: '5px 5px 0 var(--cit-navy-dk)',
+                }}>
+                  <h2 className="cit-h1" style={{ fontSize: 28 }}>Aucune étiquette pour l'instant</h2>
+                  <p className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', marginTop: 8 }}>
+                    Créez votre première étiquette pour organiser votre univers.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
+                  {cats.map(c => (
+                    <PersoCatTile
+                      key={c.id} cat={c}
+                      active={selectedCatId === c.id}
+                      count={conceptCounts[c.id] ?? 0}
+                      onClick={() => setSelectedCatId(c.id)}
+                    />
+                  ))}
+                </div>
+              )}
+
               <CitPanel title="À quoi servent les étiquettes ?" accent="butter" style={{ marginTop: 22 }}>
                 <p className="cit-typed" style={{ fontSize: 12, lineHeight: 1.55, margin: 0 }}>
                   Les <strong>étiquettes personnelles</strong> sont votre grammaire à vous, par-dessus le système de 12 catégories officielles.
@@ -188,9 +291,8 @@ export function PersoScreen({ onTabChange }: Props) {
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)' }}>
-                  ★ NUAGE DE TAGS · CLIQUEZ POUR FILTRER VOTRE UNIVERS
+                  ★ NUAGE DE TAGS · CRÉÉS DEPUIS LA FICHE DÉTAILLÉE D'UN CONCEPT
                 </div>
-                <CitButton tone="butter">+ Nouveau tag</CitButton>
               </div>
               <div style={{
                 background: 'var(--cit-cream)',
@@ -202,19 +304,19 @@ export function PersoScreen({ onTabChange }: Props) {
                 position: 'relative',
               }}>
                 <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.15 }}/>
-                {tags.length === 0 ? (
+                {tagUsage.length === 0 ? (
                   <div className="cit-typed" style={{ fontSize: 13, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
-                    Aucun tag pour l'instant. Créez-en depuis la fiche d'un concept.
+                    Aucun tag pour l'instant. Créez-en depuis la fiche d'un concept (modal détail).
                   </div>
-                ) : tags.map(t => {
-                  const fontSize = Math.min(34, 12 + t.count * 0.45);
+                ) : tagUsage.filter(t => t.count > 0).map(({ tag, count }) => {
+                  const fontSize = Math.min(34, 12 + count * 2);
                   return (
-                    <button key={t.name} style={{
+                    <button key={tag.id} style={{
                       display: 'inline-flex', alignItems: 'baseline', gap: 6,
                       padding: '4px 10px',
                       background: 'var(--cit-paper)',
                       border: '2.5px solid var(--cit-navy-dk)',
-                      borderLeft: `8px solid ${t.color}`,
+                      borderLeft: `8px solid ${tag.color ?? 'var(--cit-navy-dk)'}`,
                       fontFamily: "'Alfa Slab One', serif",
                       fontSize, lineHeight: 1,
                       color: 'var(--cit-navy-dk)',
@@ -222,11 +324,11 @@ export function PersoScreen({ onTabChange }: Props) {
                       boxShadow: '3px 3px 0 var(--cit-navy-dk)',
                       position: 'relative', zIndex: 1,
                     }}>
-                      #{t.name}
+                      #{tag.name}
                       <span style={{
                         fontFamily: "'Oswald', sans-serif", fontSize: 10, fontWeight: 700,
                         color: 'var(--cit-brick)', letterSpacing: '.1em',
-                      }}>{t.count}</span>
+                      }}>{count}</span>
                     </button>
                   );
                 })}
@@ -234,7 +336,7 @@ export function PersoScreen({ onTabChange }: Props) {
               <CitPanel title="À quoi servent les tags ?" accent="butter" style={{ marginTop: 22 }}>
                 <p className="cit-typed" style={{ fontSize: 12, lineHeight: 1.55, margin: 0 }}>
                   Les <strong>tags</strong> sont des étiquettes <strong>légères</strong> : un concept peut en avoir plusieurs sans coût.
-                  Ils servent à <strong>filtrer rapidement</strong> votre univers, sans créer d'ensemble fermé comme les étiquettes.
+                  Créez-les depuis la fiche détaillée de n'importe quel concept (bouton ★ Voir la fiche complète).
                 </p>
               </CitPanel>
             </>
@@ -242,7 +344,12 @@ export function PersoScreen({ onTabChange }: Props) {
         </div>
 
         {view === 'categories' && selectedCat && (
-          <CategoryDetailPanel cat={selectedCat} onClose={() => setSelectedCat(null)}/>
+          <CategoryDetailPanel
+            cat={selectedCat}
+            concepts={selectedConcepts}
+            onClose={() => setSelectedCatId(null)}
+            onDelete={() => handleDelete(selectedCat.id, selectedCat.name)}
+          />
         )}
       </div>
 
