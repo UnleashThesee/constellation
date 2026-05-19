@@ -620,7 +620,29 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       favs,
     });
   };
-  useEffect(() => { refreshTodayCounts(); }, [swipe.counts]);
+  useEffect(() => { refreshTodayCounts(); }, [swipe.counts, currentFavorite]);
+
+  // Alerte bulle contextuelle : palier ou saturation catégorie
+  const contextualAlert = (() => {
+    const totalAdopted = adopted.length;
+    if (totalAdopted >= 200 && totalAdopted < 210) return { tone: 'milestone' as const, text: `★ Palier atteint : ${totalAdopted} concepts adoptés !` };
+    if (totalAdopted >= 100 && totalAdopted < 110) return { tone: 'milestone' as const, text: `★ Cap des 100 concepts franchi !` };
+    if (totalAdopted >= 50 && totalAdopted < 55) return { tone: 'milestone' as const, text: `★ Cap des 50 concepts. Pensez au Boost.` };
+    // Détection saturation : la cat dominante > 50% des cats adoptées
+    if (adopted.length >= 10) {
+      const catCount: Record<string, number> = {};
+      adopted.forEach(c => c.cats.forEach(([k, w]) => { catCount[k] = (catCount[k] ?? 0) + w; }));
+      const total = Object.values(catCount).reduce((s, v) => s + v, 0);
+      const [topKey, topVal] = (Object.entries(catCount).sort((a, b) => b[1] - a[1])[0] ?? ['', 0]) as [string, number];
+      if (total > 0 && topVal / total > 0.5) {
+        return {
+          tone: 'saturation' as const,
+          text: `Saturation ${CATEGORIES[topKey as CategoryKey]?.label ?? topKey} ${Math.round((topVal / total) * 100)}%. Essayez le mode Contraste.`,
+        };
+      }
+    }
+    return null;
+  })();
 
   // First-use hint
   useEffect(() => {
@@ -849,14 +871,21 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         {/* Left panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <ScorePanel counts={todayCounts}/>
-          <CitPanel title="Alerte bulle" accent="butter">
-            <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>
-              {mode === 'random'   && <>Mode <strong>ALÉATOIRE</strong>. Le Bureau tire sans tenir compte de votre profil.</>}
-              {mode === 'themed'   && <>Mode <strong>THÉMATIQUE</strong>. {activeThematicCats.length} catégorie{activeThematicCats.length > 1 ? 's' : ''} active{activeThematicCats.length > 1 ? 's' : ''}.</>}
-              {mode === 'explore'  && <>Mode <strong>EXPLORATION</strong>. Voisinages sémantiques d'un concept-pivot.</>}
-              {mode === 'contrast' && <>Mode <strong>CONTRASTE</strong>. Le Bureau cherche des concepts éloignés de votre profil.</>}
-              {mode === 'cross'    && <>Mode <strong>CROISEMENT</strong>. Tirage à l'intersection sémantique de vos concepts.</>}
-            </p>
+          <CitPanel title="Alerte bulle" accent={contextualAlert?.tone === 'saturation' ? 'brick' : 'butter'}>
+            {contextualAlert ? (
+              <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0, color: contextualAlert.tone === 'saturation' ? 'var(--cit-cream)' : 'var(--cit-navy-dk)' }}>
+                <strong>{contextualAlert.text}</strong>
+              </p>
+            ) : (
+              <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>
+                {mode === 'random'   && <>Mode <strong>ALÉATOIRE</strong>. Le Bureau tire sans tenir compte de votre profil.</>}
+                {mode === 'themed'   && <>Mode <strong>THÉMATIQUE</strong>. {activeThematicCats.length} catégorie{activeThematicCats.length > 1 ? 's' : ''} active{activeThematicCats.length > 1 ? 's' : ''}.</>}
+                {mode === 'explore'  && <>Mode <strong>EXPLORATION</strong>. Voisinages sémantiques d'un concept-pivot.</>}
+                {mode === 'contrast' && <>Mode <strong>CONTRASTE</strong>. Le Bureau cherche des concepts éloignés de votre profil.</>}
+                {mode === 'cross'    && <>Mode <strong>CROISEMENT</strong>. Tirage à l'intersection sémantique de vos concepts.</>}
+                {mode === 'free'     && <>Mode <strong>LIBRE</strong>. Le Bureau suit vos curseurs d'algorithme.</>}
+              </p>
+            )}
           </CitPanel>
         </div>
 
