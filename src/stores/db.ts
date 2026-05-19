@@ -265,6 +265,10 @@ export async function deletePersonalCategory(id: string): Promise<void> {
   await db.conceptPersonalCategories.where('categoryId').equals(id).delete();
 }
 
+export async function updatePersonalCategory(id: string, updates: Partial<PersonalCategory>): Promise<void> {
+  await db.personalCategories.update(id, updates);
+}
+
 export async function getAllPersonalCategories(): Promise<PersonalCategory[]> {
   return db.personalCategories.toArray();
 }

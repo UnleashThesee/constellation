@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
 import {
-  getAllPersonalCategories, createPersonalCategory, deletePersonalCategory,
+  getAllPersonalCategories, createPersonalCategory, deletePersonalCategory, updatePersonalCategory,
   getConceptsInPersonalCategory,
   getTagUsage, db,
 } from '../../stores/db';
@@ -48,10 +48,14 @@ function PersoCatTile({ cat, active, count, onClick }: {
   );
 }
 
-function CategoryDetailPanel({ cat, concepts, onClose, onDelete, onLaunchCombo }: {
+function CategoryDetailPanel({ cat, concepts, onClose, onDelete, onLaunchCombo, onRename, onChangeColor }: {
   cat: PersonalCategory; concepts: Concept[]; onClose: () => void; onDelete: () => void;
   onLaunchCombo: () => void;
+  onRename: (newName: string) => void;
+  onChangeColor: (newColor: string) => void;
 }) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(cat.name);
   return (
     <div style={{
       background: 'var(--cit-cream)',
@@ -105,10 +109,51 @@ function CategoryDetailPanel({ cat, concepts, onClose, onDelete, onLaunchCombo }
           </div>
         )}
 
+        {editingName ? (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input value={nameInput} onChange={e => setNameInput(e.target.value)} style={{
+              flex: 1, padding: '6px 10px',
+              border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-paper)',
+              fontFamily: "'Special Elite', monospace", fontSize: 13,
+            }}/>
+            <button onClick={() => { onRename(nameInput); setEditingName(false); }} style={{
+              padding: '6px 10px', background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
+              border: '2.5px solid var(--cit-navy-dk)',
+              fontFamily: "'Alfa Slab One', serif", fontSize: 12, cursor: 'pointer',
+            }}>✓</button>
+            <button onClick={() => { setEditingName(false); setNameInput(cat.name); }} style={{
+              padding: '6px 10px', background: 'var(--cit-cream)', color: 'var(--cit-brick)',
+              border: '2.5px solid var(--cit-navy-dk)',
+              fontFamily: "'Alfa Slab One', serif", fontSize: 12, cursor: 'pointer',
+            }}>✕</button>
+          </div>
+        ) : (
+          <div>
+            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ MODIFIER LA COULEUR</div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {[
+                'oklch(35% 0.13 250)', 'oklch(48% 0.20 28)',  'oklch(70% 0.16 88)',
+                'oklch(50% 0.18 155)', 'oklch(45% 0.20 330)', 'oklch(60% 0.25 350)',
+              ].map(c => (
+                <button key={c} onClick={() => onChangeColor(c)} style={{
+                  width: 28, height: 28, background: c,
+                  border: cat.color === c ? '3px solid var(--cit-brick)' : '2px solid var(--cit-navy-dk)',
+                  cursor: 'pointer', padding: 0,
+                }}/>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 12 }}>
           {concepts.length >= 2 && (
             <CitButton tone="brick" style={{ width: '100%', justifyContent: 'center' }} onClick={onLaunchCombo}>
               ★ Combinaison avec cette étiquette
+            </CitButton>
+          )}
+          {!editingName && (
+            <CitButton style={{ width: '100%', justifyContent: 'center' }} onClick={() => setEditingName(true)}>
+              ✎ Renommer l'étiquette
             </CitButton>
           )}
           <CitButton tone="navy" style={{ width: '100%', justifyContent: 'center' }} onClick={onDelete}>
@@ -369,6 +414,17 @@ export function PersoScreen({ onTabChange }: Props) {
             onLaunchCombo={() => {
               setPendingConcepts(selectedConcepts);
               onTabChange?.('combine');
+            }}
+            onRename={async (newName) => {
+              if (!newName.trim() || newName === selectedCat.name) return;
+              await updatePersonalCategory(selectedCat.id, { name: newName.trim() });
+              toast.show({ tone: 'success', title: 'Étiquette renommée' });
+              loadAll();
+            }}
+            onChangeColor={async (newColor) => {
+              await updatePersonalCategory(selectedCat.id, { color: newColor });
+              toast.show({ tone: 'success', title: 'Couleur mise à jour' });
+              loadAll();
             }}
           />
         )}

@@ -17,7 +17,7 @@ import { CombosLibraryScreen } from './features/combos/CombosLibraryScreen';
 import { ConstraintsScreen } from './features/constraints/ConstraintsScreen';
 import { ToastProvider } from './lib/toast';
 import { getProfile, getSettings } from './stores/db';
-import { applyPaletteOverrides } from './lib/categories';
+import { applyPaletteOverrides, CATEGORIES, CATEGORY_LIST } from './lib/categories';
 
 type AppState = 'loading' | 'onboarding' | 'post-onboarding' | 'app';
 export type TabId =
@@ -84,7 +84,11 @@ export default function App() {
       try {
         // Apply user palette overrides before rendering any colored UI
         const settings = await getSettings();
-        applyPaletteOverrides(settings?.paletteOverrides);
+        if (settings?.chromaticEnabled === false) {
+          CATEGORY_LIST.forEach(c => { CATEGORIES[c.key].oklch = 'oklch(45% 0.04 250)'; });
+        } else {
+          applyPaletteOverrides(settings?.paletteOverrides);
+        }
 
         const profile = await getProfile();
         if (!profile?.onboardingDone) { setState('onboarding'); return; }

@@ -7,6 +7,7 @@ import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combina
 import { fetchRandomConcepts } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept } from '../../stores/db';
 import { useToast } from '../../lib/toast';
+import { playSound } from '../../lib/sounds';
 import type { Concept, SwipeMode, CategoryKey } from '../../types';
 
 const FALLBACK_CONCEPTS: Concept[] = [
@@ -325,7 +326,7 @@ function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: S
           const idleFg = isContrast ? 'var(--cit-butter)' : 'var(--cit-navy-dk)';
           const idleBorder = isContrast ? 'oklch(0% 0 0 / 0.4)' : 'var(--cit-navy-dk)';
           return (
-            <button key={m.id} onClick={() => setMode(m.id)} style={{
+            <button key={m.id} onClick={() => { playSound('modeChange'); setMode(m.id); }} style={{
               background: on ? activeBg : 'transparent',
               color: on ? activeFg : idleFg,
               border: `2px solid ${on ? activeBg : idleBorder}`,
@@ -770,6 +771,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                   await cacheConcept(current);
                   const next = await toggleFavorite(current.id);
                   setCurrentFavorite(next);
+                  if (next) playSound('favorite');
                 }}
                 {...cardProps}
               />

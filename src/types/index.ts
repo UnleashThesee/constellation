@@ -70,6 +70,11 @@ export interface AppSettings {
   paletteOverrides?: Record<string, string>;
   skipPostOnboarding?: boolean;
   hasSeenPostOnboarding?: boolean;
+  soundsEnabled?: boolean;
+  masterVolume?: number;
+  chromaticEnabled?: boolean;
+  operatorName?: string;
+  skipDelayDays?: number;
 }
 
 export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross';

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Concept, SwipeVerdict, SwipeHistoryEntry, SessionStats } from '../../types';
 import { recordInteraction, cacheConcept } from '../../stores/db';
+import { playSound } from '../../lib/sounds';
 
 interface Particle { id: number; dx: number; dy: number; left: number; top: number; }
 
@@ -54,6 +55,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void): SwipeD
       : verdict === 'skip' ? 'cst-fly--up' : '';
 
     setAnimClass(cls);
+    playSound(verdict === 'valid' ? 'adopt' : verdict === 'reject' ? 'reject' : 'skip');
 
     if (verdict === 'valid') {
       const sparks = Array.from({ length: 12 }, (_, i) => ({
@@ -95,6 +97,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void): SwipeD
 
   const back = useCallback(() => {
     if (animLock.current || deck.length < 2) return;
+    playSound('back');
     setDeckState(d => {
       const last = d[d.length - 1];
       return [last, ...d.slice(0, -1)];

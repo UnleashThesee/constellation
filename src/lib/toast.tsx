@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Aster } from '../components/ui/atoms';
+import { playSound } from './sounds';
 
 export type ToastTone = 'success' | 'info' | 'warning';
 
@@ -35,6 +36,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const show = useCallback((t: Omit<Toast, 'id'>) => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { ...t, id }]);
+    playSound(t.tone === 'success' ? 'toastSuccess' : t.tone === 'warning' ? 'toastWarning' : 'toastInfo');
     setTimeout(() => dismiss(id), 4800);
   }, [dismiss]);
 

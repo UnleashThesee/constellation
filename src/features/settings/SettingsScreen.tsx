@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster, FileSeal } from '../../components/ui/atoms';
 import { ColorPickerModal } from '../../components/ui/ColorPickerModal';
-import { CATEGORY_LIST, applyPaletteOverrides } from '../../lib/categories';
-import { db, getSettings, saveSettings, saveProfile } from '../../stores/db';
+import { CATEGORIES, CATEGORY_LIST, applyPaletteOverrides } from '../../lib/categories';
+import { db, getSettings, saveSettings, saveProfile, getProfile } from '../../stores/db';
 import { testLlmKey } from '../../services/llm';
 import { useToast } from '../../lib/toast';
+import { playSound, setSoundsEnabled, setMasterVolume } from '../../lib/sounds';
 import type { Category, AppSettings } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -411,6 +412,9 @@ export function SettingsScreen({ onTabChange }: Props) {
   const [colorPickerCat, setColorPickerCat] = useState<Category | null>(null);
   const [stats, setStats] = useState({ adopted: 0, rejected: 0, skipped: 0, days: 1 });
   const [catColors, setCatColors] = useState<Record<string, string>>({});
+  const [soundsOn, setSoundsOn] = useState(true);
+  const [volume, setVolume] = useState(40);
+  const [chromaticOn, setChromaticOn] = useState(true);
   const toast = useToast();
 
   useEffect(() => {
@@ -421,8 +425,12 @@ export function SettingsScreen({ onTabChange }: Props) {
         if (s.llmKey) setLlmKey(s.llmKey);
         if (s.algorithmWeights) setAlgoVals(s.algorithmWeights);
         if (s.paletteOverrides) setCatColors(s.paletteOverrides);
+        if (typeof s.soundsEnabled === 'boolean') setSoundsOn(s.soundsEnabled);
+        if (typeof s.masterVolume === 'number') setVolume(Math.round(s.masterVolume * 100));
+        if (typeof s.chromaticEnabled === 'boolean') setChromaticOn(s.chromaticEnabled);
       }
     });
+    getSettings().then(s => { if (s?.operatorName) setName(s.operatorName); });
     db.interactions.toArray().then(ints => {
       setStats({
         adopted:  ints.filter(i => i.verdict === 'valid').length,
@@ -436,6 +444,15 @@ export function SettingsScreen({ onTabChange }: Props) {
   useEffect(() => { saveSettings({ theme: theme as 'phosphore' | 'amber' | 'cyan' }).catch(() => {}); }, [theme]);
   useEffect(() => { saveSettings({ llmProvider: llmProvider as 'claude' | 'openai', llmKey }).catch(() => {}); }, [llmProvider, llmKey]);
   useEffect(() => { saveSettings({ algorithmWeights: algoVals }).catch(() => {}); }, [algoVals]);
+  useEffect(() => { saveSettings({ operatorName: name }).catch(() => {}); }, [name]);
+  useEffect(() => {
+    saveSettings({ chromaticEnabled: chromaticOn }).catch(() => {});
+    if (!chromaticOn) {
+      CATEGORY_LIST.forEach(c => { CATEGORIES[c.key].oklch = 'oklch(45% 0.04 250)'; });
+    } else {
+      applyPaletteOverrides(catColors);
+    }
+  }, [chromaticOn, catColors]);
 
   const handleTestKey = async () => {
     if (!llmKey.trim()) {
@@ -631,6 +648,37 @@ export function SettingsScreen({ onTabChange }: Props) {
             {THEMES.map(t => (
               <ThemeSwatch key={t.id} {...t} active={theme === t.id} onClick={() => setTheme(t.id)}/>
             ))}
+          </div>
+        </CitPanel>
+
+        <CitPanel title="Sons & animations" style={{ marginBottom: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <SwitchRow
+              label="Activer les sons"
+              sub="Catalogue rétro vintage généré en temps réel."
+              on={soundsOn}
+              onToggle={async () => {
+                const next = !soundsOn;
+                setSoundsOn(next);
+                await setSoundsEnabled(next);
+                if (next) playSound('toastSuccess');
+              }}/>
+            <SwitchRow
+              label="Système chromatique actif"
+              sub="Désactiver pour un mode neutre uniforme."
+              on={chromaticOn}
+              onToggle={() => setChromaticOn(v => !v)}/>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <FormRow label={`Volume principal · ${volume}%`} hint="0% = muet · ajustez selon votre environnement.">
+              <Slider value={volume} onChange={async v => {
+                setVolume(v);
+                await setMasterVolume(v / 100);
+              }}/>
+            </FormRow>
+          </div>
+          <div className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', marginTop: 10, fontStyle: 'italic' }}>
+            ★ Les animations respectent automatiquement <code>prefers-reduced-motion</code> de votre système.
           </div>
         </CitPanel>
 
