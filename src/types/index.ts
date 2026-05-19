@@ -78,9 +78,11 @@ export interface AppSettings {
   operatorName?: string;
   skipDelayDays?: number;
   lastBoostAt?: number;
+  totalUsageMs?: number;
+  hintsSeen?: Record<string, boolean>;
 }
 
-export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross';
+export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross' | 'free';
 
 export interface SessionStats {
   valid: number;
@@ -156,6 +158,7 @@ export interface Annotation {
   markdown: string;
   createdAt: Date;
   updatedAt: Date;
+  history?: Array<{ markdown: string; at: Date }>;
 }
 
 // ---- Liens manuels (Wikidata + créés par l'utilisateur) ----

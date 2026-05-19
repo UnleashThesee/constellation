@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST } from '../../lib/categories';
-import { db, getAdoptedConcepts, getAllConstraints, getAllCombinations } from '../../stores/db';
+import { db, getAdoptedConcepts, getAllConstraints, getAllCombinations, getSettings } from '../../stores/db';
 import type { CategoryKey, Interaction, Concept, SavedConstraint } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -33,13 +33,23 @@ export function StatsScreen({ onTabChange }: Props) {
   const [adopted, setAdopted] = useState<Concept[]>([]);
   const [topConstraints, setTopConstraints] = useState<SavedConstraint[]>([]);
   const [combosCount, setCombosCount] = useState(0);
+  const [usageMs, setUsageMs] = useState(0);
 
   useEffect(() => {
     db.interactions.toArray().then(arr => setInts(arr.map(i => ({ ...i, timestamp: new Date(i.timestamp) }))));
     getAdoptedConcepts().then(setAdopted);
     getAllConstraints().then(cs => setTopConstraints(cs.slice(0, 5)));
     getAllCombinations().then(cs => setCombosCount(cs.length));
+    getSettings().then(s => setUsageMs(s?.totalUsageMs ?? 0));
   }, []);
+
+  const formatUsage = (ms: number): string => {
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h${mins.toString().padStart(2, '0')}`;
+  };
 
   // Top connected concepts : score = nombre d'overlaps de catégories avec
   // les autres concepts adoptés (proxy de "centralité" dans l'univers).
@@ -108,7 +118,7 @@ export function StatsScreen({ onTabChange }: Props) {
             { label: 'ADOPTÉS',  v: String(adopt).padStart(3, '0'),  color: 'var(--cit-navy)',    trend: total > 0 ? `${adoptPct.toFixed(1)}% du total` : '—' },
             { label: 'RECYCLÉS', v: String(reject).padStart(3, '0'), color: 'var(--cit-brick)',   trend: total > 0 ? `${rejectPct.toFixed(1)}% du total` : '—' },
             { label: 'PLUS TARD', v: String(skip).padStart(3, '0'),  color: 'var(--cit-mustard)', trend: total > 0 ? `${skipPct.toFixed(1)}% du total` : '—' },
-            { label: 'FAVORIS',   v: '—',  color: 'var(--cit-rust)',    trend: 'À venir' },
+            { label: 'TEMPS D\'USAGE', v: usageMs > 0 ? formatUsage(usageMs) : '—', color: 'var(--cit-rust)', trend: usageMs > 0 ? 'cumulé sur ce navigateur' : 'aucune donnée' },
           ].map(s => (
             <div key={s.label} style={{
               background: 'var(--cit-cream)',

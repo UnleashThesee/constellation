@@ -19,7 +19,7 @@ import { BoostModal } from './features/boost/BoostModal';
 import { setPendingSwipeDeck } from './lib/pending';
 import { MobileBottomNav } from './components/ui/MobileBottomNav';
 import { ToastProvider } from './lib/toast';
-import { getProfile, getSettings } from './stores/db';
+import { getProfile, getSettings, saveSettings } from './stores/db';
 import { applyPaletteOverrides, CATEGORIES, CATEGORY_LIST } from './lib/categories';
 
 const THEME_CLASSES = ['theme-cit-phos', 'theme-cit-amber', 'theme-cit-dossier', 'theme-cit-bristol'];
@@ -117,6 +117,30 @@ export default function App() {
   }, []);
 
   const setTab = (t: TabId) => setTabState(t);
+
+  // Tracking du temps d'usage : accumule dans settings.totalUsageMs
+  useEffect(() => {
+    if (state !== 'app') return;
+    const start = Date.now();
+    let stopped = false;
+    const flush = async () => {
+      if (stopped) return;
+      stopped = true;
+      const elapsed = Date.now() - start;
+      const s = await getSettings();
+      const prev = s?.totalUsageMs ?? 0;
+      await saveSettings({ totalUsageMs: prev + elapsed });
+    };
+    // Sauvegarde quand l'onglet devient invisible (changement d'onglet, fermeture)
+    const onVis = () => { if (document.hidden) flush(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('beforeunload', flush);
+      flush();
+    };
+  }, [state]);
 
   useEffect(() => {
     (async () => {

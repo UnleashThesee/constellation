@@ -417,6 +417,8 @@ export function SettingsScreen({ onTabChange }: Props) {
   const [volume, setVolume] = useState(40);
   const [chromaticOn, setChromaticOn] = useState(true);
   const [skipDelay, setSkipDelay] = useState(30);
+  const [presets, setPresets] = useState<NonNullable<AppSettings['algorithmPresets']>>([]);
+  const [newPresetName, setNewPresetName] = useState('');
   const toast = useToast();
 
   useEffect(() => {
@@ -431,6 +433,7 @@ export function SettingsScreen({ onTabChange }: Props) {
         if (typeof s.masterVolume === 'number') setVolume(Math.round(s.masterVolume * 100));
         if (typeof s.chromaticEnabled === 'boolean') setChromaticOn(s.chromaticEnabled);
         if (typeof s.skipDelayDays === 'number') setSkipDelay(s.skipDelayDays);
+        if (Array.isArray(s.algorithmPresets)) setPresets(s.algorithmPresets);
       }
     });
     getSettings().then(s => { if (s?.operatorName) setName(s.operatorName); });
@@ -613,8 +616,75 @@ export function SettingsScreen({ onTabChange }: Props) {
         <CitPanel title="Curseurs d'algorithme" style={{ marginBottom: 22 }}>
           <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', marginBottom: 14 }}>
             Comment voulez-vous que le Bureau pioche vos fiches ? La somme doit faire 100 %.
+            Utilisez le mode <strong>« Libre »</strong> au Swipe pour appliquer ces curseurs.
           </div>
           <AlgoSliders vals={algoVals} setVals={setAlgoVals}/>
+
+          <div style={{ marginTop: 18, paddingTop: 14, borderTop: '2px dashed var(--cit-navy-dk)' }}>
+            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 8 }}>
+              ★ PRESETS NOMMÉS
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <input value={newPresetName} onChange={e => setNewPresetName(e.target.value)}
+                placeholder="Nom du preset (ex. : Curieux modéré)…"
+                style={{
+                  flex: 1, padding: '8px 12px',
+                  border: '2.5px solid var(--cit-navy-dk)',
+                  background: 'var(--cit-paper)',
+                  fontFamily: "'Special Elite', monospace", fontSize: 13,
+                  color: 'var(--cit-navy-dk)',
+                  boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 3px 3px 0 var(--cit-navy-dk)',
+                }}/>
+              <CitButton tone="brick" onClick={async () => {
+                if (!newPresetName.trim()) {
+                  toast.show({ tone: 'warning', title: 'Nom requis' });
+                  return;
+                }
+                const next = [...presets, { name: newPresetName.trim(), weights: algoVals }];
+                setPresets(next);
+                await saveSettings({ algorithmPresets: next });
+                setNewPresetName('');
+                toast.show({ tone: 'success', title: 'Preset enregistré', body: `« ${newPresetName} » sauvegardé.` });
+              }}>★ Enregistrer</CitButton>
+            </div>
+            {presets.length === 0 ? (
+              <div className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
+                Aucun preset enregistré. Saisissez un nom et cliquez Enregistrer pour sauvegarder
+                la configuration actuelle.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {presets.map((p, i) => (
+                  <div key={i} style={{
+                    display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 10, alignItems: 'center',
+                    padding: '6px 10px',
+                    background: 'var(--cit-cream)',
+                    border: '2px solid var(--cit-navy-dk)',
+                    boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+                  }}>
+                    <span className="cit-h1" style={{ fontSize: 14, lineHeight: 1 }}>{p.name}</span>
+                    <span className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>
+                      EXP {p.weights.explore} · ALÉ {p.weights.random} · CTR {p.weights.contrast} · TRD {p.weights.trending}
+                    </span>
+                    <CitButton size="sm" tone="butter" onClick={() => {
+                      setAlgoVals(p.weights);
+                      toast.show({ tone: 'success', title: `Preset « ${p.name} » appliqué` });
+                    }}>★ Appliquer</CitButton>
+                    <button onClick={async () => {
+                      if (!confirm(`Supprimer le preset « ${p.name} » ?`)) return;
+                      const next = presets.filter((_, j) => j !== i);
+                      setPresets(next);
+                      await saveSettings({ algorithmPresets: next });
+                    }} style={{
+                      padding: '4px 8px', background: 'var(--cit-cream)', color: 'var(--cit-brick)',
+                      border: '2px solid var(--cit-navy-dk)',
+                      fontFamily: "'Alfa Slab One', serif", fontSize: 11, cursor: 'pointer',
+                    }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </CitPanel>
 
         <CitPanel title="Système chromatique des catégories" style={{ marginBottom: 22 }}>

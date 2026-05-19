@@ -719,6 +719,44 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
       })}
       </div>{/* fin couche transformée */}
 
+      {/* Mini-map (visible quand > 30 nœuds OU manuellement togglée) */}
+      {nodes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 8, left: 8, zIndex: 5,
+          width: 140, height: 100,
+          background: 'oklch(96% 0.025 90 / 0.85)',
+          border: '2px solid var(--cit-navy-dk)',
+          boxShadow: '3px 3px 0 var(--cit-navy-dk)',
+          overflow: 'hidden',
+        }}>
+          <div className="cit-condensed" style={{ fontSize: 8, color: 'var(--cit-navy-lt)', padding: '2px 4px', borderBottom: '1.5px solid var(--cit-navy-dk)' }}>
+            ★ MINI-MAP · {nodes.length} NŒUDS
+          </div>
+          <div style={{ position: 'relative', width: '100%', height: 80 }}>
+            {nodes.map(n => (
+              <span key={n.concept.id} style={{
+                position: 'absolute',
+                left: `${n.x}%`, top: `${n.y}%`,
+                width: 4, height: 4,
+                transform: 'translate(-50%, -50%)',
+                background: selectedId === n.concept.id ? 'var(--cit-brick)' : n.dominant,
+                border: '0.5px solid var(--cit-navy-dk)',
+              }}/>
+            ))}
+            {/* Viewport indicator (basé sur pan/zoom) */}
+            <div style={{
+              position: 'absolute',
+              left: `${Math.max(0, Math.min(80, 50 - (50 / zoom) - (pan.x / 10)))}%`,
+              top: `${Math.max(0, Math.min(70, 50 - (40 / zoom) - (pan.y / 10)))}%`,
+              width: `${Math.min(100, 100 / zoom)}%`,
+              height: `${Math.min(100, 80 / zoom)}%`,
+              border: '1.5px solid var(--cit-brick)',
+              pointerEvents: 'none',
+            }}/>
+          </div>
+        </div>
+      )}
+
       {/* Tooltip flottante au hover */}
       {hoverNode && (
         <div style={{

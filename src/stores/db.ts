@@ -303,9 +303,19 @@ export async function getAnnotation(conceptId: string): Promise<Annotation | und
 export async function saveAnnotation(conceptId: string, markdown: string): Promise<void> {
   const existing = await getAnnotation(conceptId);
   if (existing?.id != null) {
-    await db.annotations.update(existing.id, { markdown, updatedAt: new Date() });
+    // Snapshot dans l'historique si différence significative et > 5 min depuis dernière save
+    const now = Date.now();
+    const lastUpdate = +existing.updatedAt;
+    const sigDiff = Math.abs((existing.markdown ?? '').length - markdown.length) > 50;
+    const enoughTime = now - lastUpdate > 5 * 60 * 1000;
+    if (sigDiff && enoughTime && existing.markdown.trim() !== '') {
+      const history = [...(existing.history ?? []), { markdown: existing.markdown, at: existing.updatedAt }].slice(-10);
+      await db.annotations.update(existing.id, { markdown, updatedAt: new Date(), history });
+    } else {
+      await db.annotations.update(existing.id, { markdown, updatedAt: new Date() });
+    }
   } else {
-    await db.annotations.add({ conceptId, markdown, createdAt: new Date(), updatedAt: new Date() });
+    await db.annotations.add({ conceptId, markdown, createdAt: new Date(), updatedAt: new Date(), history: [] });
   }
 }
 

@@ -22,6 +22,8 @@ interface Props {
 
 export function ConceptDetailModal({ concept, open, onClose }: Props) {
   const [notes, setNotes] = useState('');
+  const [annotationHistory, setAnnotationHistory] = useState<Array<{ markdown: string; at: Date }>>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [favorite, setFavorite] = useState(false);
@@ -41,6 +43,8 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
       setFavorite(!!cached?.isFavorite);
       const ann = await getAnnotation(concept.id);
       setNotes(ann?.markdown ?? '');
+      setAnnotationHistory(ann?.history ?? []);
+      setShowHistory(false);
       const t = await getTagsForConcept(concept.id);
       setTags(t);
       const cats = await getAllPersonalCategories();
@@ -290,11 +294,55 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
                   boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 3px 3px 0 var(--cit-navy-dk)',
                   resize: 'vertical',
                 }}/>
-              <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginTop: 4, fontStyle: 'italic' }}>
-                ★ Sauvegarde locale
-                {savedAt ? ` · dernière modif ${savedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}
-                {' · '}{notes.split(/\s+/).filter(Boolean).length} mot{notes.split(/\s+/).filter(Boolean).length > 1 ? 's' : ''}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
+                  ★ Sauvegarde locale
+                  {savedAt ? ` · dernière modif ${savedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  {' · '}{notes.split(/\s+/).filter(Boolean).length} mot{notes.split(/\s+/).filter(Boolean).length > 1 ? 's' : ''}
+                </div>
+                {annotationHistory.length > 0 && (
+                  <button onClick={() => setShowHistory(s => !s)} style={{
+                    background: 'transparent', color: 'var(--cit-brick)',
+                    border: '1.5px solid var(--cit-navy-dk)',
+                    fontFamily: "'Oswald', sans-serif", fontSize: 10, fontWeight: 700,
+                    letterSpacing: '.12em', textTransform: 'uppercase',
+                    padding: '2px 8px', cursor: 'pointer',
+                  }}>{showHistory ? '✕ Fermer' : `↺ Historique (${annotationHistory.length})`}</button>
+                )}
               </div>
+              {showHistory && annotationHistory.length > 0 && (
+                <div style={{
+                  marginTop: 8, padding: '8px 12px',
+                  background: 'var(--cit-paper-dk)',
+                  border: '2px dashed var(--cit-navy-dk)',
+                  maxHeight: 200, overflow: 'auto',
+                }}>
+                  <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 6 }}>
+                    ★ VERSIONS PRÉCÉDENTES
+                  </div>
+                  {[...annotationHistory].reverse().map((h, i) => (
+                    <div key={i} style={{
+                      padding: '6px 8px', marginBottom: 4,
+                      background: 'var(--cit-cream)',
+                      border: '1.5px solid var(--cit-navy-dk)',
+                      fontFamily: "'Special Elite', monospace", fontSize: 11,
+                      color: 'var(--cit-navy-dk)',
+                    }}>
+                      <div className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>
+                        ★ {new Date(h.at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{h.markdown.slice(0, 200)}{h.markdown.length > 200 ? '…' : ''}</div>
+                      <button onClick={() => { setNotes(h.markdown); setShowHistory(false); }} style={{
+                        marginTop: 4, padding: '2px 8px',
+                        background: 'var(--cit-butter)', color: 'var(--cit-navy-dk)',
+                        border: '1.5px solid var(--cit-navy-dk)',
+                        fontFamily: "'Oswald', sans-serif", fontSize: 9, fontWeight: 700,
+                        letterSpacing: '.10em', cursor: 'pointer',
+                      }}>↶ Restaurer</button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {notes.trim() && (
                 <div style={{
                   marginTop: 12, padding: '10px 14px',

@@ -5,7 +5,7 @@ import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../compo
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
 import { fetchRandomConcepts } from '../../services/wikidata';
-import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept } from '../../stores/db';
+import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
 import { consumePendingSwipeDeck } from '../../lib/pending';
@@ -50,6 +50,7 @@ const MODES: Array<{ id: SwipeMode; label: string }> = [
   { id: 'explore',  label: 'Exploration' },
   { id: 'contrast', label: 'Contraste' },
   { id: 'cross',    label: 'Croisement' },
+  { id: 'free',     label: 'Libre' },
 ];
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -564,7 +565,23 @@ const FOOTERS: Record<SwipeMode, string> = {
   explore:  'MODE EXPLORATION · LE BUREAU TIRE DEPUIS UN CONCEPT-PIVOT',
   contrast: 'MODE CONTRASTE · LE BUREAU CHERCHE CE QUI VOUS DÉRANGE',
   cross:    'MODE CROISEMENT · LE BUREAU TIRE DES FICHES À L\'INTERSECTION',
+  free:     'MODE LIBRE · LE BUREAU SUIT VOS CURSEURS D\'ALGORITHME',
 };
+
+/** Tire une source selon les proportions des curseurs algo (exploration/aléatoire/contraste/trending). */
+function pickSourceFromWeights(weights?: { explore: number; random: number; contrast: number; trending: number }): SwipeMode {
+  const w = weights ?? { explore: 35, random: 30, contrast: 20, trending: 15 };
+  // Trending est désactivé en mono-user → on le redistribue sur Aléatoire
+  const explore = w.explore;
+  const random = w.random + w.trending;
+  const contrast = w.contrast;
+  const total = explore + random + contrast;
+  if (total <= 0) return 'random';
+  const r = Math.random() * total;
+  if (r < explore) return 'explore';
+  if (r < explore + random) return 'random';
+  return 'contrast';
+}
 
 export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => void }) {
   const [mode, setMode] = useState<SwipeMode>('random');
@@ -583,7 +600,35 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [currentFavorite, setCurrentFavorite] = useState(false);
   const [boostLabel, setBoostLabel] = useState<string | null>(null);
   const [boostInitial, setBoostInitial] = useState(0);
+  const [freeSource, setFreeSource] = useState<SwipeMode>('random');
+  const [algoWeights, setAlgoWeights] = useState<{ explore: number; random: number; contrast: number; trending: number } | undefined>(undefined);
+  const [showHints, setShowHints] = useState(false);
   const toast = useToast();
+
+  // First-use hint
+  useEffect(() => {
+    getSettings().then(s => {
+      if (!s?.hintsSeen?.swipe) setShowHints(true);
+    });
+  }, []);
+
+  const dismissHints = async () => {
+    setShowHints(false);
+    const s = await getSettings();
+    await saveSettings({ hintsSeen: { ...(s?.hintsSeen ?? {}), swipe: true } });
+  };
+
+  // Load algo weights once (for 'free' mode)
+  useEffect(() => {
+    getSettings().then(s => {
+      if (s?.algorithmWeights) setAlgoWeights(s.algorithmWeights);
+    });
+  }, []);
+
+  // En mode 'free', re-pick la source à chaque changement de current (donc à chaque verdict)
+  useEffect(() => {
+    if (mode === 'free') setFreeSource(pickSourceFromWeights(algoWeights));
+  }, [mode, algoWeights]);
 
   // Initial big pool fetch — consomme un éventuel boost-deck en priorité
   useEffect(() => {
@@ -663,6 +708,10 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         deck = matched.length > 0 ? matched : rawDeck;
         break;
       }
+      case 'free':
+        // Le mode libre = mix de plusieurs sources selon les curseurs
+        deck = rawDeck;
+        break;
       case 'random':
       default:
         deck = rawDeck;
@@ -708,6 +757,14 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         return { sourceOverride: 'Contraste · loin de votre univers', contrast: true };
       case 'cross':
         return { sourceOverride: `Croisement · à l'intersection de ${crossSelection.length} concepts`, leftBorder: crossSelection.length > 0 ? crossMix.css : undefined };
+      case 'free': {
+        const picked = freeSource;
+        const labelMap: Record<SwipeMode, string> = {
+          random: 'Aléatoire', explore: 'Exploration', contrast: 'Contraste',
+          themed: 'Thématique', cross: 'Croisement', free: 'Libre',
+        };
+        return { sourceOverride: `Libre · ${labelMap[picked].toLowerCase()} sélectionné par vos curseurs` };
+      }
       default: return {};
     }
   })();
@@ -897,6 +954,41 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
       />
+
+      {showHints && (
+        <div onClick={dismissHints} style={{
+          position: 'fixed', inset: 0, zIndex: 80,
+          background: 'oklch(0% 0 0 / 0.6)',
+          display: 'grid', placeItems: 'center', padding: 24,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: 'var(--cit-cream)',
+            border: '3px solid var(--cit-navy-dk)',
+            boxShadow: '8px 8px 0 var(--cit-navy-dk)',
+            padding: '20px 24px', maxWidth: 480, width: '100%',
+          }}>
+            <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>★ PREMIÈRE VISITE</div>
+            <h3 className="cit-h1" style={{ fontSize: 28, lineHeight: 0.95, margin: '4px 0 12px' }}>
+              COMMANDES DU SWIPE<span style={{ color: 'var(--cit-brick)' }}>!</span>
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', rowGap: 8, columnGap: 14, alignItems: 'center' }}>
+              <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 16, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 12px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>→</kbd>
+              <span className="cit-typed" style={{ fontSize: 12 }}>Adopter (ou swipe à droite)</span>
+              <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 16, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 12px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>←</kbd>
+              <span className="cit-typed" style={{ fontSize: 12 }}>Recycler (ou swipe à gauche)</span>
+              <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 16, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 12px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>↑</kbd>
+              <span className="cit-typed" style={{ fontSize: 12 }}>Plus tard (ou swipe vers le haut)</span>
+              <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 16, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 12px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>⌫</kbd>
+              <span className="cit-typed" style={{ fontSize: 12 }}>Retour arrière (10 max)</span>
+              <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 12, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 8px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>tap</kbd>
+              <span className="cit-typed" style={{ fontSize: 12 }}>Ouvre la fiche détaillée du concept</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
+              <CitButton tone="brick" onClick={dismissHints}>★ Compris !</CitButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
