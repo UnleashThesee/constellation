@@ -1,0 +1,104 @@
+// ============================================================
+// TYPES CONSTELLATION — Phase 1
+// ============================================================
+
+export type CategoryKey =
+  | 'philosophie' | 'sciences' | 'humaines' | 'economie'
+  | 'litterature' | 'arts' | 'musique' | 'cinema'
+  | 'jeuvideo' | 'histoire' | 'geographie' | 'personnages';
+
+export interface Category {
+  key: CategoryKey;
+  label: string;
+  short: string;
+  oklch: string;
+}
+
+export type CategoryWeight = [CategoryKey, number];
+
+export type SwipeVerdict = 'valid' | 'reject' | 'skip';
+
+export interface Concept {
+  id: string;
+  wikidataId?: string;
+  name: string;
+  years?: string;
+  kind: string; // Auteur, Œuvre, Courant, Personnage, Théorie…
+  cats: CategoryWeight[];
+  blurb: string;
+  portrait?: string; // URL image Wikimedia ou placeholder text
+  refs: string[];
+  coord?: string;
+  rec?: string;
+  sourceKind?: SourceKind;
+  sourceTag?: string;
+  createdAt?: Date;
+}
+
+export type SourceKind = 'linked' | 'random' | 'explore' | 'contrast' | 'cross';
+
+export interface Interaction {
+  id?: number;
+  conceptId: string;
+  verdict: SwipeVerdict;
+  timestamp: Date;
+  sessionId: string;
+}
+
+export interface UserProfile {
+  id?: number;
+  onboardingDone: boolean;
+  onboardingVerdicts: Array<{ conceptId: string; verdict: SwipeVerdict }>;
+  seedConcepts: string[];
+  categoryWeights: Partial<Record<CategoryKey, number>>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AppSettings {
+  id?: number;
+  theme: 'phosphore' | 'amber' | 'cyan';
+  swipeMode: SwipeMode;
+}
+
+export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross';
+
+export interface SessionStats {
+  valid: number;
+  reject: number;
+  skip: number;
+  favs: number;
+}
+
+export interface SwipeHistoryEntry {
+  name: string;
+  verdict: SwipeVerdict;
+  t: string;
+}
+
+// Wikidata raw entity shape (partial)
+export interface WikidataEntity {
+  id: string;
+  labels?: { fr?: { value: string }; en?: { value: string } };
+  descriptions?: { fr?: { value: string }; en?: { value: string } };
+  claims?: Record<string, WikidataClaim[]>;
+  sitelinks?: { frwiki?: { title: string }; enwiki?: { title: string } };
+}
+
+export interface WikidataClaim {
+  mainsnak: {
+    snaktype: string;
+    property: string;
+    datavalue?: {
+      type: string;
+      value: unknown;
+    };
+  };
+}
+
+export interface WikipediaSummary {
+  title: string;
+  extract: string;
+  thumbnail?: { source: string; width: number; height: number };
+  content_urls?: { desktop?: { page: string } };
+}

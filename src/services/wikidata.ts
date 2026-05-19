@@ -1,0 +1,279 @@
+import type { Concept, CategoryKey, CategoryWeight } from '../types';
+import { cacheConcept, getCachedConcept } from '../stores/db';
+
+const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
+const WIKIPEDIA_API_FR = 'https://fr.wikipedia.org/api/rest_v1';
+
+// ---- SPARQL queries ----
+
+// 30 concepts culturels variés couvrant les 12 catégories pour l'onboarding
+const ONBOARDING_SPARQL = `
+SELECT DISTINCT ?item ?itemLabel ?itemDescription ?instanceLabel WHERE {
+  VALUES ?item {
+    wd:Q7199 wd:Q9358 wd:Q32522 wd:Q9252 wd:Q154842
+    wd:Q3772 wd:Q47209 wd:Q93341 wd:Q174 wd:Q1402
+    wd:Q36180 wd:Q45789 wd:Q153570 wd:Q81074 wd:Q208202
+    wd:Q79025 wd:Q185925 wd:Q22688 wd:Q42511 wd:Q25191
+    wd:Q160852 wd:Q7243 wd:Q30461 wd:Q38193 wd:Q184843
+    wd:Q188450 wd:Q11934 wd:Q60787 wd:Q170978 wd:Q208569
+  }
+  ?item wdt:P31 ?instance.
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
+}
+LIMIT 30
+`;
+
+// Recherche libre
+const searchSPARQL = (query: string) => `
+SELECT DISTINCT ?item ?itemLabel ?itemDescription WHERE {
+  SERVICE wikibase:mwapi {
+    bd:serviceParam wikibase:endpoint "www.wikidata.org";
+      wikibase:api "EntitySearch";
+      mwapi:search "${query.replace(/"/g, '\\"')}";
+      mwapi:language "fr";
+      mwapi:limit "10".
+    ?item wikibase:apiOutputItem mwapi:item.
+  }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
+}
+LIMIT 10
+`;
+
+// ---- Wikidata item → catégories heuristiques ----
+
+const WIKIDATA_TYPE_TO_CAT: Array<[string[], CategoryKey[]]> = [
+  [['Q5'], ['personnages']],
+  [['Q36180', 'Q482980', 'Q4964182', 'Q1930187'], ['litterature']],
+  [['Q11424', 'Q201658'], ['cinema']],
+  [['Q482994', 'Q215380', 'Q488205'], ['musique']],
+  [['Q7397', 'Q16166344'], ['jeuvideo']],
+  [['Q11862764', 'Q18536349', 'Q21198', 'Q28640'], ['sciences']],
+  [['Q35120', 'Q4830453', 'Q783794'], ['economie']],
+  [['Q11862764', 'Q11862764'], ['humaines']],
+  [['Q3305213', 'Q93184', 'Q213156'], ['arts']],
+  [['Q9174', 'Q179805', 'Q4830453', 'Q2920921'], ['philosophie']],
+  [['Q3914', 'Q100995'], ['histoire']],
+  [['Q82794', 'Q1187580'], ['geographie']],
+];
+
+function guessCategories(instanceOf: string[], description: string): CategoryWeight[] {
+  const scores: Partial<Record<CategoryKey, number>> = {};
+
+  for (const [types, cats] of WIKIDATA_TYPE_TO_CAT) {
+    const match = types.some(t => instanceOf.includes(t));
+    if (match) {
+      for (const cat of cats) {
+        scores[cat] = (scores[cat] ?? 0) + 1;
+      }
+    }
+  }
+
+  // Heuristiques textuelles sur la description
+  const desc = description.toLowerCase();
+  if (desc.includes('philosoph') || desc.includes('penseur') || desc.includes('théori'))
+    scores.philosophie = (scores.philosophie ?? 0) + 2;
+  if (desc.includes('musicien') || desc.includes('musique') || desc.includes('compositeur'))
+    scores.musique = (scores.musique ?? 0) + 2;
+  if (desc.includes('réalisateur') || desc.includes('cinéast') || desc.includes('film'))
+    scores.cinema = (scores.cinema ?? 0) + 2;
+  if (desc.includes('jeu vidéo') || desc.includes('video game') || desc.includes('jeu de rôle'))
+    scores.jeuvideo = (scores.jeuvideo ?? 0) + 2;
+  if (desc.includes('écrivain') || desc.includes('auteur') || desc.includes('roman') || desc.includes('poète'))
+    scores.litterature = (scores.litterature ?? 0) + 2;
+  if (desc.includes('artiste') || desc.includes('peintre') || desc.includes('sculpteur'))
+    scores.arts = (scores.arts ?? 0) + 2;
+  if (desc.includes('historien') || desc.includes('histoire') || desc.includes('archéolog'))
+    scores.histoire = (scores.histoire ?? 0) + 2;
+  if (desc.includes('géograph') || desc.includes('pays') || desc.includes('ville') || desc.includes('territoire'))
+    scores.geographie = (scores.geographie ?? 0) + 2;
+  if (desc.includes('économist') || desc.includes('économie') || desc.includes('entrepreneur'))
+    scores.economie = (scores.economie ?? 0) + 2;
+  if (desc.includes('scientifique') || desc.includes('mathématicien') || desc.includes('physicien') || desc.includes('biologiste'))
+    scores.sciences = (scores.sciences ?? 0) + 2;
+
+  if (Object.keys(scores).length === 0) scores.personnages = 1;
+
+  const total = Object.values(scores).reduce((s, v) => s + (v ?? 0), 0);
+  const sorted = (Object.entries(scores) as Array<[CategoryKey, number]>)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3);
+
+  const catTotal = sorted.reduce((s, [, v]) => s + v, 0);
+  return sorted.map(([k, v]) => [k, Math.round((v / catTotal) * 100) / 100] as CategoryWeight);
+}
+
+function guessKind(instanceOf: string[], description: string): string {
+  const desc = description.toLowerCase();
+  if (instanceOf.includes('Q5')) return 'Personnage';
+  if (instanceOf.some(i => ['Q7397', 'Q16166344'].includes(i))) return 'Jeu vidéo';
+  if (instanceOf.some(i => ['Q11424', 'Q201658'].includes(i))) return 'Film';
+  if (instanceOf.some(i => ['Q482994', 'Q215380'].includes(i))) return 'Œuvre musicale';
+  if (desc.includes('roman') || desc.includes('livre') || instanceOf.includes('Q7725634')) return 'Œuvre';
+  if (desc.includes('courant') || desc.includes('mouvement') || desc.includes('école')) return 'Courant';
+  if (desc.includes('théorie') || desc.includes('concept') || desc.includes('doctrine')) return 'Théorie';
+  return 'Concept';
+}
+
+// ---- SPARQL executor ----
+
+async function sparql<T>(query: string): Promise<T[]> {
+  const url = new URL('https://query.wikidata.org/sparql');
+  url.searchParams.set('query', query);
+  url.searchParams.set('format', 'json');
+
+  const res = await fetch(url.toString(), {
+    headers: { Accept: 'application/sparql-results+json' },
+  });
+  if (!res.ok) throw new Error(`SPARQL ${res.status}`);
+  const data = await res.json();
+  return data.results?.bindings ?? [];
+}
+
+// ---- Wikipedia thumbnail ----
+
+async function fetchWikipediaThumbnail(frTitle: string): Promise<string | undefined> {
+  try {
+    const encoded = encodeURIComponent(frTitle.replace(/ /g, '_'));
+    const res = await fetch(`${WIKIPEDIA_API_FR}/page/summary/${encoded}`);
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return data.thumbnail?.source;
+  } catch {
+    return undefined;
+  }
+}
+
+// ---- Wikidata entity details ----
+
+interface RawBinding {
+  item?: { value: string };
+  itemLabel?: { value: string };
+  itemDescription?: { value: string };
+  instanceLabel?: { value: string };
+  frwiki?: { value: string };
+}
+
+function bindingToConcept(b: RawBinding): Concept | null {
+  if (!b.item?.value || !b.itemLabel?.value) return null;
+
+  const qid = b.item.value.replace('http://www.wikidata.org/entity/', '');
+  const name = b.itemLabel.value;
+  const desc = b.itemDescription?.value ?? '';
+  const instanceLabels = b.instanceLabel?.value ? [b.instanceLabel.value] : [];
+
+  const cats = guessCategories([], desc);
+  const kind = guessKind(instanceLabels, desc);
+
+  return {
+    id: qid,
+    wikidataId: qid,
+    name,
+    kind,
+    cats,
+    blurb: desc || `${name} — concept issu de Wikidata.`,
+    refs: [],
+    portrait: undefined,
+    rec: `REC-${qid}`,
+    sourceKind: 'random',
+    createdAt: new Date(),
+  };
+}
+
+// ---- Public API ----
+
+export async function fetchOnboardingConcepts(): Promise<Concept[]> {
+  const rows = await sparql<RawBinding>(ONBOARDING_SPARQL);
+
+  const concepts: Concept[] = [];
+  for (const row of rows) {
+    const c = bindingToConcept(row);
+    if (c) concepts.push(c);
+  }
+
+  // Shuffle et limiter à 30
+  const shuffled = concepts.sort(() => Math.random() - 0.5).slice(0, 30);
+
+  // Enrichir portraits en parallèle (best-effort)
+  await Promise.allSettled(
+    shuffled.map(async (c) => {
+      const cached = await getCachedConcept(c.id);
+      if (cached?.portrait) { c.portrait = cached.portrait; return; }
+      const img = await fetchWikipediaThumbnail(c.name);
+      if (img) c.portrait = img;
+      await cacheConcept(c);
+    }),
+  );
+
+  return shuffled;
+}
+
+export async function searchConcepts(query: string): Promise<Concept[]> {
+  const rows = await sparql<RawBinding>(searchSPARQL(query));
+  return rows.map(bindingToConcept).filter(Boolean) as Concept[];
+}
+
+export async function fetchConceptById(qid: string): Promise<Concept | null> {
+  const cached = await getCachedConcept(qid);
+  if (cached) return cached;
+
+  const url = new URL(WIKIDATA_API);
+  url.searchParams.set('action', 'wbgetentities');
+  url.searchParams.set('ids', qid);
+  url.searchParams.set('languages', 'fr|en');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('origin', '*');
+
+  const res = await fetch(url.toString());
+  if (!res.ok) return null;
+  const data = await res.json();
+  const entity = data.entities?.[qid];
+  if (!entity) return null;
+
+  const name =
+    entity.labels?.fr?.value ?? entity.labels?.en?.value ?? qid;
+  const desc =
+    entity.descriptions?.fr?.value ?? entity.descriptions?.en?.value ?? '';
+
+  const instanceOf: string[] = (entity.claims?.P31 ?? [])
+    .map((c: { mainsnak?: { datavalue?: { value?: { id?: string } } } }) =>
+      c.mainsnak?.datavalue?.value?.id)
+    .filter(Boolean);
+
+  const frTitle = entity.sitelinks?.frwiki?.title;
+  const portrait = frTitle ? await fetchWikipediaThumbnail(frTitle) : undefined;
+
+  const concept: Concept = {
+    id: qid,
+    wikidataId: qid,
+    name,
+    kind: guessKind(instanceOf, desc),
+    cats: guessCategories(instanceOf, desc),
+    blurb: desc || `${name} — entité Wikidata.`,
+    refs: [],
+    portrait,
+    rec: `REC-${qid}`,
+    sourceKind: 'random',
+    createdAt: new Date(),
+  };
+
+  await cacheConcept(concept);
+  return concept;
+}
+
+export async function fetchRandomConcepts(count = 5): Promise<Concept[]> {
+  // IDs Wikidata notables pour le mode Aléatoire
+  const NOTABLE_IDS = [
+    'Q9358', 'Q7199', 'Q32522', 'Q9252', 'Q154842', 'Q3772', 'Q47209',
+    'Q93341', 'Q174', 'Q1402', 'Q36180', 'Q45789', 'Q153570', 'Q81074',
+    'Q208202', 'Q79025', 'Q185925', 'Q22688', 'Q42511', 'Q25191',
+    'Q160852', 'Q7243', 'Q30461', 'Q38193', 'Q184843', 'Q188450',
+    'Q11934', 'Q60787', 'Q170978', 'Q208569', 'Q862', 'Q8028',
+    'Q3741',  'Q9061',  'Q1343',  'Q9217',  'Q55422', 'Q7391',
+  ];
+  const shuffled = NOTABLE_IDS.sort(() => Math.random() - 0.5).slice(0, count + 5);
+  const results = await Promise.allSettled(shuffled.map(fetchConceptById));
+  return results
+    .filter((r): r is PromiseFulfilledResult<Concept> => r.status === 'fulfilled' && r.value !== null)
+    .map(r => r.value)
+    .slice(0, count);
+}
