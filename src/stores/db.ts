@@ -3,7 +3,7 @@ import type {
   Concept, Interaction, UserProfile, AppSettings, SwipeVerdict,
   Tag, ConceptTag, PersonalCategory, ConceptPersonalCategory,
   Annotation, SavedCombination, Idea,
-  SavedConstraint, DeepDiveRecord,
+  SavedConstraint, DeepDiveRecord, ConceptLink,
 } from '../types';
 
 export class ConstellationDB extends Dexie {
@@ -22,6 +22,7 @@ export class ConstellationDB extends Dexie {
   deepDives!: Table<DeepDiveRecord>;
   cacheLlm!: Table<{ hash: string; response: string; createdAt: Date }>;
   cacheWiki!: Table<{ key: string; data: unknown; createdAt: Date }>;
+  links!: Table<ConceptLink>;
 
   constructor() {
     super('ConstellationDB');
@@ -49,6 +50,9 @@ export class ConstellationDB extends Dexie {
       deepDives:   'id, ideaId, createdAt',
       cacheLlm:    'hash, createdAt',
       cacheWiki:   'key, createdAt',
+    });
+    this.version(4).stores({
+      links: 'id, conceptAId, conceptBId, type, [conceptAId+conceptBId]',
     });
   }
 }
@@ -487,6 +491,42 @@ export async function cacheWikiGet<T = unknown>(key: string): Promise<T | null> 
 
 export async function cacheWikiSet<T>(key: string, data: T): Promise<void> {
   await db.cacheWiki.put({ key, data, createdAt: new Date() });
+}
+
+// ---- liens manuels ----
+
+export async function createLink(conceptAId: string, conceptBId: string, opts?: { type?: ConceptLink['type']; strength?: number; note?: string }): Promise<ConceptLink> {
+  // Évite les doublons (peu importe l'ordre des deux concepts)
+  const existing = await db.links
+    .where('[conceptAId+conceptBId]').equals([conceptAId, conceptBId])
+    .or('[conceptAId+conceptBId]').equals([conceptBId, conceptAId])
+    .first();
+  if (existing) return existing;
+  const link: ConceptLink = {
+    id: uid(),
+    conceptAId, conceptBId,
+    type: opts?.type ?? 'manual',
+    strength: opts?.strength ?? 2,
+    note: opts?.note,
+    createdAt: new Date(),
+  };
+  await db.links.put(link);
+  return link;
+}
+
+export async function deleteLink(id: string): Promise<void> {
+  await db.links.delete(id);
+}
+
+export async function getAllLinks(): Promise<ConceptLink[]> {
+  return db.links.toArray();
+}
+
+export async function getLinksForConcept(conceptId: string): Promise<ConceptLink[]> {
+  return db.links
+    .where('conceptAId').equals(conceptId)
+    .or('conceptBId').equals(conceptId)
+    .toArray();
 }
 
 // ---- CSV export ----

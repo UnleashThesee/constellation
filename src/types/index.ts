@@ -156,6 +156,18 @@ export interface Annotation {
   updatedAt: Date;
 }
 
+// ---- Liens manuels (Wikidata + créés par l'utilisateur) ----
+
+export interface ConceptLink {
+  id: string;
+  conceptAId: string;
+  conceptBId: string;
+  type: 'manual' | 'wikidata' | 'shared-category';
+  strength: number;            // 1-3 (épaisseur du lien)
+  note?: string;
+  createdAt: Date;
+}
+
 // ---- Contraintes ----
 
 export interface SavedConstraint {

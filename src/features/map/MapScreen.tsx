@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST, conceptDominant, gradientForWeights } from '../../lib/categories';
-import { getAdoptedConcepts, getConceptsByVerdict, giveSecondChance } from '../../stores/db';
+import { getAdoptedConcepts, getConceptsByVerdict, giveSecondChance, getAllLinks, createLink, deleteLink } from '../../stores/db';
 import { useToast } from '../../lib/toast';
-import type { Concept, CategoryKey } from '../../types';
+import type { Concept, CategoryKey, ConceptLink } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
 
@@ -294,11 +294,15 @@ function MapFilters({ filters, setFilters, search, setSearch, nodes }: {
   );
 }
 
-function NodeDetailPanel({ node, edges, allNodes, status, onClose, onSecondChance }: {
+function NodeDetailPanel({ node, edges, allNodes, status, links, linkingFrom, onClose, onSecondChance, onStartLink, onDeleteLink }: {
   node: MapNode | null; edges: MapEdge[]; allNodes: MapNode[];
   status: NodeStatus;
+  links: ConceptLink[];
+  linkingFrom: string | null;
   onClose: () => void;
   onSecondChance: () => void;
+  onStartLink: () => void;
+  onDeleteLink: (linkId: string) => void;
 }) {
   if (!node) return null;
   const portrait = node.concept.name.split(' ').slice(0, 2).join(' ').toUpperCase();
@@ -409,7 +413,43 @@ function NodeDetailPanel({ node, edges, allNodes, status, onClose, onSecondChanc
           </div>
         )}
 
+        {/* Liens manuels existants pour ce nœud */}
+        {(() => {
+          if (!node) return null;
+          const myLinks = links.filter(l => l.conceptAId === node.concept.id || l.conceptBId === node.concept.id);
+          if (myLinks.length === 0) return null;
+          return (
+            <div>
+              <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ Liens manuels · {myLinks.length}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {myLinks.map(l => {
+                  const otherId = l.conceptAId === node.concept.id ? l.conceptBId : l.conceptAId;
+                  const other = allNodes.find(n => n.concept.id === otherId);
+                  return (
+                    <span key={l.id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      fontFamily: "'Special Elite', monospace", fontSize: 11,
+                      padding: '2px 6px',
+                      background: 'var(--cit-butter)', color: 'var(--cit-navy-dk)',
+                      border: '2px solid var(--cit-navy-dk)',
+                    }}>
+                      {other?.concept.name ?? otherId.slice(0, 8)}
+                      <button onClick={(e) => { e.stopPropagation(); onDeleteLink(l.id); }} style={{
+                        background: 'transparent', border: 'none',
+                        color: 'var(--cit-brick)', cursor: 'pointer', padding: 0, fontSize: 10,
+                      }}>✕</button>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 8 }}>
+          <CitButton size="sm" tone={linkingFrom === node.concept.id ? 'brick' : 'butter'} style={{ width: '100%', justifyContent: 'center' }} onClick={onStartLink}>
+            {linkingFrom === node.concept.id ? '⋯ Cliquez un autre nœud pour lier · ✕ pour annuler' : '⊕ Lier à un autre concept'}
+          </CitButton>
           {status === 'rejected' && (
             <CitButton tone="brick" size="sm" style={{ width: '100%', justifyContent: 'center' }} onClick={onSecondChance}>
               ↻ Donner une seconde chance
@@ -690,6 +730,8 @@ export function MapScreen({ onTabChange }: Props) {
   const [adopted, setAdopted] = useState<Concept[]>([]);
   const [rejected, setRejected] = useState<Concept[]>([]);
   const [skipped, setSkipped] = useState<Concept[]>([]);
+  const [manualLinks, setManualLinks] = useState<ConceptLink[]>([]);
+  const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [filters, setFilters] = useState<Filters>({
     cats: Object.fromEntries(CATEGORY_LIST.map(c => [c.key, true])),
@@ -704,12 +746,13 @@ export function MapScreen({ onTabChange }: Props) {
   const toast = useToast();
 
   const loadAll = async () => {
-    const [a, r, s] = await Promise.all([
+    const [a, r, s, l] = await Promise.all([
       getAdoptedConcepts(),
       getConceptsByVerdict('reject'),
       getConceptsByVerdict('skip'),
+      getAllLinks(),
     ]);
-    setAdopted(a); setRejected(r); setSkipped(s); setLoaded(true);
+    setAdopted(a); setRejected(r); setSkipped(s); setManualLinks(l); setLoaded(true);
   };
 
   useEffect(() => { loadAll().catch(() => setLoaded(true)); }, []);
@@ -736,7 +779,20 @@ export function MapScreen({ onTabChange }: Props) {
     return true;
   }), [allNodes, filters, search]);
 
-  const edges = useMemo(() => buildEdges(filteredNodes), [filteredNodes]);
+  const inferredEdges = useMemo(() => buildEdges(filteredNodes), [filteredNodes]);
+  // Combine inferred edges + manual links (deduplicated)
+  const edges: MapEdge[] = useMemo(() => {
+    const ids = new Set(filteredNodes.map(n => n.concept.id));
+    const inferredKeys = new Set(inferredEdges.map(e => [e.a, e.b].sort().join('|')));
+    const all = [...inferredEdges];
+    manualLinks.forEach(l => {
+      if (!ids.has(l.conceptAId) || !ids.has(l.conceptBId)) return;
+      const key = [l.conceptAId, l.conceptBId].sort().join('|');
+      if (inferredKeys.has(key)) return;
+      all.push({ a: l.conceptAId, b: l.conceptBId });
+    });
+    return all;
+  }, [inferredEdges, manualLinks, filteredNodes]);
   const selected = filteredNodes.find(n => n.concept.id === selectedId) ?? null;
 
   if (loaded && adopted.length === 0) {
@@ -817,7 +873,19 @@ export function MapScreen({ onTabChange }: Props) {
         <div style={{ padding: '0 14px' }}>
           <MapGraph
             nodes={filteredNodes} edges={edges}
-            selectedId={selectedId} onSelect={setSelectedId}
+            selectedId={selectedId}
+            onSelect={async (id) => {
+              if (linkingFrom && id !== linkingFrom) {
+                await createLink(linkingFrom, id);
+                const fromNode = filteredNodes.find(n => n.concept.id === linkingFrom);
+                const toNode = filteredNodes.find(n => n.concept.id === id);
+                toast.show({ tone: 'success', title: 'Lien créé', body: `« ${fromNode?.concept.name} » ↔ « ${toNode?.concept.name} »` });
+                setLinkingFrom(null);
+                loadAll();
+              } else {
+                setSelectedId(id);
+              }
+            }}
             showEdges={filters.showEdges}
             statusFor={statusFor}
             fullscreen={fullscreen}
@@ -829,6 +897,17 @@ export function MapScreen({ onTabChange }: Props) {
           <NodeDetailPanel
             node={selected} edges={edges} allNodes={filteredNodes}
             status={statusFor(selected.concept.id)}
+            links={manualLinks}
+            linkingFrom={linkingFrom}
+            onStartLink={() => {
+              if (linkingFrom === selected.concept.id) setLinkingFrom(null);
+              else setLinkingFrom(selected.concept.id);
+            }}
+            onDeleteLink={async (linkId) => {
+              await deleteLink(linkId);
+              toast.show({ tone: 'info', title: 'Lien supprimé' });
+              loadAll();
+            }}
             onClose={() => setSelectedId(null)}
             onSecondChance={async () => {
               await giveSecondChance(selected.concept.id);

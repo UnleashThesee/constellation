@@ -288,8 +288,54 @@ export async function fetchConceptById(qid: string): Promise<Concept | null> {
   return concept;
 }
 
+/**
+ * Récupère ~500 Q-IDs Wikidata triés par notoriété (count de sitelinks Wikipedia).
+ * Cache TTL 30j. Utilisé comme pool de tirage du mode Aléatoire.
+ */
+const NOTORIETY_SPARQL = `
+SELECT ?item WHERE {
+  ?item wikibase:sitelinks ?sl .
+  FILTER(?sl > 80)
+  VALUES ?type { wd:Q5 wd:Q571 wd:Q11424 wd:Q7889 wd:Q482994 wd:Q386724 wd:Q15619164 wd:Q179805 }
+  ?item wdt:P31/wdt:P279* ?type .
+}
+ORDER BY DESC(?sl)
+LIMIT 500`;
+
+export async function fetchNotorietyBase(): Promise<string[]> {
+  const cacheKey = 'notoriety-base-v1';
+  const cached = await cacheWikiGet<string[]>(cacheKey);
+  if (cached && cached.length > 0) return cached;
+  try {
+    const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(NOTORIETY_SPARQL)}&format=json`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    type Binding = { item?: { value: string } };
+    const bindings = (data.results?.bindings ?? []) as Binding[];
+    const ids = bindings
+      .map(b => b.item?.value?.split('/').pop())
+      .filter((x): x is string => !!x);
+    if (ids.length > 0) await cacheWikiSet(cacheKey, ids);
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchRandomConcepts(count = 5): Promise<Concept[]> {
-  // IDs Wikidata notables pour le mode Aléatoire
+  // Essaie d'abord la base notoriété pré-filtrée (cache 30j)
+  const notority = await fetchNotorietyBase();
+  if (notority.length >= 20) {
+    const shuffled = [...notority].sort(() => Math.random() - 0.5).slice(0, count + 8);
+    const results = await Promise.allSettled(shuffled.map(fetchConceptById));
+    const concepts = results
+      .filter((r): r is PromiseFulfilledResult<Concept> => r.status === 'fulfilled' && r.value !== null)
+      .map(r => r.value)
+      .slice(0, count);
+    if (concepts.length >= count - 2) return concepts;
+  }
+  // Fallback : pool d'IDs en dur (concepts notables connus)
   const NOTABLE_IDS = [
     'Q9358', 'Q7199', 'Q32522', 'Q9252', 'Q154842', 'Q3772', 'Q47209',
     'Q93341', 'Q174', 'Q1402', 'Q36180', 'Q45789', 'Q153570', 'Q81074',
