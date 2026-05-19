@@ -601,7 +601,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         }
         const [concepts, excluded] = await Promise.all([
           fetchRandomConcepts(40),
-          getExcludedConceptIds(30),
+          getExcludedConceptIds(),
         ]);
         const filtered = concepts.filter(c => !excluded.has(c.id));
         const pool = filtered.length > 0 ? filtered : concepts;

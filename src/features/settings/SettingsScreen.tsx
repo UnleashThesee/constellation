@@ -415,6 +415,7 @@ export function SettingsScreen({ onTabChange }: Props) {
   const [soundsOn, setSoundsOn] = useState(true);
   const [volume, setVolume] = useState(40);
   const [chromaticOn, setChromaticOn] = useState(true);
+  const [skipDelay, setSkipDelay] = useState(30);
   const toast = useToast();
 
   useEffect(() => {
@@ -428,6 +429,7 @@ export function SettingsScreen({ onTabChange }: Props) {
         if (typeof s.soundsEnabled === 'boolean') setSoundsOn(s.soundsEnabled);
         if (typeof s.masterVolume === 'number') setVolume(Math.round(s.masterVolume * 100));
         if (typeof s.chromaticEnabled === 'boolean') setChromaticOn(s.chromaticEnabled);
+        if (typeof s.skipDelayDays === 'number') setSkipDelay(s.skipDelayDays);
       }
     });
     getSettings().then(s => { if (s?.operatorName) setName(s.operatorName); });
@@ -445,6 +447,7 @@ export function SettingsScreen({ onTabChange }: Props) {
   useEffect(() => { saveSettings({ llmProvider: llmProvider as 'claude' | 'openai', llmKey }).catch(() => {}); }, [llmProvider, llmKey]);
   useEffect(() => { saveSettings({ algorithmWeights: algoVals }).catch(() => {}); }, [algoVals]);
   useEffect(() => { saveSettings({ operatorName: name }).catch(() => {}); }, [name]);
+  useEffect(() => { saveSettings({ skipDelayDays: skipDelay }).catch(() => {}); }, [skipDelay]);
   useEffect(() => {
     saveSettings({ chromaticEnabled: chromaticOn }).catch(() => {});
     if (!chromaticOn) {
@@ -570,6 +573,12 @@ export function SettingsScreen({ onTabChange }: Props) {
             <div style={{ marginTop: 12 }}>
               <FormRow label="Coefficient de sérendipité" hint="0% = strictement votre univers · 100% = chaos total.">
                 <Slider value={serendipity} onChange={setSerendipity}/>
+              </FormRow>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <FormRow label={`Délai avant ré-apparition d'un « passé » · ${skipDelay} jours`} hint="Plus court = vous reverrez vite les concepts mis de côté.">
+                <Slider value={skipDelay} onChange={setSkipDelay} min={1} max={90} unit=" j"/>
               </FormRow>
             </div>
             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>

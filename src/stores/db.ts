@@ -177,8 +177,10 @@ export async function getAllInteractions(): Promise<Interaction[]> {
   return (await db.interactions.toArray()).sort((a, b) => +b.timestamp - +a.timestamp);
 }
 
-/** IDs des concepts à exclure du tirage : adoptés, rejetés, ou passés depuis < 30 jours. */
-export async function getExcludedConceptIds(skipDelayDays = 30): Promise<Set<string>> {
+/** IDs des concepts à exclure du tirage : adoptés, rejetés, ou passés depuis < N jours. Délai lu depuis settings. */
+export async function getExcludedConceptIds(skipDelayDaysOverride?: number): Promise<Set<string>> {
+  const settings = await getSettings();
+  const skipDelayDays = skipDelayDaysOverride ?? settings?.skipDelayDays ?? 30;
   const ints = await db.interactions.toArray();
   const excluded = new Set<string>();
   const now = Date.now();
