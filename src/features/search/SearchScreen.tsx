@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
+import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST } from '../../lib/categories';
 import { searchConcepts } from '../../services/wikidata';
@@ -17,6 +18,7 @@ export function SearchScreen({ onTabChange }: Props) {
   const [loading, setLoading] = useState(false);
   const [adopted, setAdopted] = useState<Set<string>>(new Set());
   const [showFreeForm, setShowFreeForm] = useState(false);
+  const [detailConcept, setDetailConcept] = useState<Concept | null>(null);
   const [freeName, setFreeName] = useState('');
   const [freeBlurb, setFreeBlurb] = useState('');
   const [freeCat, setFreeCat] = useState<CategoryKey>('philosophie');
@@ -174,7 +176,10 @@ export function SearchScreen({ onTabChange }: Props) {
 
                 <div style={{ textAlign: 'right' }}>
                   {already ? (
-                    <Stamp tone="navy" rotate={-3} size={11}>★ DÉJÀ ADOPTÉ</Stamp>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <Stamp tone="navy" rotate={-3} size={11}>★ DÉJÀ ADOPTÉ</Stamp>
+                      <CitButton size="sm" onClick={() => setDetailConcept(c)}>↗ Ouvrir la fiche</CitButton>
+                    </div>
                   ) : (
                     <CitButton tone="brick" size="sm" onClick={() => adopt(c)}>★ Adopter</CitButton>
                   )}
@@ -277,6 +282,12 @@ export function SearchScreen({ onTabChange }: Props) {
       </div>
 
       <CitizenFooter right="ENTRÉE = ADOPTER · ESC = ANNULER"/>
+
+      <ConceptDetailModal
+        concept={detailConcept}
+        open={!!detailConcept}
+        onClose={() => setDetailConcept(null)}
+      />
     </div>
   );
 }

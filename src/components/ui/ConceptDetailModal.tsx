@@ -5,7 +5,7 @@ import { CATEGORIES, gradientForWeights } from '../../lib/categories';
 import {
   cacheConcept, toggleFavorite, getCachedConcept,
   getAnnotation, saveAnnotation,
-  getTagsForConcept, addTagToConcept, removeTagFromConcept,
+  getTagsForConcept, addTagToConcept, removeTagFromConcept, getAllTags,
   getAllPersonalCategories, assignConceptToPersonalCategory, removeConceptFromPersonalCategory,
   db,
 } from '../../stores/db';
@@ -31,6 +31,7 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [allPersoCats, setAllPersoCats] = useState<PersonalCategory[]>([]);
   const [assignedPersoCatIds, setAssignedPersoCatIds] = useState<Set<string>>(new Set());
+  const [allExistingTags, setAllExistingTags] = useState<Tag[]>([]);
   const [relations, setRelations] = useState<SemanticRelation[]>([]);
   const toast = useToast();
   const autoSaveTimer = useRef<number | null>(null);
@@ -47,6 +48,8 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
       setShowHistory(false);
       const t = await getTagsForConcept(concept.id);
       setTags(t);
+      const all = await getAllTags();
+      setAllExistingTags(all);
       const cats = await getAllPersonalCategories();
       setAllPersoCats(cats);
       const links = await db.conceptPersonalCategories.where('conceptId').equals(concept.id).toArray();
@@ -419,6 +422,33 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
                 cursor: 'pointer',
               }}>+</button>
             </div>
+            {/* Autocomplétion : suggestions filtrées sur tags existants */}
+            {tagInput.trim() && (() => {
+              const query = tagInput.trim().toLowerCase().replace(/^#/, '');
+              const myTagIds = new Set(tags.map(t => t.id));
+              const matches = allExistingTags
+                .filter(t => !myTagIds.has(t.id) && t.name.toLowerCase().includes(query))
+                .slice(0, 6);
+              if (matches.length === 0) return null;
+              return (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 6 }}>
+                  {matches.map(t => (
+                    <button key={t.id} onClick={async () => {
+                      await cacheConcept(concept);
+                      await addTagToConcept(concept.id, t.name);
+                      setTags(prev => prev.find(x => x.id === t.id) ? prev : [...prev, t]);
+                      setTagInput('');
+                    }} style={{
+                      padding: '1px 6px',
+                      background: 'var(--cit-butter)', color: 'var(--cit-navy-dk)',
+                      border: '1.5px solid var(--cit-navy-dk)',
+                      fontFamily: "'Special Elite', monospace", fontSize: 10,
+                      cursor: 'pointer',
+                    }}>#{t.name}</button>
+                  ))}
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {tags.length === 0 ? (
                 <span className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>

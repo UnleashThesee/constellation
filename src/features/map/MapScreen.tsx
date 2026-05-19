@@ -4,7 +4,7 @@ import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST, conceptDominant, gradientForWeights } from '../../lib/categories';
 import {
   getAdoptedConcepts, getConceptsByVerdict, giveSecondChance,
-  getAllLinks, createLink, deleteLink,
+  getAllLinks, createLink, deleteLink, updateLinkNote,
   getAllPersonalCategories, getAllTags, db,
 } from '../../stores/db';
 import { fetchRelatedQids } from '../../services/wikidata';
@@ -357,7 +357,7 @@ function MapFilters({ filters, setFilters, search, setSearch, nodes, personalCat
   );
 }
 
-function NodeDetailPanel({ node, edges, allNodes, status, links, linkingFrom, onClose, onSecondChance, onStartLink, onDeleteLink }: {
+function NodeDetailPanel({ node, edges, allNodes, status, links, linkingFrom, onClose, onSecondChance, onStartLink, onDeleteLink, onUpdateLinkNote }: {
   node: MapNode | null; edges: MapEdge[]; allNodes: MapNode[];
   status: NodeStatus;
   links: ConceptLink[];
@@ -366,7 +366,10 @@ function NodeDetailPanel({ node, edges, allNodes, status, links, linkingFrom, on
   onSecondChance: () => void;
   onStartLink: () => void;
   onDeleteLink: (linkId: string) => void;
+  onUpdateLinkNote: (linkId: string, note: string) => void;
 }) {
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
+  const [linkNoteInput, setLinkNoteInput] = useState('');
   if (!node) return null;
   const portrait = node.concept.name.split(' ').slice(0, 2).join(' ').toUpperCase();
   const neighbors = edges
@@ -483,25 +486,63 @@ function NodeDetailPanel({ node, edges, allNodes, status, links, linkingFrom, on
           if (myLinks.length === 0) return null;
           return (
             <div>
-              <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ Liens manuels · {myLinks.length}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ Liens · {myLinks.length}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {myLinks.map(l => {
                   const otherId = l.conceptAId === node.concept.id ? l.conceptBId : l.conceptAId;
                   const other = allNodes.find(n => n.concept.id === otherId);
+                  const typeLabel = l.type === 'wikidata' ? 'Wikidata' : l.type === 'shared-category' ? 'cat. partagée' : 'manuel';
+                  const typeBg = l.type === 'wikidata' ? 'var(--cit-navy-dk)' : l.type === 'shared-category' ? 'var(--cit-paper-dk)' : 'var(--cit-butter)';
+                  const typeFg = l.type === 'wikidata' ? 'var(--cit-butter)' : 'var(--cit-navy-dk)';
                   return (
-                    <span key={l.id} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                    <div key={l.id} style={{
                       fontFamily: "'Special Elite', monospace", fontSize: 11,
-                      padding: '2px 6px',
-                      background: 'var(--cit-butter)', color: 'var(--cit-navy-dk)',
+                      padding: '4px 8px',
+                      background: typeBg, color: typeFg,
                       border: '2px solid var(--cit-navy-dk)',
                     }}>
-                      {other?.concept.name ?? otherId.slice(0, 8)}
-                      <button onClick={(e) => { e.stopPropagation(); onDeleteLink(l.id); }} style={{
-                        background: 'transparent', border: 'none',
-                        color: 'var(--cit-brick)', cursor: 'pointer', padding: 0, fontSize: 10,
-                      }}>✕</button>
-                    </span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+                        <span><span style={{ opacity: 0.7, fontSize: 9, marginRight: 4 }}>[{typeLabel}]</span>{other?.concept.name ?? otherId.slice(0, 8)}</span>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button onClick={() => {
+                            setEditingLinkId(editingLinkId === l.id ? null : l.id);
+                            setLinkNoteInput(l.note ?? '');
+                          }} style={{
+                            background: 'transparent', border: 'none',
+                            color: typeFg, cursor: 'pointer', padding: 0, fontSize: 11,
+                          }} title={l.note ? 'Modifier la note' : 'Ajouter une note'}>✎</button>
+                          <button onClick={() => onDeleteLink(l.id)} style={{
+                            background: 'transparent', border: 'none',
+                            color: l.type === 'wikidata' ? 'var(--cit-butter)' : 'var(--cit-brick)',
+                            cursor: 'pointer', padding: 0, fontSize: 10,
+                          }}>✕</button>
+                        </div>
+                      </div>
+                      {editingLinkId === l.id ? (
+                        <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
+                          <input value={linkNoteInput} onChange={e => setLinkNoteInput(e.target.value)}
+                            placeholder="Note sur ce lien…"
+                            autoFocus
+                            style={{
+                              flex: 1, padding: '2px 6px',
+                              border: '1.5px solid var(--cit-navy-dk)',
+                              background: 'var(--cit-cream)',
+                              fontFamily: "'Special Elite', monospace", fontSize: 10,
+                              color: 'var(--cit-navy-dk)',
+                            }}/>
+                          <button onClick={() => { onUpdateLinkNote(l.id, linkNoteInput); setEditingLinkId(null); }} style={{
+                            padding: '1px 6px',
+                            background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
+                            border: 'none', fontFamily: "'Alfa Slab One', serif", fontSize: 10,
+                            cursor: 'pointer',
+                          }}>✓</button>
+                        </div>
+                      ) : l.note ? (
+                        <div style={{ fontSize: 10, fontStyle: 'italic', marginTop: 2, opacity: 0.85 }}>
+                          « {l.note} »
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
@@ -1104,6 +1145,11 @@ export function MapScreen({ onTabChange }: Props) {
             onDeleteLink={async (linkId) => {
               await deleteLink(linkId);
               toast.show({ tone: 'info', title: 'Lien supprimé' });
+              loadAll();
+            }}
+            onUpdateLinkNote={async (linkId, note) => {
+              await updateLinkNote(linkId, note);
+              toast.show({ tone: 'success', title: 'Note mise à jour' });
               loadAll();
             }}
             onClose={() => setSelectedId(null)}

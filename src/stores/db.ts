@@ -558,6 +558,10 @@ export async function deleteLink(id: string): Promise<void> {
   await db.links.delete(id);
 }
 
+export async function updateLinkNote(id: string, note: string): Promise<void> {
+  await db.links.update(id, { note });
+}
+
 export async function getAllLinks(): Promise<ConceptLink[]> {
   return db.links.toArray();
 }
