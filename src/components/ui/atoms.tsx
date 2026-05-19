@@ -95,6 +95,20 @@ export function Aster({ size = 32, rotate = 0 }: { size?: number; rotate?: numbe
   );
 }
 
+export function PixelDie({ size = 22 }: { size?: number }) {
+  const s = size;
+  return (
+    <svg width={s} height={s} viewBox="0 0 22 22" style={{ shapeRendering: 'crispEdges', display: 'inline-block' }}>
+      <rect x="2" y="2" width="18" height="18" fill="var(--cit-butter)" stroke="var(--cit-navy-dk)" strokeWidth="2"/>
+      <rect x="5" y="5" width="3" height="3" fill="var(--cit-navy-dk)"/>
+      <rect x="14" y="5" width="3" height="3" fill="var(--cit-navy-dk)"/>
+      <rect x="9.5" y="9.5" width="3" height="3" fill="var(--cit-navy-dk)"/>
+      <rect x="5" y="14" width="3" height="3" fill="var(--cit-navy-dk)"/>
+      <rect x="14" y="14" width="3" height="3" fill="var(--cit-navy-dk)"/>
+    </svg>
+  );
+}
+
 export function StarBurst({ size = 120, rotate = 0, children }: {
   size?: number; rotate?: number; children?: ReactNode;
 }) {

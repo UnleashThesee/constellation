@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSwipeDeck } from './useSwipeDeck';
-import { Sunburst, Stamp, StarBurst } from '../../components/ui/atoms';
+import { Sunburst, Stamp, StarBurst, PixelDie, Aster } from '../../components/ui/atoms';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
-import { CATEGORIES, gradientForWeights } from '../../lib/categories';
+import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
 import { fetchRandomConcepts } from '../../services/wikidata';
+import { getAdoptedConcepts } from '../../stores/db';
 import type { Concept, SwipeMode, CategoryKey } from '../../types';
 
 const FALLBACK_CONCEPTS: Concept[] = [
@@ -87,12 +88,16 @@ function CitCat({ catKey, weight }: { catKey: CategoryKey; weight?: number }) {
   );
 }
 
-function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown }: {
+function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast }: {
   concept: Concept;
   tilt: 'right' | 'left' | 'up' | null;
   dragOffset: { x: number; y: number };
   animClass: string;
   onPointerDown: (e: React.PointerEvent) => void;
+  sourceOverride?: string;
+  badge?: React.ReactNode;
+  leftBorder?: string;
+  contrast?: boolean;
 }) {
   const isDragging = dragOffset.x !== 0 || dragOffset.y !== 0;
   const rotate = isDragging ? `rotate(${dragOffset.x * 0.04 - 0.6}deg)` : 'rotate(-0.6deg)';
@@ -115,7 +120,21 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown }: {
       }}
       onPointerDown={onPointerDown}
     >
-      <div className="cit-card" style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
+      {contrast && (
+        <span className="cit-pulse-brick" style={{
+          position: 'absolute', inset: -16, zIndex: 10, pointerEvents: 'none',
+          border: '3px dashed var(--cit-brick)',
+        }}/>
+      )}
+      {contrast && (
+        <div style={{ position: 'absolute', top: -28, left: 18, zIndex: 11, transform: 'rotate(-4deg)', pointerEvents: 'none' }}>
+          <Stamp tone="brick">★ LOIN DE VOTRE UNIVERS ★</Stamp>
+        </div>
+      )}
+      <div className="cit-card" style={{
+        padding: 0, position: 'relative', overflow: 'hidden',
+        borderLeft: leftBorder ? `14px solid ${leftBorder}` : undefined,
+      }}>
         {/* Verdict overlays */}
         {tilt === 'left' && (
           <div style={{ position: 'absolute', top: 80, left: 36, zIndex: 5, pointerEvents: 'none', transform: 'rotate(-12deg)' }}>
@@ -143,8 +162,9 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown }: {
         }}>
           <div className="cit-halftone" style={{ position: 'absolute', inset: 0 }}/>
           <div style={{ position: 'relative', zIndex: 1, flex: 1, minWidth: 0 }}>
-            <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)' }}>
-              ★ FICHE N° {concept.rec ?? 'REC-0001'} · {SOURCE_LABELS[concept.sourceKind ?? 'random'] ?? 'Sélection aléatoire'} ★
+            <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {badge}
+              <span>★ FICHE N° {concept.rec ?? 'REC-0001'} · {sourceOverride ?? SOURCE_LABELS[concept.sourceKind ?? 'random'] ?? 'Sélection aléatoire'} ★</span>
             </div>
             <h2 className="cit-h1 cit-h1--reverse" style={{ margin: '2px 0 2px', fontSize: 48, lineHeight: 0.92, wordBreak: 'break-word' }}>
               {concept.name}<span style={{ color: 'var(--cit-butter)' }}>!</span>
@@ -269,35 +289,198 @@ function CitizenActions({ onAction }: { onAction: (v: 'reject' | 'skip' | 'valid
 }
 
 function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: SwipeMode) => void; queueSize: number }) {
+  const isContrast = mode === 'contrast';
+  const bg = isContrast ? 'var(--cit-brick)' : 'var(--cit-paper-dk)';
+  const labelColor = isContrast ? 'var(--cit-cream)' : 'var(--cit-navy-dk)';
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10,
       padding: '10px 32px',
-      background: 'var(--cit-paper-dk)',
-      borderBottom: '2px solid var(--cit-navy-dk)',
+      background: bg,
+      borderBottom: isContrast ? '3px solid var(--cit-navy-dk)' : '2px solid var(--cit-navy-dk)',
     }}>
-      <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)', whiteSpace: 'nowrap' }}>
+      <span className="cit-condensed" style={{ fontSize: 11, color: labelColor, whiteSpace: 'nowrap' }}>
         ★ Procédure ›
       </span>
       <div style={{ display: 'flex', gap: 4 }}>
-        {MODES.map(m => (
-          <button key={m.id} onClick={() => setMode(m.id)} style={{
-            background: m.id === mode ? 'var(--cit-navy-dk)' : 'transparent',
-            color: m.id === mode ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
-            border: '2px solid var(--cit-navy-dk)',
-            padding: '4px 12px',
-            fontFamily: "'Oswald', sans-serif",
-            fontSize: 12, letterSpacing: '.12em', fontWeight: 600, textTransform: 'uppercase',
-            cursor: 'pointer',
-            boxShadow: m.id === mode ? '2px 2px 0 var(--cit-brick)' : 'none',
-          }}>{m.label}</button>
-        ))}
+        {MODES.map(m => {
+          const on = m.id === mode;
+          const activeBg = isContrast ? 'var(--cit-cream)' : 'var(--cit-navy-dk)';
+          const activeFg = isContrast ? 'var(--cit-brick)' : 'var(--cit-butter)';
+          const idleFg = isContrast ? 'var(--cit-butter)' : 'var(--cit-navy-dk)';
+          const idleBorder = isContrast ? 'oklch(0% 0 0 / 0.4)' : 'var(--cit-navy-dk)';
+          return (
+            <button key={m.id} onClick={() => setMode(m.id)} style={{
+              background: on ? activeBg : 'transparent',
+              color: on ? activeFg : idleFg,
+              border: `2px solid ${on ? activeBg : idleBorder}`,
+              padding: '4px 12px',
+              fontFamily: "'Oswald', sans-serif",
+              fontSize: 12, letterSpacing: '.12em', fontWeight: 600, textTransform: 'uppercase',
+              cursor: 'pointer',
+              boxShadow: on ? (isContrast ? '2px 2px 0 var(--cit-navy-dk)' : '2px 2px 0 var(--cit-brick)') : 'none',
+            }}>{m.label}</button>
+          );
+        })}
       </div>
       <div style={{ flex: 1 }}/>
-      <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>
-        FILE : <span style={{ color: 'var(--cit-brick)', fontWeight: 700 }}>{queueSize}</span>
-      </span>
+      {isContrast ? (
+        <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)' }}>
+          ★ FISSURATION DE BULLE EN COURS ★
+        </span>
+      ) : (
+        <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>
+          FILE : <span style={{ color: 'var(--cit-brick)', fontWeight: 700 }}>{queueSize}</span>
+        </span>
+      )}
     </div>
+  );
+}
+
+// ---- Mode-specific secondary banners ----
+
+function ThematicBanner({ active, toggle, count }: {
+  active: Record<string, boolean>; toggle: (k: CategoryKey) => void; count: number;
+}) {
+  return (
+    <div style={{
+      padding: '10px 32px',
+      background: 'var(--cit-butter)',
+      borderBottom: '3px solid var(--cit-navy-dk)',
+      boxShadow: 'inset 0 4px 0 oklch(0% 0 0 / 0.08)',
+      position: 'relative', zIndex: 3,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <Aster size={26}/>
+        <span className="cit-h1" style={{ fontSize: 20, lineHeight: 0.9 }}>
+          QUELLES CATÉGORIES VOULEZ-VOUS EXAMINER AUJOURD'HUI ?
+        </span>
+        <div style={{ flex: 1 }}/>
+        <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>
+          {count} ACTIVE{count > 1 ? 'S' : ''}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {CATEGORY_LIST.map(c => {
+          const on = !!active[c.key];
+          return (
+            <button key={c.key} onClick={() => toggle(c.key)} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px 4px 4px',
+              background: on ? 'var(--cit-cream)' : 'transparent',
+              border: '2.5px solid var(--cit-navy-dk)',
+              borderLeft: `8px solid ${c.oklch}`,
+              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+              letterSpacing: '.10em', textTransform: 'uppercase',
+              color: 'var(--cit-navy-dk)', cursor: 'pointer',
+              boxShadow: on ? '2px 2px 0 var(--cit-navy-dk)' : 'none',
+              opacity: on ? 1 : 0.55,
+            }}>
+              {on && <span style={{ color: 'var(--cit-brick)' }}>✓</span>}
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CrossBanner({ selection, byId, mixCss }: {
+  selection: Array<{ id: string; weight: number }>;
+  byId: Record<string, Concept>;
+  mixCss: string;
+}) {
+  return (
+    <div style={{
+      padding: '10px 32px',
+      background: 'var(--cit-cream)',
+      borderBottom: '3px solid var(--cit-navy-dk)',
+      display: 'flex', alignItems: 'center', gap: 14,
+      position: 'relative', zIndex: 3, flexWrap: 'wrap',
+    }}>
+      <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', whiteSpace: 'nowrap' }}>★ Croisement ›</span>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {selection.length === 0 ? (
+          <span className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
+            Aucun concept sélectionné — adoptez d'abord puis revenez ici.
+          </span>
+        ) : selection.map(s => {
+          const c = byId[s.id];
+          if (!c) return null;
+          const color = conceptDominant(c.cats).css;
+          return (
+            <span key={s.id} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '3px 9px 3px 3px',
+              background: 'var(--cit-cream)',
+              border: '2px solid var(--cit-navy-dk)',
+              borderLeft: `8px solid ${color}`,
+              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+              letterSpacing: '.06em', color: 'var(--cit-navy-dk)',
+            }}>{c.name}<span style={{ color: 'var(--cit-brick)' }}>{s.weight}%</span></span>
+          );
+        })}
+      </div>
+      <div style={{ flex: 1 }}/>
+      <span className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>RÉSULTANTE ›</span>
+      <div style={{
+        width: 32, height: 32, borderRadius: '50%',
+        background: mixCss, border: '2.5px solid var(--cit-navy-dk)',
+        boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+      }}/>
+    </div>
+  );
+}
+
+function ExplorationAnchorPanel({ anchor }: { anchor: Concept | null }) {
+  if (!anchor) {
+    return (
+      <CitPanel title="Concept de référence">
+        <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 6 }}>
+          ★ POINT D'ANCRAGE
+        </div>
+        <p className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', lineHeight: 1.5, margin: 0, fontStyle: 'italic' }}>
+          Adoptez d'abord un concept pour qu'il serve d'ancrage à l'exploration.
+        </p>
+      </CitPanel>
+    );
+  }
+  const color = conceptDominant(anchor.cats).css;
+  const short = anchor.name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
+  return (
+    <CitPanel title="Concept de référence">
+      <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 6 }}>
+        ★ POINT D'ANCRAGE DE L'EXPLORATION
+      </div>
+      <div style={{
+        padding: '8px 12px',
+        background: 'var(--cit-butter)',
+        border: '2.5px solid var(--cit-navy-dk)',
+        borderLeft: `12px solid ${color}`,
+        boxShadow: '3px 3px 0 var(--cit-navy-dk)',
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <span style={{
+          width: 36, height: 36, borderRadius: '50%',
+          background: color,
+          border: '2px solid var(--cit-navy-dk)',
+          display: 'grid', placeItems: 'center',
+          fontFamily: "'Alfa Slab One', serif", fontSize: 12, color: 'var(--cit-cream)',
+          textShadow: '1px 1px 0 var(--cit-navy-dk)',
+        }}>{short}</span>
+        <div style={{ minWidth: 0 }}>
+          <div className="cit-h1" style={{ fontSize: 16, lineHeight: 0.95 }}>{anchor.name}</div>
+          <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>★ Adopté</div>
+        </div>
+      </div>
+      <div className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)', lineHeight: 1.5, marginTop: 10 }}>
+        Le Bureau cherche des concepts qui éclairent <strong style={{ color: 'var(--cit-brick)' }}>{anchor.name}</strong> par voisinage sémantique.
+      </div>
+      <CitButton size="sm" style={{ width: '100%', justifyContent: 'center', marginTop: 10 }}>
+        ↻ Changer d'ancrage
+      </CitButton>
+    </CitPanel>
   );
 }
 
@@ -358,9 +541,24 @@ function RegistrePanel({ history }: { history: Array<{ name: string; verdict: st
   );
 }
 
+const FOOTERS: Record<SwipeMode, string> = {
+  random:   'MODE ALÉATOIRE · LE BUREAU LANCE LES DÉS POUR VOUS',
+  themed:   'MODE THÉMATIQUE · LE BUREAU TIRE DANS VOS CATÉGORIES',
+  explore:  'MODE EXPLORATION · LE BUREAU TIRE DEPUIS UN CONCEPT-PIVOT',
+  contrast: 'MODE CONTRASTE · LE BUREAU CHERCHE CE QUI VOUS DÉRANGE',
+  cross:    'MODE CROISEMENT · LE BUREAU TIRE DES FICHES À L\'INTERSECTION',
+};
+
 export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => void }) {
   const [mode, setMode] = useState<SwipeMode>('random');
   const [loading, setLoading] = useState(true);
+  const [adopted, setAdopted] = useState<Concept[]>([]);
+  const [thematicCats, setThematicCats] = useState<Record<string, boolean>>(
+    { philosophie: true, sciences: false, humaines: false, economie: false,
+      litterature: true, arts: false, musique: false, cinema: false,
+      jeuvideo: false, histoire: false, geographie: false, personnages: false }
+  );
+  const [explorationAnchorId, setExplorationAnchorId] = useState<string | null>(null);
 
   const swipe = useSwipeDeck(FALLBACK_CONCEPTS);
 
@@ -371,7 +569,48 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    getAdoptedConcepts().then(c => {
+      setAdopted(c);
+      if (c.length > 0 && !explorationAnchorId) setExplorationAnchorId(c[0].id);
+    });
+  }, []);
+
   const current = swipe.current;
+  const anchor = adopted.find(c => c.id === explorationAnchorId) ?? null;
+  const activeThematicCats = (Object.entries(thematicCats).filter(([, on]) => on).map(([k]) => k)) as CategoryKey[];
+
+  // Cross mode: use up to 3 most recent adopted as the cross selection
+  const crossSelection = useMemo(() => {
+    const top = adopted.slice(0, 3);
+    if (top.length === 0) return [];
+    const evenWeight = Math.round(100 / top.length);
+    return top.map(c => ({ id: c.id, weight: evenWeight }));
+  }, [adopted]);
+  const crossById = Object.fromEntries(adopted.map(c => [c.id, c]));
+  const crossMix = combinationMix(crossSelection
+    .map(s => ({ cats: crossById[s.id]?.cats ?? [], weight: s.weight }))
+    .filter(s => s.cats.length > 0));
+
+  // Per-mode card props
+  const cardProps = (() => {
+    if (!current) return {};
+    switch (mode) {
+      case 'random':
+        return { sourceOverride: 'TIRAGE ALÉATOIRE', badge: <PixelDie size={18}/> };
+      case 'themed': {
+        const labels = activeThematicCats.slice(0, 2).map(k => CATEGORIES[k].label).join(' + ');
+        return { sourceOverride: labels ? `Tiré dans ${labels}` : 'Mode thématique · sélectionnez des catégories' };
+      }
+      case 'explore':
+        return { sourceOverride: anchor ? `LIÉ À ${anchor.name.toUpperCase()}` : 'Exploration · choisissez un ancrage' };
+      case 'contrast':
+        return { sourceOverride: 'Contraste · loin de votre univers', contrast: true };
+      case 'cross':
+        return { sourceOverride: `Croisement · à l'intersection de ${crossSelection.length} concepts`, leftBorder: crossSelection.length > 0 ? crossMix.css : undefined };
+      default: return {};
+    }
+  })();
 
   return (
     <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -385,6 +624,18 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
       <ModeBar mode={mode} setMode={setMode} queueSize={swipe.deck.length}/>
 
+      {/* Mode-specific banners */}
+      {mode === 'themed' && (
+        <ThematicBanner
+          active={thematicCats}
+          toggle={(k) => setThematicCats(p => ({ ...p, [k]: !p[k] }))}
+          count={activeThematicCats.length}
+        />
+      )}
+      {mode === 'cross' && (
+        <CrossBanner selection={crossSelection} byId={crossById} mixCss={crossMix.css}/>
+      )}
+
       <div style={{
         flex: 1, padding: '20px 32px',
         display: 'grid', gridTemplateColumns: '220px 1fr 220px',
@@ -396,14 +647,18 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           <ScorePanel counts={swipe.counts}/>
           <CitPanel title="Alerte bulle" accent="butter">
             <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>
-              Mode <strong>EXPLORATION</strong> activé. Découvrez des concepts hors de vos sentiers habituels.
+              {mode === 'random'   && <>Mode <strong>ALÉATOIRE</strong>. Le Bureau tire sans tenir compte de votre profil.</>}
+              {mode === 'themed'   && <>Mode <strong>THÉMATIQUE</strong>. {activeThematicCats.length} catégorie{activeThematicCats.length > 1 ? 's' : ''} active{activeThematicCats.length > 1 ? 's' : ''}.</>}
+              {mode === 'explore'  && <>Mode <strong>EXPLORATION</strong>. Voisinages sémantiques d'un concept-pivot.</>}
+              {mode === 'contrast' && <>Mode <strong>CONTRASTE</strong>. Le Bureau cherche des concepts éloignés de votre profil.</>}
+              {mode === 'cross'    && <>Mode <strong>CROISEMENT</strong>. Tirage à l'intersection sémantique de vos concepts.</>}
             </p>
           </CitPanel>
         </div>
 
         {/* Card column */}
         <div>
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', padding: mode === 'contrast' ? '24px 18px 0' : 0 }}>
             {loading && !current ? (
               <div style={{
                 height: 500, display: 'flex', flexDirection: 'column',
@@ -421,6 +676,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                 dragOffset={swipe.drag}
                 animClass={swipe.animClass}
                 onPointerDown={swipe.onPointerDown}
+                {...cardProps}
               />
             ) : null}
 
@@ -444,18 +700,36 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           <div style={{ marginTop: 20 }}>
             <CitizenActions onAction={(v) => v === 'back' ? swipe.back() : swipe.cycle(v)}/>
           </div>
+
+          {mode === 'random' && (
+            <div className="cit-script" style={{
+              fontSize: 22, color: 'var(--cit-navy)', marginTop: 14,
+              textAlign: 'center', transform: 'rotate(-0.8deg)',
+            }}>
+              La chance vous sourit, citoyen !
+            </div>
+          )}
         </div>
 
-        {/* Right panel */}
+        {/* Right panel — Exploration replaces with anchor panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <RegistrePanel history={swipe.history}/>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <StarBurst size={120} rotate={-8}>NOUVELLE<br/>FICHE<br/>EXAMINÉE</StarBurst>
-          </div>
+          {mode === 'explore' ? (
+            <>
+              <ExplorationAnchorPanel anchor={anchor}/>
+              <RegistrePanel history={swipe.history}/>
+            </>
+          ) : (
+            <>
+              <RegistrePanel history={swipe.history}/>
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <StarBurst size={120} rotate={-8}>NOUVELLE<br/>FICHE<br/>EXAMINÉE</StarBurst>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      <CitizenFooter right="GLISSEZ → ADOPTEZ · ← RECYCLEZ · ↑ PLUS TARD"/>
+      <CitizenFooter right={FOOTERS[mode]}/>
     </div>
   );
 }
