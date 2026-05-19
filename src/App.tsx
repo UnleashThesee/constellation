@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react';
 import { OnboardingScreen } from './features/onboarding/OnboardingScreen';
 import { SwipeScreen } from './features/swipe/SwipeScreen';
+import { MapScreen } from './features/map/MapScreen';
+import { CombinatorScreen } from './features/combinator/CombinatorScreen';
+import { IdeasScreen } from './features/ideas/IdeasScreen';
+import { FavsScreen } from './features/favs/FavsScreen';
+import { SettingsScreen } from './features/settings/SettingsScreen';
 import { getProfile } from './stores/db';
 
 type AppState = 'loading' | 'onboarding' | 'app';
+export type TabId = 'swipe' | 'map' | 'combine' | 'ideas' | 'favs' | 'settings';
 
 function LoadingScreen() {
   return (
@@ -30,6 +36,7 @@ function LoadingScreen() {
 
 export default function App() {
   const [state, setState] = useState<AppState>('loading');
+  const [tab, setTab] = useState<TabId>('swipe');
 
   useEffect(() => {
     getProfile().then(profile => {
@@ -38,7 +45,18 @@ export default function App() {
     }).catch(() => setState('onboarding'));
   }, []);
 
+  const onTabChange = (id: string) => setTab(id as TabId);
+
   if (state === 'loading') return <LoadingScreen />;
   if (state === 'onboarding') return <OnboardingScreen onComplete={() => setState('app')} />;
-  return <SwipeScreen />;
+
+  switch (tab) {
+    case 'map':      return <MapScreen onTabChange={onTabChange} />;
+    case 'combine':  return <CombinatorScreen onTabChange={onTabChange} />;
+    case 'ideas':    return <IdeasScreen onTabChange={onTabChange} />;
+    case 'favs':     return <FavsScreen onTabChange={onTabChange} />;
+    case 'settings': return <SettingsScreen onTabChange={onTabChange} />;
+    case 'swipe':
+    default:         return <SwipeScreen onTabChange={onTabChange} />;
+  }
 }

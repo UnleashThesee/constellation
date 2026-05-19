@@ -71,3 +71,20 @@ export async function cacheConcept(concept: Concept): Promise<void> {
 export async function getCachedConcept(id: string): Promise<Concept | undefined> {
   return db.concepts.get(id);
 }
+
+/** Concepts adoptés (verdict='valid') de l'utilisateur, plus récents d'abord. */
+export async function getAdoptedConcepts(): Promise<Concept[]> {
+  const valid = await db.interactions.where('verdict').equals('valid').toArray();
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  valid.sort((a, b) => +b.timestamp - +a.timestamp).forEach(i => {
+    if (!seen.has(i.conceptId)) { seen.add(i.conceptId); ids.push(i.conceptId); }
+  });
+  const concepts = await Promise.all(ids.map(id => db.concepts.get(id)));
+  return concepts.filter((c): c is Concept => !!c);
+}
+
+/** Toutes les interactions, plus récentes d'abord. */
+export async function getAllInteractions(): Promise<Interaction[]> {
+  return (await db.interactions.toArray()).sort((a, b) => +b.timestamp - +a.timestamp);
+}

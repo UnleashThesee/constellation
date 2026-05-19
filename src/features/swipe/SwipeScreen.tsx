@@ -358,7 +358,7 @@ function RegistrePanel({ history }: { history: Array<{ name: string; verdict: st
   );
 }
 
-export function SwipeScreen() {
+export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => void }) {
   const [mode, setMode] = useState<SwipeMode>('random');
   const [loading, setLoading] = useState(true);
 
@@ -379,6 +379,7 @@ export function SwipeScreen() {
         kicker="Bonjour,"
         title="CITOYEN"
         active="swipe"
+        onTabChange={onTabChange}
         right={<Sunburst size={68} color="var(--cit-mustard)"/>}
       />
 
