@@ -9,6 +9,7 @@ import {
 } from '../../stores/db';
 import { fetchRelatedQids } from '../../services/wikidata';
 import { useToast } from '../../lib/toast';
+import { computeForceLayout, type LayoutPosition } from './forceLayout';
 import type { Concept, CategoryKey, ConceptLink, PersonalCategory, Tag } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -23,104 +24,29 @@ interface MapNode {
 interface MapEdge { a: string; b: string }
 
 /**
- * Force-directed layout (Fruchterman-Reingold simplifié) :
- * - répulsion entre tous les nœuds
- * - attraction le long des liens (catégories partagées)
- * - recuit simulé sur 80 itérations
- *
- * Coordonnées en % du conteneur (0-100).
+ * Calcule le layout (positions) en réutilisant computeForceLayout puis
+ * reconstruit les MapNode (concept + couleur dominante calculée côté main
+ * thread car CATEGORIES est mutable selon le thème/palette).
  */
+function positionsToNodes(concepts: Concept[], positions: LayoutPosition[]): MapNode[] {
+  const byId = new Map(concepts.map(c => [c.id, c]));
+  return positions
+    .map(p => {
+      const concept = byId.get(p.id);
+      if (!concept) return null;
+      return { concept, x: p.x, y: p.y, size: p.size, dominant: conceptDominant(concept.cats).css };
+    })
+    .filter((n): n is MapNode => n !== null);
+}
+
 function layoutNodes(concepts: Concept[]): MapNode[] {
   if (concepts.length === 0) return [];
-
-  // Init : position pseudo-radiale (groupée par catégorie dominante) pour démarrer
-  const groups: Record<string, Concept[]> = {};
-  concepts.forEach(c => {
-    const key = c.cats[0]?.[0] ?? 'personnages';
-    (groups[key] ??= []).push(c);
-  });
-  const groupKeys = Object.keys(groups);
-  const nGroups = groupKeys.length;
-
-  type Sim = { id: string; concept: Concept; x: number; y: number; dx: number; dy: number };
-  const sim: Sim[] = [];
-  groupKeys.forEach((gk, gi) => {
-    const baseAngle = (gi / Math.max(1, nGroups)) * Math.PI * 2 - Math.PI / 2;
-    groups[gk].forEach((c, ci) => {
-      const localAngle = baseAngle + ((ci - (groups[gk].length - 1) / 2) * 0.15);
-      const r = 22 + (ci % 3) * 5;
-      sim.push({
-        id: c.id, concept: c,
-        x: 50 + Math.cos(localAngle) * r,
-        y: 50 + Math.sin(localAngle) * r,
-        dx: 0, dy: 0,
-      });
-    });
-  });
-
-  // Edges : nœuds qui partagent au moins une catégorie
-  const edges: Array<[number, number]> = [];
-  for (let i = 0; i < sim.length; i++) {
-    const aCats = new Set(sim[i].concept.cats.map(([k]) => k));
-    for (let j = i + 1; j < sim.length; j++) {
-      if (sim[j].concept.cats.some(([k]) => aCats.has(k))) edges.push([i, j]);
-    }
-  }
-
-  // Simulation force-directed Fruchterman-Reingold
-  const iterations = 80;
-  const area = 100 * 100;
-  const k = Math.sqrt(area / Math.max(1, sim.length));
-  for (let it = 0; it < iterations; it++) {
-    // Reset deltas
-    sim.forEach(n => { n.dx = 0; n.dy = 0; });
-    // Répulsion
-    for (let i = 0; i < sim.length; i++) {
-      for (let j = i + 1; j < sim.length; j++) {
-        const dx = sim[i].x - sim[j].x;
-        const dy = sim[i].y - sim[j].y;
-        const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const force = (k * k) / d;
-        const fx = (dx / d) * force;
-        const fy = (dy / d) * force;
-        sim[i].dx += fx; sim[i].dy += fy;
-        sim[j].dx -= fx; sim[j].dy -= fy;
-      }
-    }
-    // Attraction le long des edges
-    edges.forEach(([i, j]) => {
-      const dx = sim[i].x - sim[j].x;
-      const dy = sim[i].y - sim[j].y;
-      const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-      const force = (d * d) / k;
-      const fx = (dx / d) * force * 0.5;
-      const fy = (dy / d) * force * 0.5;
-      sim[i].dx -= fx; sim[i].dy -= fy;
-      sim[j].dx += fx; sim[j].dy += fy;
-    });
-    // Centre : faible attraction vers (50,50) pour éviter dispersion
-    sim.forEach(n => {
-      const cx = 50 - n.x; const cy = 50 - n.y;
-      n.dx += cx * 0.03; n.dy += cy * 0.03;
-    });
-    // Cooling factor
-    const temp = 6 * (1 - it / iterations);
-    sim.forEach(n => {
-      const d = Math.sqrt(n.dx * n.dx + n.dy * n.dy) || 0.01;
-      n.x += (n.dx / d) * Math.min(d, temp);
-      n.y += (n.dy / d) * Math.min(d, temp);
-      n.x = Math.max(8, Math.min(92, n.x));
-      n.y = Math.max(10, Math.min(86, n.y));
-    });
-  }
-
-  return sim.map(n => ({
-    concept: n.concept,
-    x: n.x, y: n.y,
-    size: 14 + Math.min(8, n.concept.cats.length * 2)
-        + (n.concept.isFavorite ? 4 : 0),
-    dominant: conceptDominant(n.concept.cats).css,
-  }));
+  const positions = computeForceLayout(concepts.map(c => ({
+    id: c.id,
+    cats: c.cats.map(([k]) => k),
+    isFavorite: !!c.isFavorite,
+  })));
+  return positionsToNodes(concepts, positions);
 }
 
 /** Edges entre nœuds qui partagent au moins une catégorie. */
@@ -1099,7 +1025,46 @@ export function MapScreen({ onTabChange }: Props) {
     return list;
   }, [adopted, rejected, skipped, filters.showRejected, filters.showSkipped]);
 
-  const allNodes = useMemo(() => layoutNodes(allConcepts), [allConcepts]);
+  // Layout : synchrone pour ≤ 200 nœuds, sinon offload dans un Web Worker
+  // pour ne pas bloquer l'UI (#20). Fallback sync si le worker échoue.
+  const WORKER_THRESHOLD = 200;
+  const [asyncNodes, setAsyncNodes] = useState<MapNode[] | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const reqIdRef = useRef(0);
+
+  const syncNodes = useMemo(
+    () => (allConcepts.length <= WORKER_THRESHOLD ? layoutNodes(allConcepts) : []),
+    [allConcepts],
+  );
+
+  useEffect(() => {
+    if (allConcepts.length <= WORKER_THRESHOLD) { setAsyncNodes(null); return; }
+    let cancelled = false;
+    const reqId = ++reqIdRef.current;
+    try {
+      if (!workerRef.current) {
+        workerRef.current = new Worker(new URL('./layout.worker.ts', import.meta.url), { type: 'module' });
+      }
+      const worker = workerRef.current;
+      const onMsg = (e: MessageEvent<{ positions: LayoutPosition[]; reqId: number }>) => {
+        if (cancelled || e.data.reqId !== reqId) return;
+        setAsyncNodes(positionsToNodes(allConcepts, e.data.positions));
+      };
+      worker.addEventListener('message', onMsg, { once: true });
+      worker.postMessage({
+        items: allConcepts.map(c => ({ id: c.id, cats: c.cats.map(([k]) => k), isFavorite: !!c.isFavorite })),
+        reqId,
+      });
+      return () => { cancelled = true; worker.removeEventListener('message', onMsg); };
+    } catch {
+      // Fallback synchrone si les workers ne sont pas dispo
+      setAsyncNodes(layoutNodes(allConcepts));
+    }
+  }, [allConcepts]);
+
+  useEffect(() => () => { workerRef.current?.terminate(); }, []);
+
+  const allNodes = allConcepts.length <= WORKER_THRESHOLD ? syncNodes : (asyncNodes ?? []);
   const filteredNodes = useMemo(() => allNodes.filter(n => {
     const dominantCat = n.concept.cats[0]?.[0] as CategoryKey | undefined;
     if (dominantCat && !filters.cats[dominantCat]) return false;
