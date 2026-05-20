@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MotionConfig } from 'framer-motion';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { OnboardingScreen } from './features/onboarding/OnboardingScreen';
 import {
   PostOnboardingHome, getSkipPostOnboarding, setSkipPostOnboarding, markPostOnboardingSeen, hasSeenPostOnboarding,
@@ -96,29 +97,19 @@ const VALID_TABS: TabId[] = [
   'stats', 'about', 'search', 'perso', 'combos', 'constraints',
 ];
 
-function readTabFromHash(): TabId {
-  const h = (typeof window !== 'undefined' ? window.location.hash.replace(/^#\/?/, '') : '');
-  return VALID_TABS.includes(h as TabId) ? h as TabId : 'swipe';
+function tabFromPath(pathname: string): TabId {
+  const seg = pathname.replace(/^\/+/, '').split('/')[0];
+  return VALID_TABS.includes(seg as TabId) ? seg as TabId : 'swipe';
 }
 
 export default function App() {
   const [state, setState] = useState<AppState>('loading');
-  const [tab, setTabState] = useState<TabId>(readTabFromHash());
+  const navigate = useNavigate();
+  const location = useLocation();
+  const tab = tabFromPath(location.pathname);
 
-  // Sync tab → URL hash + reverse on hashchange (browser back/forward)
-  useEffect(() => {
-    if (state !== 'app') return;
-    if (`#${tab}` !== window.location.hash) {
-      window.history.replaceState(null, '', `#${tab}`);
-    }
-  }, [tab, state]);
-  useEffect(() => {
-    const onHash = () => setTabState(readTabFromHash());
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
-
-  const setTab = (t: TabId) => setTabState(t);
+  const setTab = (t: TabId) => navigate(`/${t}`);
+  const onTabChange = (id: string) => navigate(`/${id}`);
 
   // Tracking du temps d'usage : accumule dans settings.totalUsageMs
   useEffect(() => {
@@ -173,12 +164,10 @@ export default function App() {
     })();
   }, []);
 
-  const onTabChange = (id: string) => setTab(id as TabId);
-
   if (state === 'loading') return <LoadingScreen />;
   if (state === 'onboarding') return (
     <ToastProvider>
-      <ErrorBoundary label="Onboarding" onReset={() => location.reload()}>
+      <ErrorBoundary label="Onboarding" onReset={() => window.location.reload()}>
         <OnboardingScreen onComplete={() => setState('post-onboarding')} />
       </ErrorBoundary>
     </ToastProvider>
@@ -195,23 +184,23 @@ export default function App() {
     </ToastProvider>
   );
 
-  const screen = (() => {
-    switch (tab) {
-      case 'map':      return <MapScreen onTabChange={onTabChange} />;
-      case 'combine':  return <CombinatorScreen onTabChange={onTabChange} />;
-      case 'ideas':    return <IdeasScreen onTabChange={onTabChange} />;
-      case 'favs':     return <FavsScreen onTabChange={onTabChange} />;
-      case 'settings': return <SettingsScreen onTabChange={onTabChange} />;
-      case 'stats':    return <StatsScreen onTabChange={onTabChange} />;
-      case 'about':    return <AboutScreen onTabChange={onTabChange} />;
-      case 'search':   return <SearchScreen onTabChange={onTabChange} />;
-      case 'perso':    return <PersoScreen onTabChange={onTabChange} />;
-      case 'combos':   return <CombosLibraryScreen onTabChange={onTabChange} />;
-      case 'constraints': return <ConstraintsScreen onTabChange={onTabChange} />;
-      case 'swipe':
-      default:         return <SwipeScreen onTabChange={onTabChange} />;
-    }
-  })();
+  const screen = (
+    <Routes>
+      <Route path="/map" element={<MapScreen onTabChange={onTabChange} />} />
+      <Route path="/combine" element={<CombinatorScreen onTabChange={onTabChange} />} />
+      <Route path="/ideas" element={<IdeasScreen onTabChange={onTabChange} />} />
+      <Route path="/favs" element={<FavsScreen onTabChange={onTabChange} />} />
+      <Route path="/settings" element={<SettingsScreen onTabChange={onTabChange} />} />
+      <Route path="/stats" element={<StatsScreen onTabChange={onTabChange} />} />
+      <Route path="/about" element={<AboutScreen onTabChange={onTabChange} />} />
+      <Route path="/search" element={<SearchScreen onTabChange={onTabChange} />} />
+      <Route path="/perso" element={<PersoScreen onTabChange={onTabChange} />} />
+      <Route path="/combos" element={<CombosLibraryScreen onTabChange={onTabChange} />} />
+      <Route path="/constraints" element={<ConstraintsScreen onTabChange={onTabChange} />} />
+      <Route path="/swipe" element={<SwipeScreen onTabChange={onTabChange} />} />
+      <Route path="*" element={<Navigate to="/swipe" replace />} />
+    </Routes>
+  );
 
   return (
     <MotionConfig reducedMotion="user">
