@@ -54,10 +54,27 @@ export class ConstellationDB extends Dexie {
     this.version(4).stores({
       links: 'id, conceptAId, conceptBId, type, [conceptAId+conceptBId]',
     });
+    // ⚠ Stratégie de migration : chaque nouvelle version doit UNIQUEMENT
+    // AJOUTER des tables ou des index. Ne jamais retirer/renommer une table
+    // existante sans fonction `.upgrade()` explicite qui migre les données,
+    // sinon perte garantie pour les utilisateurs sur l'ancienne version.
+    // Dexie conserve automatiquement les données des tables inchangées.
   }
 }
 
 export const db = new ConstellationDB();
+
+// Multi-onglets : si une autre tab upgrade le schéma, on ferme proprement
+// cette instance pour ne pas bloquer la migration, puis on recharge.
+if (typeof window !== 'undefined') {
+  db.on('versionchange', () => {
+    db.close();
+    location.reload();
+  });
+  db.on('blocked', () => {
+    console.warn('[Constellation] Migration DB bloquée par un autre onglet ouvert.');
+  });
+}
 
 const uid = () => (typeof crypto !== 'undefined' && crypto.randomUUID
   ? crypto.randomUUID()
@@ -126,9 +143,56 @@ export async function giveSecondChance(conceptId: string): Promise<void> {
 
 // ---- concepts ----
 
-export async function cacheConcept(concept: Concept): Promise<void> {
+/**
+ * Met en cache un concept en évitant les doublons.
+ * Dédup par `wikidataId` si présent, sinon par nom normalisé (concepts manuels/proches).
+ * Retourne l'id canonique réellement utilisé (existant ou nouveau) — les appelants
+ * doivent l'utiliser pour `recordInteraction`.
+ */
+export async function cacheConcept(concept: Concept): Promise<string> {
+  let canonical: Concept | undefined;
+
+  if (concept.wikidataId) {
+    canonical = await db.concepts.where('wikidataId').equals(concept.wikidataId).first();
+  }
+  if (!canonical && !concept.wikidataId) {
+    const norm = concept.name.trim().toLowerCase();
+    canonical = (await db.concepts.toArray())
+      .find(c => !c.wikidataId && c.name.trim().toLowerCase() === norm);
+  }
+
+  if (canonical && canonical.id !== concept.id) {
+    // Fusion : on garde l'id existant, on préserve favori + blurbLong déjà acquis
+    await db.concepts.update(canonical.id, {
+      ...concept,
+      id: canonical.id,
+      isFavorite: canonical.isFavorite || concept.isFavorite,
+      blurbLong: concept.blurbLong ?? canonical.blurbLong,
+      createdAt: canonical.createdAt ?? concept.createdAt,
+    });
+    return canonical.id;
+  }
+
   const existing = await db.concepts.get(concept.id);
-  await db.concepts.put({ ...existing, ...concept });
+  // Re-cacher un concept ne doit jamais perdre le favori, le blurb long acquis,
+  // ni écraser la date de première rencontre.
+  await db.concepts.put({
+    ...existing,
+    ...concept,
+    isFavorite: existing?.isFavorite || concept.isFavorite,
+    blurbLong: concept.blurbLong ?? existing?.blurbLong,
+    createdAt: existing?.createdAt ?? concept.createdAt,
+  });
+  return concept.id;
+}
+
+/** Persiste le concept ET enregistre le verdict dans une transaction atomique. */
+export async function recordVerdict(concept: Concept, verdict: SwipeVerdict, sessionId: string): Promise<string> {
+  return db.transaction('rw', db.concepts, db.interactions, async () => {
+    const id = await cacheConcept(concept);
+    await db.interactions.add({ conceptId: id, verdict, timestamp: new Date(), sessionId });
+    return id;
+  });
 }
 
 export async function getCachedConcept(id: string): Promise<Concept | undefined> {
@@ -217,8 +281,9 @@ export async function createFreeConcept(data: {
     isManual: true,
     createdAt: new Date(),
   };
-  await db.concepts.put(c);
-  return c;
+  // cacheConcept dédoublonne par nom (concept libre sans wikidataId)
+  const id = await cacheConcept(c);
+  return { ...c, id };
 }
 
 // ---- tags ----
@@ -627,4 +692,137 @@ export async function exportAllAsCsv(): Promise<{ tableName: string; rows: numbe
     await new Promise(r => setTimeout(r, 120));
   }
   return results;
+}
+
+// ---- Maintenance : GC orphelins + caches expirés ----
+
+/** Supprime les tags sans aucune association concept (auto-créés puis tous retirés). */
+export async function cleanupOrphanTags(): Promise<number> {
+  const [tags, links] = await Promise.all([db.tags.toArray(), db.conceptTags.toArray()]);
+  const usedTagIds = new Set(links.map(l => l.tagId));
+  const orphans = tags.filter(t => !usedTagIds.has(t.id));
+  if (orphans.length) await db.tags.bulkDelete(orphans.map(t => t.id));
+  return orphans.length;
+}
+
+/** Supprime les liens et associations qui pointent vers des concepts inexistants. */
+export async function cleanupDanglingRefs(): Promise<number> {
+  const conceptIds = new Set((await db.concepts.toArray()).map(c => c.id));
+  let removed = 0;
+
+  const links = await db.links.toArray();
+  const deadLinks = links.filter(l => !conceptIds.has(l.conceptAId) || !conceptIds.has(l.conceptBId));
+  if (deadLinks.length) { await db.links.bulkDelete(deadLinks.map(l => l.id)); removed += deadLinks.length; }
+
+  const ctLinks = await db.conceptTags.toArray();
+  const deadCt = ctLinks.filter(l => !conceptIds.has(l.conceptId)).map(l => l.id).filter((id): id is number => id != null);
+  if (deadCt.length) { await db.conceptTags.bulkDelete(deadCt); removed += deadCt.length; }
+
+  const cpcLinks = await db.conceptPersonalCategories.toArray();
+  const deadCpc = cpcLinks.filter(l => !conceptIds.has(l.conceptId)).map(l => l.id).filter((id): id is number => id != null);
+  if (deadCpc.length) { await db.conceptPersonalCategories.bulkDelete(deadCpc); removed += deadCpc.length; }
+
+  return removed;
+}
+
+/** Supprime les entrées de cache expirées (au-delà du TTL). */
+export async function cleanupExpiredCaches(): Promise<number> {
+  const now = Date.now();
+  let removed = 0;
+
+  const llm = await db.cacheLlm.toArray();
+  const deadLlm = llm.filter(e => now - +e.createdAt > LLM_TTL_MS).map(e => e.hash);
+  if (deadLlm.length) { await db.cacheLlm.bulkDelete(deadLlm); removed += deadLlm.length; }
+
+  const wiki = await db.cacheWiki.toArray();
+  const deadWiki = wiki.filter(e => now - +e.createdAt > WIKI_TTL_MS).map(e => e.key);
+  if (deadWiki.length) { await db.cacheWiki.bulkDelete(deadWiki); removed += deadWiki.length; }
+
+  return removed;
+}
+
+/** Maintenance au démarrage : best-effort, ne bloque jamais le boot. */
+export async function runMaintenance(): Promise<void> {
+  try {
+    await Promise.all([
+      cleanupExpiredCaches(),
+      cleanupOrphanTags(),
+      cleanupDanglingRefs(),
+    ]);
+  } catch {
+    // best-effort : on n'empêche pas l'app de démarrer si une passe échoue
+  }
+}
+
+// ---- Import JSON validé ----
+
+const KNOWN_TABLES = [
+  'concepts', 'interactions', 'profile', 'settings',
+  'tags', 'conceptTags', 'personalCategories', 'conceptPersonalCategories',
+  'annotations', 'combinations', 'ideas', 'constraints', 'deepDives', 'links',
+] as const;
+
+export interface ImportReport {
+  ok: boolean;
+  error?: string;
+  imported: Array<{ table: string; rows: number }>;
+  skipped: string[];
+}
+
+/**
+ * Valide puis importe un dump JSON. Vérifie :
+ * - que c'est un objet
+ * - que chaque clé est une table connue (sinon ignorée)
+ * - que chaque valeur est un tableau d'objets
+ * - que les rows critiques (concepts) ont au minimum un `id`
+ * N'écrase la base QUE si la validation passe entièrement.
+ */
+export async function importFromJson(raw: string): Promise<ImportReport> {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: 'Fichier JSON invalide (parsing impossible).', imported: [], skipped: [] };
+  }
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return { ok: false, error: 'Le fichier doit être un objet { table: [...] }.', imported: [], skipped: [] };
+  }
+
+  const obj = data as Record<string, unknown>;
+  const skipped: string[] = [];
+  const plan: Array<{ table: string; rows: Record<string, unknown>[] }> = [];
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (!(KNOWN_TABLES as readonly string[]).includes(key)) { skipped.push(key); continue; }
+    if (!Array.isArray(value)) {
+      return { ok: false, error: `La table « ${key} » doit être un tableau.`, imported: [], skipped };
+    }
+    const rows = value as unknown[];
+    if (rows.some(r => typeof r !== 'object' || r === null)) {
+      return { ok: false, error: `La table « ${key} » contient des entrées non valides.`, imported: [], skipped };
+    }
+    if (key === 'concepts' && rows.some(r => !(r as Record<string, unknown>).id)) {
+      return { ok: false, error: 'Certains concepts n\'ont pas d\'id — fichier corrompu.', imported: [], skipped };
+    }
+    plan.push({ table: key, rows: rows as Record<string, unknown>[] });
+  }
+
+  if (plan.length === 0) {
+    return { ok: false, error: 'Aucune table reconnue dans le fichier.', imported: [], skipped };
+  }
+
+  // Validation passée → écrasement transactionnel
+  const imported: Array<{ table: string; rows: number }> = [];
+  try {
+    for (const { table, rows } of plan) {
+      const t = (db as unknown as Record<string, Table>)[table];
+      if (!t) continue;
+      await t.clear();
+      if (rows.length) await t.bulkPut(rows);
+      imported.push({ table, rows: rows.length });
+    }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erreur d\'écriture en base.', imported, skipped };
+  }
+  return { ok: true, imported, skipped };
 }

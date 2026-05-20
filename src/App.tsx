@@ -19,7 +19,8 @@ import { BoostModal } from './features/boost/BoostModal';
 import { setPendingSwipeDeck } from './lib/pending';
 import { MobileBottomNav } from './components/ui/MobileBottomNav';
 import { ToastProvider } from './lib/toast';
-import { getProfile, getSettings, saveSettings } from './stores/db';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { getProfile, getSettings, saveSettings, runMaintenance } from './stores/db';
 import { applyPaletteOverrides, CATEGORIES, CATEGORY_LIST } from './lib/categories';
 
 const THEME_CLASSES = ['theme-cit-phos', 'theme-cit-amber', 'theme-cit-dossier', 'theme-cit-bristol'];
@@ -155,6 +156,9 @@ export default function App() {
         // Apply theme class on <body>
         applyThemeClass(typeof settings?.theme === 'string' ? settings.theme : 'citizen');
 
+        // Maintenance best-effort (caches expirés, orphelins) — non bloquant
+        runMaintenance();
+
         const profile = await getProfile();
         if (!profile?.onboardingDone) { setState('onboarding'); return; }
         const skip = await getSkipPostOnboarding();
@@ -173,16 +177,20 @@ export default function App() {
   if (state === 'loading') return <LoadingScreen />;
   if (state === 'onboarding') return (
     <ToastProvider>
-      <OnboardingScreen onComplete={() => setState('post-onboarding')} />
+      <ErrorBoundary label="Onboarding" onReset={() => location.reload()}>
+        <OnboardingScreen onComplete={() => setState('post-onboarding')} />
+      </ErrorBoundary>
     </ToastProvider>
   );
   if (state === 'post-onboarding') return (
     <ToastProvider>
       <OfflineBanner/>
-      <PostOnboardingHome
-        onEnter={() => setState('app')}
-        onSkipForever={async () => { await setSkipPostOnboarding(true); setState('app'); }}
-      />
+      <ErrorBoundary label="Accueil" onReset={() => setState('app')}>
+        <PostOnboardingHome
+          onEnter={() => setState('app')}
+          onSkipForever={async () => { await setSkipPostOnboarding(true); setState('app'); }}
+        />
+      </ErrorBoundary>
     </ToastProvider>
   );
 
@@ -207,7 +215,9 @@ export default function App() {
   return (
     <ToastProvider>
       <OfflineBanner/>
-      {screen}
+      <ErrorBoundary key={tab} label={tab} onReset={() => setTab('swipe')}>
+        {screen}
+      </ErrorBoundary>
       <BoostModal onLaunchSeries={(deck, anchor) => {
         setPendingSwipeDeck(deck, `Série liée à ${anchor.name}`);
         setTab('swipe');

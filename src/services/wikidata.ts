@@ -4,6 +4,36 @@ import { cacheConcept, getCachedConcept, cacheWikiGet, cacheWikiSet } from '../s
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
 const WIKIPEDIA_API_FR = 'https://fr.wikipedia.org/api/rest_v1';
 
+/**
+ * fetch avec backoff exponentiel sur 429 (rate limit) et 5xx.
+ * Respecte l'en-tête Retry-After si présent. Max 3 tentatives.
+ */
+export async function fetchWithRetry(input: string, init?: RequestInit, maxRetries = 3): Promise<Response> {
+  let attempt = 0;
+  for (;;) {
+    let res: Response;
+    try {
+      res = await fetch(input, init);
+    } catch (err) {
+      // Erreur réseau : on retente avec backoff
+      if (attempt >= maxRetries) throw err;
+      await new Promise(r => setTimeout(r, 2 ** attempt * 500));
+      attempt++;
+      continue;
+    }
+    if ((res.status === 429 || res.status >= 500) && attempt < maxRetries) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') ?? '', 10);
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : 2 ** attempt * 800; // 800ms, 1.6s, 3.2s
+      await new Promise(r => setTimeout(r, waitMs));
+      attempt++;
+      continue;
+    }
+    return res;
+  }
+}
+
 // ---- SPARQL queries ----
 
 // 30 concepts culturels variés couvrant les 12 catégories pour l'onboarding
@@ -121,7 +151,7 @@ async function sparql<T>(query: string): Promise<T[]> {
   url.searchParams.set('query', query);
   url.searchParams.set('format', 'json');
 
-  const res = await fetch(url.toString(), {
+  const res = await fetchWithRetry(url.toString(), {
     headers: { Accept: 'application/sparql-results+json' },
   });
   if (!res.ok) throw new Error(`SPARQL ${res.status}`);
@@ -188,7 +218,7 @@ LIMIT 12`;
 
   try {
     const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`;
-    const res = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+    const res = await fetchWithRetry(url, { headers: { 'Accept': 'application/sparql-results+json' } });
     if (!res.ok) return [];
     const data = await res.json();
     type Binding = {
@@ -386,7 +416,7 @@ export async function fetchNotorietyBase(): Promise<string[]> {
   if (cached && cached.length > 0) return cached;
   try {
     const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(NOTORIETY_SPARQL)}&format=json`;
-    const res = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+    const res = await fetchWithRetry(url, { headers: { 'Accept': 'application/sparql-results+json' } });
     if (!res.ok) return [];
     const data = await res.json();
     type Binding = { item?: { value: string } };

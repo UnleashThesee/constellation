@@ -41,9 +41,9 @@ export function SearchScreen({ onTabChange }: Props) {
   }, [query]);
 
   const adopt = async (c: Concept) => {
-    await cacheConcept(c);
-    await recordInteraction(c.id, 'valid', SESSION_ID);
-    setAdopted(prev => new Set(prev).add(c.id));
+    const id = await cacheConcept(c);
+    await recordInteraction(id, 'valid', SESSION_ID);
+    setAdopted(prev => new Set(prev).add(id));
     toast.show({ tone: 'success', title: 'Concept adopté', body: `« ${c.name} » rejoint votre univers.` });
   };
 

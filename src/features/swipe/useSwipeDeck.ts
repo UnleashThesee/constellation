@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Concept, SwipeVerdict, SwipeHistoryEntry, SessionStats } from '../../types';
-import { recordInteraction, cacheConcept } from '../../stores/db';
+import { recordVerdict } from '../../stores/db';
 import { playSound } from '../../lib/sounds';
 
 interface Particle { id: number; dx: number; dy: number; left: number; top: number; }
@@ -69,8 +69,8 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void): SwipeD
       setTimeout(() => setParticles([]), 700);
     }
 
-    // Persist concept then record interaction (fire and forget)
-    cacheConcept(current).then(() => recordInteraction(current.id, verdict, SESSION_ID)).catch(() => {});
+    // Persiste le concept + le verdict atomiquement (transaction Dexie)
+    recordVerdict(current, verdict, SESSION_ID).catch(() => {});
 
     setTimeout(() => {
       setDeckState(d => {

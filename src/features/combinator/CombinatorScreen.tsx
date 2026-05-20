@@ -835,8 +835,8 @@ export function CombinatorScreen({ onTabChange }: Props) {
                           isManual: true,
                           createdAt: new Date(),
                         };
-                        await cacheConcept(concept);
-                        await recordInteraction(id, 'valid', SESSION_ID);
+                        const canonicalId = await cacheConcept(concept);
+                        await recordInteraction(canonicalId, 'valid', SESSION_ID);
                         setNearAdopted(prev => new Set(prev).add(sug.nom));
                         playSound('adopt');
                         toast.show({ tone: 'success', title: 'Concept adopté', body: `« ${sug.nom} » rejoint votre univers.` });

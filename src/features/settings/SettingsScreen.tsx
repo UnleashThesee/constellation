@@ -3,7 +3,7 @@ import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../compo
 import { Sunburst, Stamp, Aster, FileSeal } from '../../components/ui/atoms';
 import { ColorPickerModal } from '../../components/ui/ColorPickerModal';
 import { CATEGORIES, CATEGORY_LIST, applyPaletteOverrides } from '../../lib/categories';
-import { db, getSettings, saveSettings, saveProfile, exportAllAsCsv } from '../../stores/db';
+import { db, getSettings, saveSettings, saveProfile, exportAllAsCsv, importFromJson, cleanupExpiredCaches, cleanupOrphanTags, cleanupDanglingRefs } from '../../stores/db';
 import { testLlmKey } from '../../services/llm';
 import { useToast } from '../../lib/toast';
 import { playSound, setSoundsEnabled, setMasterVolume } from '../../lib/sounds';
@@ -497,20 +497,32 @@ export function SettingsScreen({ onTabChange }: Props) {
 
   const handleImport = async (file: File) => {
     if (!confirm('Importer va ÉCRASER votre univers existant. Continuer ?')) return;
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text) as Record<string, unknown[]>;
-      for (const [name, rows] of Object.entries(data)) {
-        const table = (db as unknown as Record<string, { clear: () => Promise<void>; bulkPut: (r: unknown[]) => Promise<unknown> }>)[name];
-        if (!table) continue;
-        await table.clear();
-        if (rows.length) await table.bulkPut(rows);
-      }
-      toast.show({ tone: 'success', title: 'Import réussi', body: 'Rechargement de la page…' });
-      setTimeout(() => location.reload(), 800);
-    } catch (e) {
-      toast.show({ tone: 'warning', title: 'Import échoué', body: e instanceof Error ? e.message : 'Erreur inconnue' });
+    const text = await file.text();
+    const report = await importFromJson(text);
+    if (!report.ok) {
+      toast.show({ tone: 'warning', title: 'Import refusé', body: report.error ?? 'Fichier invalide. Aucune donnée écrasée.' });
+      return;
     }
+    const totalRows = report.imported.reduce((s, t) => s + t.rows, 0);
+    toast.show({
+      tone: 'success',
+      title: 'Import réussi',
+      body: `${report.imported.length} tables · ${totalRows} entrées${report.skipped.length ? ` · ${report.skipped.length} clés ignorées` : ''}. Rechargement…`,
+    });
+    setTimeout(() => location.reload(), 1000);
+  };
+
+  const handleCleanup = async () => {
+    const [caches, tagsRemoved, dangling] = await Promise.all([
+      cleanupExpiredCaches(),
+      cleanupOrphanTags(),
+      cleanupDanglingRefs(),
+    ]);
+    toast.show({
+      tone: 'success',
+      title: 'Base nettoyée',
+      body: `${caches} caches expirés · ${tagsRemoved} tags orphelins · ${dangling} références mortes supprimées.`,
+    });
   };
 
   const handleDemolish = async () => {
@@ -595,7 +607,19 @@ export function SettingsScreen({ onTabChange }: Props) {
 
         <CitPanel title="Bureau LLM · clé API" style={{ marginBottom: 22 }}>
           <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', marginBottom: 12 }}>
-            La clé est stockée <strong>uniquement</strong> dans votre navigateur. Le Bureau ne la voit jamais.
+            La clé est stockée <strong>uniquement</strong> dans votre navigateur (IndexedDB local). Le Bureau ne la voit jamais et elle n'est envoyée qu'au fournisseur LLM que vous avez choisi.
+          </div>
+          <div style={{
+            marginBottom: 12, padding: '8px 12px',
+            background: 'var(--cit-brick)', color: 'var(--cit-cream)',
+            border: '2px solid var(--cit-navy-dk)',
+            fontFamily: "'Special Elite', monospace", fontSize: 11, lineHeight: 1.5,
+          }}>
+            ⚠ <strong>Avertissement sécurité</strong> : comme l'application est 100% côté navigateur,
+            les appels au LLM partent directement depuis votre machine. Votre clé est donc
+            <strong> visible dans l'onglet Réseau des outils développeur</strong>. N'utilisez pas cette
+            fonction sur un ordinateur partagé/public, et ne partagez pas votre écran pendant la saisie.
+            Pensez à révoquer/régénérer votre clé si vous avez un doute.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 12 }}>
             <FormRow label="Fournisseur">
@@ -806,6 +830,10 @@ export function SettingsScreen({ onTabChange }: Props) {
                   </CitButton>
                 </span>
               </label>
+              <CitButton onClick={handleCleanup} style={{ justifyContent: 'space-between', width: '100%' }}>
+                <span>Nettoyer la base</span>
+                <span style={{ fontFamily: "'Special Elite', monospace", fontSize: 11, opacity: 0.7 }}>caches · orphelins</span>
+              </CitButton>
             </div>
           </CitPanel>
 
