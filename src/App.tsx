@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { MotionConfig } from 'framer-motion';
 import { OnboardingScreen } from './features/onboarding/OnboardingScreen';
 import {
   PostOnboardingHome, getSkipPostOnboarding, setSkipPostOnboarding, markPostOnboardingSeen, hasSeenPostOnboarding,
@@ -213,16 +214,18 @@ export default function App() {
   })();
 
   return (
-    <ToastProvider>
-      <OfflineBanner/>
-      <ErrorBoundary key={tab} label={tab} onReset={() => setTab('swipe')}>
-        {screen}
-      </ErrorBoundary>
-      <BoostModal onLaunchSeries={(deck, anchor) => {
-        setPendingSwipeDeck(deck, `Série liée à ${anchor.name}`);
-        setTab('swipe');
-      }}/>
-      <MobileBottomNav active={tab} onChange={onTabChange}/>
-    </ToastProvider>
+    <MotionConfig reducedMotion="user">
+      <ToastProvider>
+        <OfflineBanner/>
+        <ErrorBoundary key={tab} label={tab} onReset={() => setTab('swipe')}>
+          {screen}
+        </ErrorBoundary>
+        <BoostModal onLaunchSeries={(deck, anchor) => {
+          setPendingSwipeDeck(deck, `Série liée à ${anchor.name}`);
+          setTab('swipe');
+        }}/>
+        <MobileBottomNav active={tab} onChange={onTabChange}/>
+      </ToastProvider>
+    </MotionConfig>
   );
 }

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { modalVariants } from '../../lib/motion';
 import { CitButton } from './CitizenShell';
 import { Aster } from './atoms';
 import { CATEGORIES, gradientForWeights } from '../../lib/categories';
@@ -128,7 +130,7 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
       background: 'oklch(0% 0 0 / 0.55)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40,
     }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{
+      <motion.div variants={modalVariants} initial="hidden" animate="visible" onClick={e => e.stopPropagation()} style={{
         width: '100%', maxWidth: 1020, maxHeight: '90vh',
         background: 'var(--cit-cream)',
         border: '3px solid var(--cit-navy-dk)',
@@ -524,7 +526,7 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

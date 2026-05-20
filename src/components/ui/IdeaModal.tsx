@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { modalVariants } from '../../lib/motion';
 import { CitButton, CitPanel } from './CitizenShell';
 import { Stamp, Aster, Sunburst } from './atoms';
 import { CATEGORIES } from '../../lib/categories';
@@ -198,7 +200,7 @@ export function IdeaModal({ idea, open, onClose, onUpdate, onOpenConcept }: Prop
       background: 'oklch(0% 0 0 / 0.55)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 30,
     }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{
+      <motion.div variants={modalVariants} initial="hidden" animate="visible" onClick={e => e.stopPropagation()} style={{
         width: '100%', maxWidth: 1020, maxHeight: '92vh',
         background: 'var(--cit-cream)',
         border: '3px solid var(--cit-navy-dk)',
@@ -429,7 +431,7 @@ export function IdeaModal({ idea, open, onClose, onUpdate, onOpenConcept }: Prop
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { staggerContainer, staggerItem } from '../../lib/motion';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { IdeaModal } from '../../components/ui/IdeaModal';
@@ -346,11 +348,15 @@ export function IdeasScreen({ onTabChange }: Props) {
             </div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 18 }}>
+          <motion.div
+            variants={staggerContainer} initial="hidden" animate="visible"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 18 }}>
             {sorted.map(i => (
-              <IdeaCard key={i.id} idea={i} conceptsById={conceptsById} onOpen={() => setOpenIdea(i)}/>
+              <motion.div key={i.id} variants={staggerItem}>
+                <IdeaCard idea={i} conceptsById={conceptsById} onOpen={() => setOpenIdea(i)}/>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
       </div>
 
