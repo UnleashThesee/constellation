@@ -53,20 +53,21 @@ SELECT DISTINCT ?item ?itemLabel ?itemDescription ?instanceLabel WHERE {
 LIMIT 30
 `;
 
-// Recherche libre
-const searchSPARQL = (query: string) => `
+// Recherche libre (avec pagination)
+const searchSPARQL = (query: string, limit = 10, offset = 0) => `
 SELECT DISTINCT ?item ?itemLabel ?itemDescription WHERE {
   SERVICE wikibase:mwapi {
     bd:serviceParam wikibase:endpoint "www.wikidata.org";
       wikibase:api "EntitySearch";
       mwapi:search "${query.replace(/"/g, '\\"')}";
       mwapi:language "fr";
-      mwapi:limit "10".
+      mwapi:limit "${Math.min(50, limit + offset)}".
     ?item wikibase:apiOutputItem mwapi:item.
   }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
 }
-LIMIT 10
+LIMIT ${limit}
+OFFSET ${offset}
 `;
 
 // ---- Wikidata item → catégories heuristiques ----
@@ -343,8 +344,8 @@ export async function fetchOnboardingConcepts(): Promise<Concept[]> {
   return shuffled;
 }
 
-export async function searchConcepts(query: string): Promise<Concept[]> {
-  const rows = await sparql<RawBinding>(searchSPARQL(query));
+export async function searchConcepts(query: string, limit = 10, offset = 0): Promise<Concept[]> {
+  const rows = await sparql<RawBinding>(searchSPARQL(query, limit, offset));
   return rows.map(bindingToConcept).filter(Boolean) as Concept[];
 }
 

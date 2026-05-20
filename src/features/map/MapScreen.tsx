@@ -589,6 +589,7 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
+  const [miniMapCollapsed, setMiniMapCollapsed] = useState(false);
   const panStart = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
 
   const onPanDown = (e: React.PointerEvent) => {
@@ -622,8 +623,86 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
     return s;
   }, [selectedId, edges]);
 
+  // ---- Mode canvas haute performance au-delà de 500 nœuds ----
+  const useCanvas = nodes.length > 500;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!useCanvas) return;
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+    const rect = container.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    const W = rect.width, H = rect.height;
+    // Reproduit translate(pan) scale(zoom) avec origine centre
+    ctx.save();
+    ctx.translate(W / 2 + pan.x, H / 2 + pan.y);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-W / 2, -H / 2);
+
+    const px = (n: MapNode) => ({ x: (n.x / 100) * W, y: (n.y / 100) * H });
+
+    if (showEdges) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'oklch(20% 0.07 250 / 0.4)';
+      edges.forEach(e => {
+        const A = nodes.find(n => n.concept.id === e.a);
+        const B = nodes.find(n => n.concept.id === e.b);
+        if (!A || !B) return;
+        const pa = px(A), pb = px(B);
+        ctx.beginPath();
+        ctx.moveTo(pa.x, pa.y);
+        ctx.lineTo(pb.x, pb.y);
+        ctx.stroke();
+      });
+    }
+    nodes.forEach(n => {
+      const p = px(n);
+      const r = Math.max(3, n.size / 2);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = n.dominant;
+      ctx.fill();
+      ctx.lineWidth = selectedId === n.concept.id ? 3 : 1;
+      ctx.strokeStyle = selectedId === n.concept.id ? 'var(--cit-brick)' : 'oklch(20% 0.07 250)';
+      ctx.stroke();
+    });
+    ctx.restore();
+  }, [useCanvas, nodes, edges, zoom, pan, selectedId, showEdges]);
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+    const rect = container.getBoundingClientRect();
+    const W = rect.width, H = rect.height;
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    // Inversion du transform (translate centre → scale → translate)
+    const fx = (cx - (W / 2 + pan.x)) / zoom + W / 2;
+    const fy = (cy - (H / 2 + pan.y)) / zoom + H / 2;
+    let best: { id: string; d: number } | null = null;
+    nodes.forEach(n => {
+      const nx = (n.x / 100) * W, ny = (n.y / 100) * H;
+      const d = Math.hypot(nx - fx, ny - fy);
+      const r = Math.max(6, n.size / 2 + 4);
+      if (d <= r && (!best || d < best.d)) best = { id: n.concept.id, d };
+    });
+    if (best) onSelect((best as { id: string }).id);
+  };
+
   return (
     <div
+      ref={containerRef}
       onPointerDown={onPanDown}
       onPointerMove={onPanMove}
       onPointerUp={onPanUp}
@@ -663,7 +742,17 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
         {nodes.length} NŒUDS · {edges.length} LIAISONS
       </div>
 
-      {/* Couche transformée (pan + zoom) qui englobe les edges et les nodes */}
+      {/* Mode canvas (> 500 nœuds) : rendu performant sans DOM par nœud */}
+      {useCanvas && (
+        <canvas
+          ref={canvasRef}
+          onClick={handleCanvasClick}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+        />
+      )}
+
+      {/* Couche transformée (pan + zoom) DOM — uniquement ≤ 500 nœuds */}
+      {!useCanvas && (
       <div style={{
         position: 'absolute', inset: 0,
         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
@@ -762,10 +851,22 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
           </div>
         );
       })}
-      </div>{/* fin couche transformée */}
+      </div>
+      )}{/* fin couche transformée */}
 
-      {/* Mini-map (visible quand > 30 nœuds OU manuellement togglée) */}
-      {nodes.length > 0 && (
+      {/* Mini-map repliable */}
+      {nodes.length > 0 && miniMapCollapsed && (
+        <button onClick={() => setMiniMapCollapsed(false)} title="Afficher la mini-carte" style={{
+          position: 'absolute', top: 8, left: 8, zIndex: 5,
+          background: 'var(--cit-cream)', color: 'var(--cit-navy-dk)',
+          border: '2px solid var(--cit-navy-dk)',
+          boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+          fontFamily: "'Oswald', sans-serif", fontSize: 10, fontWeight: 700,
+          letterSpacing: '.12em', textTransform: 'uppercase',
+          padding: '4px 8px', cursor: 'pointer',
+        }}>▢ Mini-carte</button>
+      )}
+      {nodes.length > 0 && !miniMapCollapsed && (
         <div style={{
           position: 'absolute', top: 8, left: 8, zIndex: 5,
           width: 140, height: 100,
@@ -774,8 +875,14 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
           boxShadow: '3px 3px 0 var(--cit-navy-dk)',
           overflow: 'hidden',
         }}>
-          <div className="cit-condensed" style={{ fontSize: 8, color: 'var(--cit-navy-lt)', padding: '2px 4px', borderBottom: '1.5px solid var(--cit-navy-dk)' }}>
-            ★ MINI-MAP · {nodes.length} NŒUDS
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid var(--cit-navy-dk)' }}>
+            <span className="cit-condensed" style={{ fontSize: 8, color: 'var(--cit-navy-lt)', padding: '2px 4px' }}>
+              ★ {nodes.length} NŒUDS
+            </span>
+            <button onClick={() => setMiniMapCollapsed(true)} title="Replier" style={{
+              background: 'transparent', border: 'none', color: 'var(--cit-brick)',
+              cursor: 'pointer', fontSize: 11, padding: '0 4px', fontFamily: "'Alfa Slab One', serif",
+            }}>−</button>
           </div>
           <div style={{ position: 'relative', width: '100%', height: 80 }}>
             {nodes.map(n => (

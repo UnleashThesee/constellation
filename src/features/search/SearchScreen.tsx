@@ -16,6 +16,9 @@ export function SearchScreen({ onTabChange }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Concept[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const PAGE = 10;
   const [adopted, setAdopted] = useState<Set<string>>(new Set());
   const [showFreeForm, setShowFreeForm] = useState(false);
   const [detailConcept, setDetailConcept] = useState<Concept | null>(null);
@@ -29,16 +32,32 @@ export function SearchScreen({ onTabChange }: Props) {
   }, []);
 
   useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); return; }
+    if (query.trim().length < 2) { setResults([]); setHasMore(false); return; }
     setLoading(true);
     const timer = setTimeout(() => {
-      searchConcepts(query.trim())
-        .then(setResults)
-        .catch(() => setResults([]))
+      searchConcepts(query.trim(), PAGE, 0)
+        .then(r => { setResults(r); setHasMore(r.length >= PAGE); })
+        .catch(() => { setResults([]); setHasMore(false); })
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
   }, [query]);
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const more = await searchConcepts(query.trim(), PAGE, results.length);
+      // dédoublonne par id (le SPARQL OFFSET peut chevaucher)
+      const known = new Set(results.map(r => r.id));
+      const fresh = more.filter(m => !known.has(m.id));
+      setResults(prev => [...prev, ...fresh]);
+      setHasMore(more.length >= PAGE && fresh.length > 0);
+    } catch {
+      setHasMore(false);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const adopt = async (c: Concept) => {
     const id = await cacheConcept(c);
@@ -187,6 +206,14 @@ export function SearchScreen({ onTabChange }: Props) {
               </div>
             );
           })}
+
+          {!loading && hasMore && results.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
+              <CitButton onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? '⌛ Chargement…' : `↓ Voir plus de résultats (${results.length} affichés)`}
+              </CitButton>
+            </div>
+          )}
 
           {!loading && query.trim().length >= 2 && results.length === 0 && (
             <div style={{

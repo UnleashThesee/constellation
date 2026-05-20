@@ -81,16 +81,18 @@ export function CitizenFooter({ left, right }: { left?: string; right?: string }
   );
 }
 
-export function CitButton({ children, tone, onClick, size = 'md', kbd, icon, style }: {
+export function CitButton({ children, tone, onClick, size = 'md', kbd, icon, style, disabled }: {
   children: ReactNode; tone?: 'brick' | 'butter' | 'navy';
   onClick?: () => void; size?: 'sm' | 'md'; kbd?: string; icon?: ReactNode; style?: React.CSSProperties;
+  disabled?: boolean;
 }) {
   const cls = tone === 'brick' ? 'cit-btn--brick' : tone === 'butter' ? 'cit-btn--butter' : tone === 'navy' ? 'cit-btn--navy' : '';
   return (
     <button
       className={`cit-btn ${cls}`}
       onClick={onClick}
-      style={{ padding: size === 'sm' ? '6px 12px' : '10px 18px', fontSize: size === 'sm' ? 13 : 16, ...style }}
+      disabled={disabled}
+      style={{ padding: size === 'sm' ? '6px 12px' : '10px 18px', fontSize: size === 'sm' ? 13 : 16, opacity: disabled ? 0.5 : 1, cursor: disabled ? 'not-allowed' : 'pointer', ...style }}
     >
       {icon && <span style={{ width: '1em', height: '1em', display: 'inline-flex', alignItems: 'center', marginRight: 6 }}>{icon}</span>}
       <span>{children}</span>

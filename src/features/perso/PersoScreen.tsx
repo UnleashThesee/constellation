@@ -3,7 +3,7 @@ import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../compo
 import { Sunburst, Stamp } from '../../components/ui/atoms';
 import {
   getAllPersonalCategories, createPersonalCategory, deletePersonalCategory, updatePersonalCategory,
-  getConceptsInPersonalCategory,
+  getConceptsInPersonalCategory, assignConceptToPersonalCategory, getAdoptedConcepts,
   getTagUsage, db,
 } from '../../stores/db';
 import { useToast } from '../../lib/toast';
@@ -17,18 +17,31 @@ const PRESET_COLORS = [
   'oklch(50% 0.18 155)', 'oklch(45% 0.20 330)', 'oklch(60% 0.25 350)',
 ];
 
-function PersoCatTile({ cat, active, count, onClick }: {
+function PersoCatTile({ cat, active, count, onClick, onDropConcept }: {
   cat: PersonalCategory; active: boolean; count: number; onClick: () => void;
+  onDropConcept: (conceptId: string) => void;
 }) {
+  const [dragOver, setDragOver] = useState(false);
   return (
-    <button onClick={onClick} style={{
-      display: 'grid', gridTemplateColumns: '44px 1fr auto', gap: 14, alignItems: 'center',
-      padding: '12px 14px',
-      background: active ? 'var(--cit-butter)' : 'var(--cit-cream)',
-      border: '3px solid var(--cit-navy-dk)',
-      boxShadow: active ? '5px 5px 0 var(--cit-brick)' : '4px 4px 0 var(--cit-navy-dk)',
-      cursor: 'pointer', textAlign: 'left',
-    }}>
+    <button
+      onClick={onClick}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const conceptId = e.dataTransfer.getData('text/concept-id');
+        if (conceptId) onDropConcept(conceptId);
+      }}
+      style={{
+        display: 'grid', gridTemplateColumns: '44px 1fr auto', gap: 14, alignItems: 'center',
+        padding: '12px 14px',
+        background: dragOver ? 'var(--cit-brick)' : active ? 'var(--cit-butter)' : 'var(--cit-cream)',
+        color: dragOver ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
+        border: dragOver ? '3px dashed var(--cit-cream)' : '3px solid var(--cit-navy-dk)',
+        boxShadow: active ? '5px 5px 0 var(--cit-brick)' : '4px 4px 0 var(--cit-navy-dk)',
+        cursor: 'pointer', textAlign: 'left',
+      }}>
       <div style={{
         width: 44, height: 44, background: cat.color,
         border: '2.5px solid var(--cit-navy-dk)',
@@ -175,12 +188,14 @@ export function PersoScreen({ onTabChange }: Props) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
+  const [adopted, setAdopted] = useState<Concept[]>([]);
   const toast = useToast();
 
   const loadAll = async () => {
-    const [catList, tagList] = await Promise.all([getAllPersonalCategories(), getTagUsage()]);
+    const [catList, tagList, adoptedList] = await Promise.all([getAllPersonalCategories(), getTagUsage(), getAdoptedConcepts()]);
     setCats(catList);
     setTagUsage(tagList);
+    setAdopted(adoptedList);
     const counts: Record<string, number> = {};
     await Promise.all(catList.map(async c => {
       const arr = await getConceptsInPersonalCategory(c.id);
@@ -327,9 +342,43 @@ export function PersoScreen({ onTabChange }: Props) {
                       active={selectedCatId === c.id}
                       count={conceptCounts[c.id] ?? 0}
                       onClick={() => setSelectedCatId(c.id)}
+                      onDropConcept={async (conceptId) => {
+                        await assignConceptToPersonalCategory(conceptId, c.id);
+                        const concept = adopted.find(a => a.id === conceptId);
+                        toast.show({ tone: 'success', title: 'Concept rangé', body: `${concept?.name ?? 'Concept'} → « ${c.name} »` });
+                        loadAll();
+                      }}
                     />
                   ))}
                 </div>
+              )}
+
+              {/* Panneau de concepts adoptés à glisser */}
+              {cats.length > 0 && adopted.length > 0 && (
+                <CitPanel title="Glissez un concept sur une étiquette ↑" accent="cream" style={{ marginTop: 18 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {adopted.map(c => (
+                      <span key={c.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/concept-id', c.id);
+                          e.dataTransfer.effectAllowed = 'copy';
+                        }}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '4px 10px',
+                          background: 'var(--cit-cream)',
+                          border: '2px solid var(--cit-navy-dk)',
+                          boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+                          fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+                          letterSpacing: '.06em', color: 'var(--cit-navy-dk)',
+                          cursor: 'grab',
+                        }}>
+                        ⠿ {c.name}
+                      </span>
+                    ))}
+                  </div>
+                </CitPanel>
               )}
 
               <CitPanel title="À quoi servent les étiquettes ?" accent="butter" style={{ marginTop: 22 }}>
