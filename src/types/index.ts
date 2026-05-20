@@ -80,6 +80,7 @@ export interface AppSettings {
   lastBoostAt?: number;
   totalUsageMs?: number;
   hintsSeen?: Record<string, boolean>;
+  semanticContrastEnabled?: boolean;
 }
 
 export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross' | 'free';

@@ -9,6 +9,7 @@ import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
 import { consumePendingSwipeDeck } from '../../lib/pending';
+import { embedConcepts, centroid, cosineSim, embeddingsStatus } from '../../services/embeddings';
 import type { Concept, SwipeMode, CategoryKey } from '../../types';
 
 const FALLBACK_CONCEPTS: Concept[] = [
@@ -604,6 +605,8 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [algoWeights, setAlgoWeights] = useState<{ explore: number; random: number; contrast: number; trending: number } | undefined>(undefined);
   const [showHints, setShowHints] = useState(false);
   const [todayCounts, setTodayCounts] = useState({ valid: 0, reject: 0, skip: 0, favs: 0 });
+  const [semanticEnabled, setSemanticEnabled] = useState(false);
+  const [semanticBusy, setSemanticBusy] = useState(false);
   const toast = useToast();
 
   // Bilan du jour : compteurs depuis minuit local (refresh à chaque verdict)
@@ -657,12 +660,18 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     await saveSettings({ hintsSeen: { ...(s?.hintsSeen ?? {}), swipe: true } });
   };
 
-  // Load algo weights once (for 'free' mode)
+  // Load algo weights once (for 'free' mode) + préférence contraste sémantique
   useEffect(() => {
     getSettings().then(s => {
       if (s?.algorithmWeights) setAlgoWeights(s.algorithmWeights);
+      if (s?.semanticContrastEnabled) setSemanticEnabled(true);
     });
   }, []);
+
+  const enableSemanticContrast = async () => {
+    setSemanticEnabled(true);
+    await saveSettings({ semanticContrastEnabled: true });
+  };
 
   // En mode 'free', re-pick la source à chaque changement de carte courante
   const currentCardId = swipe.current?.id;
@@ -797,6 +806,38 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     return () => { cancelled = true; };
   }, [mode, explorationAnchorId, adopted.length]);
 
+  // #13 — Contraste sémantique réel (opt-in) : on classe le pool par distance
+  // cosinus croissante au barycentre sémantique des concepts adoptés. Les plus
+  // éloignés (les plus "dérangeants") passent en tête. Fallback silencieux sur
+  // le filtre catégoriel si le modèle est indisponible (hors-ligne, échec CDN).
+  useEffect(() => {
+    if (mode !== 'contrast' || !semanticEnabled) return;
+    if (adopted.length === 0 || rawDeck.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      setSemanticBusy(true);
+      try {
+        const ref = adopted.slice(0, 40);
+        const candidates = rawDeck.slice(0, 60);
+        const refVecs = await embedConcepts(ref);
+        if (cancelled) return;
+        const center = centroid([...refVecs.values()]);
+        if (!center) return;
+        const candVecs = await embedConcepts(candidates);
+        if (cancelled || candVecs.size === 0) return;
+        const ranked = [...rawDeck]
+          .filter(c => candVecs.has(c.id))
+          .map(c => ({ c, sim: cosineSim(center, candVecs.get(c.id)!) }))
+          .sort((a, b) => a.sim - b.sim)
+          .map(x => x.c);
+        if (!cancelled && ranked.length >= 3) swipe.setDeck(ranked);
+      } catch { /* garde le deck catégoriel */ } finally {
+        if (!cancelled) setSemanticBusy(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mode, semanticEnabled, adopted.length, rawDeck.length]);
+
   const current = swipe.current;
   const anchor = adopted.find(c => c.id === explorationAnchorId) ?? null;
 
@@ -923,6 +964,26 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                 {mode === 'cross'    && <>Mode <strong>CROISEMENT</strong>. Tirage à l'intersection sémantique de vos concepts.</>}
                 {mode === 'free'     && <>Mode <strong>LIBRE</strong>. Le Bureau suit vos curseurs d'algorithme.</>}
               </p>
+            )}
+            {mode === 'contrast' && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--cit-navy-dk)' }}>
+                {!semanticEnabled ? (
+                  <>
+                    <p className="cit-typed" style={{ fontSize: 10.5, lineHeight: 1.5, margin: '0 0 8px' }}>
+                      Contraste <strong>catégoriel</strong>. Activez le contraste <strong>sémantique</strong> pour un calcul de distance réelle (télécharge un modèle ~25 Mo, mis en cache).
+                    </p>
+                    <CitButton size="sm" tone="navy" onClick={enableSemanticContrast}>⚛ Activer le sémantique</CitButton>
+                  </>
+                ) : (
+                  <p className="cit-condensed" style={{ fontSize: 10, letterSpacing: '.1em', margin: 0, textTransform: 'uppercase', color: 'var(--cit-navy-dk)' }}>
+                    {semanticBusy || embeddingsStatus() === 'loading'
+                      ? '⚛ Chargement du modèle sémantique…'
+                      : embeddingsStatus() === 'error'
+                        ? '⚠ Modèle indisponible · repli catégoriel'
+                        : '⚛ Contraste sémantique actif'}
+                  </p>
+                )}
+              </div>
             )}
           </CitPanel>
         </div>

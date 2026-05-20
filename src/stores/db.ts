@@ -23,6 +23,7 @@ export class ConstellationDB extends Dexie {
   cacheLlm!: Table<{ hash: string; response: string; createdAt: Date }>;
   cacheWiki!: Table<{ key: string; data: unknown; createdAt: Date }>;
   links!: Table<ConceptLink>;
+  embeddings!: Table<{ id: string; vec: number[]; createdAt: Date }>;
 
   constructor() {
     super('ConstellationDB');
@@ -53,6 +54,10 @@ export class ConstellationDB extends Dexie {
     });
     this.version(4).stores({
       links: 'id, conceptAId, conceptBId, type, [conceptAId+conceptBId]',
+    });
+    this.version(5).stores({
+      // Cache des embeddings sémantiques (all-MiniLM-L6-v2, 384 dims) par concept.
+      embeddings: 'id, createdAt',
     });
     // ⚠ Stratégie de migration : chaque nouvelle version doit UNIQUEMENT
     // AJOUTER des tables ou des index. Ne jamais retirer/renommer une table
@@ -596,6 +601,24 @@ export async function cacheWikiGet<T = unknown>(key: string): Promise<T | null> 
 
 export async function cacheWikiSet<T>(key: string, data: T): Promise<void> {
   await db.cacheWiki.put({ key, data, createdAt: new Date() });
+}
+
+// ---- embeddings sémantiques (cache permanent par concept) ----
+
+export async function getEmbedding(id: string): Promise<number[] | null> {
+  const e = await db.embeddings.get(id);
+  return e?.vec ?? null;
+}
+
+export async function getEmbeddings(ids: string[]): Promise<Map<string, number[]>> {
+  const rows = await db.embeddings.bulkGet(ids);
+  const out = new Map<string, number[]>();
+  rows.forEach((r, i) => { if (r) out.set(ids[i], r.vec); });
+  return out;
+}
+
+export async function putEmbedding(id: string, vec: number[]): Promise<void> {
+  await db.embeddings.put({ id, vec, createdAt: new Date() });
 }
 
 // ---- liens manuels ----
