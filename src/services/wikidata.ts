@@ -460,3 +460,123 @@ export async function fetchRandomConcepts(count = 5): Promise<Concept[]> {
     .map(r => r.value)
     .slice(0, count);
 }
+
+// ============================================================
+// Stratégies de suggestion via vraie SPARQL Wikidata (#11 + #12)
+// ============================================================
+
+const REL_PROPS = ['P31', 'P279', 'P361', 'P527', 'P737', 'P135', 'P136', 'P101'];
+
+/** Mapping contrainte texte → Q-ID Wikidata (recherche fuzzy). */
+const CONSTRAINT_QID_MAP: Record<string, string> = {
+  'auteurs': 'Q482980', 'auteur': 'Q482980',
+  'écrivains': 'Q36180', 'écrivain': 'Q36180',
+  'philosophes': 'Q4964182', 'philosophe': 'Q4964182',
+  'films': 'Q11424', 'film': 'Q11424',
+  'livres': 'Q571', 'livre': 'Q571', 'romans': 'Q8261',
+  'œuvres': 'Q386724', 'oeuvres': 'Q386724',
+  'courants': 'Q968159', 'mouvements': 'Q968159',
+  'lieux': 'Q17334923', 'lieu': 'Q17334923',
+  'personnes': 'Q5', 'gens': 'Q5', 'humains': 'Q5',
+  'théoriciens': 'Q3242115', 'scientifiques': 'Q901',
+  'musiciens': 'Q639669', 'compositeurs': 'Q36834',
+  'peintres': 'Q1028181', 'artistes': 'Q483501',
+  'réalisateurs': 'Q2526255', 'cinéastes': 'Q2526255',
+};
+
+export interface ConstraintResolution {
+  mappable: Array<{ text: string; qid: string }>;
+  unmappable: string[];
+}
+
+/** Résout des contraintes texte en Q-IDs Wikidata (fuzzy). */
+export function resolveConstraints(constraints: string[]): ConstraintResolution {
+  const mappable: Array<{ text: string; qid: string }> = [];
+  const unmappable: string[] = [];
+  for (const c of constraints) {
+    const norm = c.toLowerCase().trim();
+    let qid = CONSTRAINT_QID_MAP[norm];
+    if (!qid) {
+      const key = Object.keys(CONSTRAINT_QID_MAP).find(k => norm.includes(k) || k.includes(norm));
+      if (key) qid = CONSTRAINT_QID_MAP[key];
+    }
+    if (qid) mappable.push({ text: c, qid });
+    else unmappable.push(c);
+  }
+  return { mappable, unmappable };
+}
+
+/**
+ * #12 — Récupère des concepts respectant des contraintes Wikidata conjonctives.
+ * Construit `?item wdt:P31/wdt:P279* wd:<QID>` (AND) pour chaque contrainte mappable.
+ */
+export async function fetchConceptsByConstraints(constraints: string[], limit = 12): Promise<Concept[]> {
+  const { mappable } = resolveConstraints(constraints);
+  if (mappable.length === 0) return [];
+  const clauses = mappable.map(m => `?item wdt:P31/wdt:P279* wd:${m.qid} .`).join('\n  ');
+  const query = `
+SELECT DISTINCT ?item ?itemLabel ?itemDescription WHERE {
+  ${clauses}
+  ?item wikibase:sitelinks ?sl . FILTER(?sl > 20)
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
+}
+ORDER BY DESC(?sl)
+LIMIT ${limit}`;
+  try {
+    const rows = await sparql<RawBinding>(query);
+    return rows.map(bindingToConcept).filter(Boolean) as Concept[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * #11 Exploration — voisins Wikidata (forward + reverse) d'un ensemble de Q-IDs,
+ * via les propriétés sémantiques filtrées, triés par notoriété.
+ */
+export async function fetchNeighborConcepts(qids: string[], limit = 20): Promise<Concept[]> {
+  const valid = qids.filter(q => /^Q\d+$/.test(q)).slice(0, 8);
+  if (valid.length === 0) return [];
+  const anchors = valid.map(q => `wd:${q}`).join(' ');
+  const props = REL_PROPS.map(p => `wdt:${p}`).join(' ');
+  const query = `
+SELECT DISTINCT ?item ?itemLabel ?itemDescription WHERE {
+  VALUES ?anchor { ${anchors} }
+  VALUES ?prop { ${props} }
+  { ?anchor ?prop ?item. } UNION { ?item ?prop ?anchor. }
+  ?item wikibase:sitelinks ?sl . FILTER(?sl > 12)
+  FILTER(?item NOT IN (${anchors}))
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
+}
+ORDER BY DESC(?sl)
+LIMIT ${limit}`;
+  try {
+    const rows = await sparql<RawBinding>(query);
+    return rows.map(bindingToConcept).filter(Boolean) as Concept[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * #11 Croisement — concepts voisins COMMUNS à plusieurs Q-IDs.
+ * Récupère les voisins de chacun puis intersecte (≥ 2 ancrages partagés).
+ */
+export async function fetchCommonNeighborConcepts(qids: string[], limit = 20): Promise<Concept[]> {
+  const valid = qids.filter(q => /^Q\d+$/.test(q)).slice(0, 5);
+  if (valid.length < 2) return fetchNeighborConcepts(valid, limit);
+  const neighborSets = await Promise.all(valid.map(q => fetchNeighborConcepts([q], 40)));
+  // Compte combien d'ancrages chaque candidat touche
+  const score = new Map<string, { concept: Concept; hits: number }>();
+  neighborSets.forEach(set => {
+    set.forEach(c => {
+      const e = score.get(c.id);
+      if (e) e.hits++;
+      else score.set(c.id, { concept: c, hits: 1 });
+    });
+  });
+  return [...score.values()]
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, limit)
+    .map(e => e.concept);
+}

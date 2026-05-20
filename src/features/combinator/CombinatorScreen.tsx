@@ -6,8 +6,20 @@ import { getAdoptedConcepts, saveCombination, saveIdea, getSettings, incrementCo
 import type { SavedConstraint } from '../../types';
 import { useToast } from '../../lib/toast';
 import { generateIdeas, suggestSimilarConcepts, LlmError, type SimilarConceptSuggestion } from '../../services/llm';
+import { fetchCommonNeighborConcepts, fetchConceptsByConstraints, resolveConstraints } from '../../services/wikidata';
 import { consumePendingCombo, consumePendingConcepts } from '../../lib/pending';
 import { cacheConcept, recordInteraction } from '../../stores/db';
+import type { Concept as ConceptType } from '../../types';
+
+function conceptToSuggestion(c: ConceptType, respectsConstraints: boolean, score: number): SimilarConceptSuggestion {
+  return {
+    nom: c.name,
+    description: c.blurb,
+    categories: c.cats.map(([k]) => k),
+    score,
+    respectsConstraints,
+  };
+}
 import { CATEGORIES as CATS } from '../../lib/categories';
 import { playSound } from '../../lib/sounds';
 import type { Concept, CategoryKey } from '../../types';
@@ -423,22 +435,56 @@ export function CombinatorScreen({ onTabChange }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <button disabled={seekingNear || selection.length < 2} onClick={async () => {
               if (selection.length < 2) return;
-              const settings = await getSettings();
-              if (!settings?.llmKey) {
-                toast.show({ tone: 'warning', title: 'Clé LLM absente', body: 'Configurez votre clé API dans les Réglages.' });
-                onTabChange?.('settings');
-                return;
-              }
               setSeekingNear(true);
               playSound('llmStart');
               try {
                 const items = selection
                   .map(s => ({ concept: byId[s.id], weight: s.weight }))
                   .filter(it => it.concept !== undefined) as Array<{ concept: Concept; weight: number }>;
-                const suggestions = await suggestSimilarConcepts({ settings, items, constraints, count: 7 });
-                setNearResults(suggestions);
+                const { mappable, unmappable } = resolveConstraints(constraints);
+
+                // 1. Voisins Wikidata communs aux concepts sélectionnés
+                const qids = selection.map(s => byId[s.id]?.wikidataId).filter((q): q is string => !!q);
+                let wd = qids.length >= 2 ? await fetchCommonNeighborConcepts(qids, 18) : [];
+
+                // 2. Filtre par contraintes mappables Wikidata (SPARQL conjonctif)
+                if (mappable.length > 0 && wd.length > 0) {
+                  const allowed = await fetchConceptsByConstraints(constraints, 60);
+                  const allowedQids = new Set(allowed.map(c => c.wikidataId));
+                  wd = wd.filter(c => c.wikidataId && allowedQids.has(c.wikidataId));
+                }
+                // Exclut les concepts déjà dans l'univers
+                const known = new Set(universe.map(c => c.id));
+                wd = wd.filter(c => !known.has(c.id));
+
+                // 3. Assez de candidats Wikidata ET aucune contrainte non mappable → on s'arrête là (pas de LLM)
+                if (wd.length >= 5 && unmappable.length === 0) {
+                  setNearResults(wd.slice(0, 10).map((c, i) => conceptToSuggestion(c, mappable.length > 0, Math.max(45, 95 - i * 5))));
+                  playSound('llmDone');
+                  toast.show({ tone: 'success', title: 'Concepts proches (Wikidata)', body: `${Math.min(wd.length, 10)} voisins sémantiques${mappable.length ? ' respectant la contrainte' : ''}.` });
+                  return;
+                }
+
+                // 4. Fallback LLM (contraintes non mappables, ou pas assez de voisins)
+                const settings = await getSettings();
+                if (!settings?.llmKey) {
+                  if (wd.length > 0) {
+                    setNearResults(wd.slice(0, 10).map((c, i) => conceptToSuggestion(c, mappable.length > 0, Math.max(45, 90 - i * 5))));
+                    toast.show({ tone: 'info', title: 'Résultats Wikidata', body: 'Ajoutez une clé LLM (Réglages) pour des suggestions enrichies.' });
+                  } else {
+                    toast.show({ tone: 'warning', title: 'Clé LLM absente', body: 'Configurez votre clé API dans les Réglages.' });
+                    onTabChange?.('settings');
+                  }
+                  return;
+                }
+                const llm = await suggestSimilarConcepts({ settings, items, constraints, count: 7 });
+                const merged = [
+                  ...wd.slice(0, 3).map((c, i) => conceptToSuggestion(c, mappable.length > 0, Math.max(50, 92 - i * 5))),
+                  ...llm,
+                ];
+                setNearResults(merged);
                 playSound('llmDone');
-                toast.show({ tone: 'success', title: 'Concepts proches trouvés', body: `${suggestions.length} suggestions à l'intersection.` });
+                toast.show({ tone: 'success', title: 'Concepts proches trouvés', body: `${merged.length} suggestions (Wikidata + LLM).` });
               } catch (e) {
                 playSound('llmFail');
                 const msg = e instanceof LlmError ? e.message : 'Erreur réseau.';

@@ -4,7 +4,7 @@ import { Sunburst, Stamp, StarBurst, PixelDie, Aster } from '../../components/ui
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
-import { fetchRandomConcepts } from '../../services/wikidata';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchCommonNeighborConcepts } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
@@ -758,6 +758,44 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     }
     swipe.setDeck(deck);
   }, [mode, activeThematicCatKeys.join(','), explorationAnchorId, rawDeck.length, adopted.length]);
+
+  // #11 — Couche Wikidata réelle pour Exploration & Croisement : on remplace
+  // le deck filtré client-side par de vrais voisins sémantiques (P31/P279/…)
+  // dès qu'ils arrivent. Fallback silencieux sur le filtre client-side si vide.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (mode === 'explore') {
+          const anchorConcept = adopted.find(c => c.id === explorationAnchorId);
+          const qid = anchorConcept?.wikidataId;
+          if (!qid) return;
+          const [neighbors, excluded] = await Promise.all([
+            fetchNeighborConcepts([qid], 25),
+            getExcludedConceptIds(),
+          ]);
+          const fresh = neighbors.filter(c => !excluded.has(c.id));
+          if (!cancelled && fresh.length >= 3) {
+            await Promise.all(fresh.map(c => cacheConcept(c)));
+            swipe.setDeck(fresh);
+          }
+        } else if (mode === 'cross') {
+          const qids = adopted.slice(0, 4).map(c => c.wikidataId).filter((q): q is string => !!q);
+          if (qids.length < 2) return;
+          const [common, excluded] = await Promise.all([
+            fetchCommonNeighborConcepts(qids, 25),
+            getExcludedConceptIds(),
+          ]);
+          const fresh = common.filter(c => !excluded.has(c.id));
+          if (!cancelled && fresh.length >= 3) {
+            await Promise.all(fresh.map(c => cacheConcept(c)));
+            swipe.setDeck(fresh);
+          }
+        }
+      } catch { /* fallback : on garde le deck client-side */ }
+    })();
+    return () => { cancelled = true; };
+  }, [mode, explorationAnchorId, adopted.length]);
 
   const current = swipe.current;
   const anchor = adopted.find(c => c.id === explorationAnchorId) ?? null;
