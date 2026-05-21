@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSwipeDeck } from './useSwipeDeck';
-import { Sunburst, Stamp, StarBurst, PixelDie, Aster } from '../../components/ui/atoms';
+import { Sunburst, Stamp, StarBurst, PixelDie, Aster, SkeletonCard } from '../../components/ui/atoms';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
@@ -992,15 +992,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         <div>
           <div style={{ position: 'relative', padding: mode === 'contrast' ? '24px 18px 0' : 0 }}>
             {loading && !current ? (
-              <div style={{
-                height: 500, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 16,
-                border: '3px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
-                boxShadow: '5px 5px 0 var(--cit-navy-dk)',
-              }}>
-                <div className="cit-h1" style={{ fontSize: 28, color: 'var(--cit-navy-dk)' }}>Chargement…</div>
-                <div className="cit-condensed" style={{ fontSize: 11 }}>INTERROGATION DE WIKIDATA</div>
-              </div>
+              <SkeletonCard />
             ) : current ? (
               <CitizenCard
                 concept={current}

@@ -150,3 +150,30 @@ export function Stamp({ children, tone = 'brick', rotate = 0, size = 13 }: {
     }}>{children}</span>
   );
 }
+
+// Skeleton loader (#21) : bloc shimmer aux dimensions arbitraires.
+export function Skeleton({ width = '100%', height = 16, style }: {
+  width?: number | string; height?: number | string; style?: React.CSSProperties;
+}) {
+  return <div className="cit-skel cit-no-print" style={{ width, height, ...style }} aria-hidden />;
+}
+
+// Carte-fantôme reproduisant la silhouette d'une CitizenCard pendant le fetch.
+export function SkeletonCard() {
+  return (
+    <div className="cit-card cit-no-print" style={{ height: 500, padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }} aria-label="Chargement en cours" role="status">
+      <Skeleton width={120} height={22} />
+      <Skeleton width="70%" height={34} />
+      <Skeleton width={180} height={14} />
+      <Skeleton height={170} style={{ marginTop: 4 }} />
+      <Skeleton height={12} />
+      <Skeleton height={12} />
+      <Skeleton width="85%" height={12} />
+      <div style={{ marginTop: 'auto', display: 'flex', gap: 10 }}>
+        <Skeleton width={90} height={30} />
+        <Skeleton width={90} height={30} />
+        <Skeleton width={90} height={30} />
+      </div>
+    </div>
+  );
+}

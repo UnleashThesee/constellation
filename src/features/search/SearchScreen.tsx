@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
-import { Sunburst, Stamp } from '../../components/ui/atoms';
+import { Sunburst, Stamp, Skeleton } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST } from '../../lib/categories';
 import { searchConcepts } from '../../services/wikidata';
 import { cacheConcept, recordInteraction, getAdoptedConcepts, createFreeConcept } from '../../stores/db';
@@ -141,6 +141,22 @@ export function SearchScreen({ onTabChange }: Props) {
         })()}
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {loading && results.length === 0 && Array.from({ length: 4 }).map((_, i) => (
+            <div key={`skel-${i}`} style={{
+              display: 'grid', gridTemplateColumns: '60px 1fr auto', gap: 18, alignItems: 'center',
+              padding: '12px 18px', background: 'var(--cit-cream)',
+              border: '3px solid var(--cit-navy-dk)', boxShadow: '4px 4px 0 var(--cit-navy-dk)',
+            }}>
+              <Skeleton width={60} height={60} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Skeleton width="55%" height={22} />
+                <Skeleton height={12} />
+                <Skeleton width="80%" height={12} />
+              </div>
+              <Skeleton width={96} height={30} />
+            </div>
+          ))}
+
           {results.map(c => {
             const cat = CATEGORIES[c.cats[0]?.[0] ?? 'personnages'];
             const initials = c.name.split(' ').pop()?.[0]?.toUpperCase() ?? '?';

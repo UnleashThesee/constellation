@@ -183,7 +183,16 @@ function OnboardingQuizz({ onComplete }: { onComplete: (verdicts: Array<{ concep
               <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>★ INITIALISATION DU TERMINAL · ÉTAPE 1/3</div>
             </div>
           </div>
-          <Stamp tone="brick" rotate={-3}>5 MIN · 30 DOSSIERS</Stamp>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            <Stamp tone="brick" rotate={-3}>5 MIN · 30 DOSSIERS</Stamp>
+            <button onClick={() => onComplete(verdicts)} style={{
+              background: 'var(--cit-butter)', color: 'var(--cit-navy-dk)',
+              border: '2px solid var(--cit-navy-dk)', padding: '6px 14px',
+              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+              letterSpacing: '.14em', textTransform: 'uppercase', cursor: 'pointer',
+              boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+            }}>Passer le reste →</button>
+          </div>
         </div>
         <QuizzGauge current={idx + 1} total={total} />
       </div>
