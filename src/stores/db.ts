@@ -248,10 +248,19 @@ export async function cacheConcept(concept: Concept): Promise<string> {
 }
 
 /** Persiste le concept ET enregistre le verdict dans une transaction atomique. */
-export async function recordVerdict(concept: Concept, verdict: SwipeVerdict, sessionId: string): Promise<string> {
+export async function recordVerdict(
+  concept: Concept,
+  verdict: SwipeVerdict,
+  sessionId: string,
+  opts?: { private?: boolean; favorite?: boolean },
+): Promise<string> {
   return db.transaction('rw', db.concepts, db.interactions, async () => {
     const id = await cacheConcept(concept);
-    await db.interactions.add({ conceptId: id, verdict, timestamp: new Date(), sessionId });
+    if (opts?.favorite) await db.concepts.update(id, { isFavorite: true });
+    await db.interactions.add({
+      conceptId: id, verdict, timestamp: new Date(), sessionId,
+      ...(opts?.private ? { private: true } : {}),
+    });
     return id;
   });
 }

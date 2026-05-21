@@ -46,6 +46,7 @@ export interface Interaction {
   verdict: SwipeVerdict;
   timestamp: Date;
   sessionId: string;
+  private?: boolean;   // décision prise en mode incognito (exclue d'un univers partagé)
 }
 
 export interface UserProfile {
@@ -82,6 +83,7 @@ export interface AppSettings {
   hintsSeen?: Record<string, boolean>;
   semanticContrastEnabled?: boolean;
   savedFilters?: Record<string, unknown>;
+  incognito?: boolean;
 }
 
 export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross' | 'free';

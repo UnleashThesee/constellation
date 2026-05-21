@@ -284,9 +284,11 @@ html, body, #root { margin: 0; padding: 0; background: var(--bg-deep); color: va
 @keyframes cst-fly-right { to { transform: translate(120%, -10%) rotate(22deg); opacity: 0; } }
 @keyframes cst-fly-left  { to { transform: translate(-120%, -10%) rotate(-22deg); opacity: 0; } }
 @keyframes cst-fly-up    { to { transform: translate(0, -130%) scale(0.9); opacity: 0; } }
+@keyframes cst-fly-down  { to { transform: translate(0, 130%) scale(0.92); opacity: 0; } }
 .cst-fly--right { animation: cst-fly-right .42s cubic-bezier(.4,0,.7,1) forwards; }
 .cst-fly--left  { animation: cst-fly-left  .42s cubic-bezier(.4,0,.7,1) forwards; }
 .cst-fly--up    { animation: cst-fly-up    .42s cubic-bezier(.4,0,.7,1) forwards; }
+.cst-fly--down  { animation: cst-fly-down  .42s cubic-bezier(.4,0,.7,1) forwards; }
 
 @keyframes cst-enter { from { opacity: 0; transform: translateY(24px) scale(0.96) perspective(1400px) rotateX(2deg); } to { opacity: 1; transform: translateY(0) scale(1) perspective(1400px) rotateX(2deg); } }
 .cst-enter { animation: cst-enter .35s cubic-bezier(.2,.7,.3,1) both; }

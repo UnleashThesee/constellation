@@ -236,9 +236,9 @@ function OnboardingQuizz({ onComplete }: { onComplete: (verdicts: Array<{ concep
           </div>
 
           <div style={{ marginTop: 22, display: 'flex', gap: 14, justifyContent: 'center' }}>
-            <CitButton tone="brick" onClick={() => answer('reject')} kbd="←">Recyclez !</CitButton>
-            <CitButton onClick={() => answer('skip')} kbd="↑">Plus tard</CitButton>
-            <CitButton tone="butter" onClick={() => answer('valid')} kbd="→">Adoptez !</CitButton>
+            <CitButton tone="brick" onClick={() => answer('reject')} kbd="←">Rejeter</CitButton>
+            <CitButton onClick={() => answer('skip')} kbd="↓">Neutre</CitButton>
+            <CitButton tone="butter" onClick={() => answer('valid')} kbd="→">Adopter</CitButton>
           </div>
 
           <div className="cit-script" style={{ fontSize: 22, color: 'var(--cit-navy)', marginTop: 16, textAlign: 'center', transform: 'rotate(-1deg)' }}>

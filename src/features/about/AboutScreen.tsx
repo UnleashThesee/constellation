@@ -4,11 +4,12 @@ import { Sunburst, Stamp, FileSeal } from '../../components/ui/atoms';
 interface Props { onTabChange?: (id: string) => void }
 
 const SHORTCUTS: Array<[string, string, string]> = [
-  ['←', 'Recycler la fiche', 'Mode Swipe'],
   ['→', 'Adopter la fiche', 'Mode Swipe'],
-  ['↑', 'Plus tard', 'Mode Swipe'],
+  ['←', 'Rejeter la fiche', 'Mode Swipe'],
+  ['↑', 'Favori (adopte + ★)', 'Mode Swipe'],
+  ['↓', 'Neutre', 'Mode Swipe'],
   ['⌫', 'Annuler la dernière action', 'Mode Swipe'],
-  ['Espace', 'Passer', 'Mode Swipe'],
+  ['tap', 'Ouvrir la fiche détaillée', 'Mode Swipe'],
 ];
 
 const FAQ: Array<{ q: string; a: string }> = [

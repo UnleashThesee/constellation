@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSwipeDeck } from './useSwipeDeck';
 import { Sunburst, Stamp, StarBurst, PixelDie, Aster, SkeletonCard } from '../../components/ui/atoms';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
@@ -74,6 +74,12 @@ function CitIconSkip() {
 function CitIconBack() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square"><path d="M9 6L3 12L9 18M3 12H17C19 12 21 14 21 16V18"/></svg>;
 }
+function CitIconFav() {
+  return <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M12 3l2.6 5.7 6.2.7-4.6 4.2 1.3 6.1L12 16.9 6.5 19.9l1.3-6.1L3.2 9.4l6.2-.7z"/></svg>;
+}
+function CitIconNeutral() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square"><path d="M5 12H19"/></svg>;
+}
 
 function CitCat({ catKey, weight }: { catKey: CategoryKey; weight?: number }) {
   const c = CATEGORIES[catKey];
@@ -96,7 +102,7 @@ function CitCat({ catKey, weight }: { catKey: CategoryKey; weight?: number }) {
 
 function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast, isFavorite, onToggleFavorite }: {
   concept: Concept;
-  tilt: 'right' | 'left' | 'up' | null;
+  tilt: 'right' | 'left' | 'up' | 'down' | null;
   dragOffset: { x: number; y: number };
   animClass: string;
   onPointerDown: (e: React.PointerEvent) => void;
@@ -155,8 +161,13 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
           </div>
         )}
         {tilt === 'up' && (
-          <div style={{ position: 'absolute', top: '32%', left: '50%', transform: 'translate(-50%,-50%) rotate(-3deg)', zIndex: 5, pointerEvents: 'none' }}>
-            <Stamp tone="mustard" size={32}>En attente</Stamp>
+          <div style={{ position: 'absolute', top: '28%', left: '50%', transform: 'translate(-50%,-50%) rotate(-3deg)', zIndex: 5, pointerEvents: 'none' }}>
+            <Stamp tone="mustard" size={32}>★ Coup de cœur</Stamp>
+          </div>
+        )}
+        {tilt === 'down' && (
+          <div style={{ position: 'absolute', bottom: '20%', left: '50%', transform: 'translate(-50%,50%) rotate(2deg)', zIndex: 5, pointerEvents: 'none' }}>
+            <Stamp tone="navy" size={32}>Neutre</Stamp>
           </div>
         )}
 
@@ -289,17 +300,18 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
   );
 }
 
-function CitizenActions({ onAction }: { onAction: (v: 'reject' | 'skip' | 'valid' | 'back') => void }) {
+function CitizenActions({ onAction }: { onAction: (v: 'reject' | 'skip' | 'valid' | 'favorite' | 'back') => void }) {
   const items = [
-    { key: 'reject' as const, label: 'Recyclez !', tone: 'brick'  as const, icon: <CitIconReject/>, kbd: '←' },
-    { key: 'skip'   as const, label: 'Plus tard',  tone: undefined,          icon: <CitIconSkip/>,   kbd: '↑' },
-    { key: 'valid'  as const, label: 'Adoptez !',  tone: 'butter' as const,  icon: <CitIconValid/>,  kbd: '→' },
-    { key: 'back'   as const, label: 'Annulez',    tone: 'navy'   as const,  icon: <CitIconBack/>,   kbd: '⌫' },
+    { key: 'reject'   as const, label: 'Rejeter',  tone: 'brick'  as const, icon: <CitIconReject/>,  kbd: '←' },
+    { key: 'skip'     as const, label: 'Neutre',   tone: undefined,         icon: <CitIconNeutral/>, kbd: '↓' },
+    { key: 'favorite' as const, label: 'Favori',   tone: 'mustard' as const, icon: <CitIconFav/>,    kbd: '↑' },
+    { key: 'valid'    as const, label: 'Adopter',  tone: 'butter' as const, icon: <CitIconValid/>,   kbd: '→' },
+    { key: 'back'     as const, label: 'Annuler',  tone: 'navy'   as const, icon: <CitIconBack/>,    kbd: '⌫' },
   ];
   return (
-    <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
       {items.map(it => (
-        <CitButton key={it.key} tone={it.tone} icon={it.icon} kbd={it.kbd} onClick={() => onAction(it.key)} style={{ minWidth: 140 }}>
+        <CitButton key={it.key} tone={it.tone === 'mustard' ? undefined : it.tone} icon={it.icon} kbd={it.kbd} onClick={() => onAction(it.key)} style={{ minWidth: 124, ...(it.tone === 'mustard' ? { background: 'var(--cit-mustard)' } : {}) }}>
           {it.label}
         </CitButton>
       ))}
@@ -507,8 +519,8 @@ function ScorePanel({ counts }: { counts: { valid: number; reject: number; skip:
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long' });
   const rows: Array<[string, number, string]> = [
     ['Adoptés',  counts.valid,  'var(--cit-navy)'],
-    ['Recyclés', counts.reject, 'var(--cit-brick)'],
-    ['Plus tard', counts.skip,  'var(--cit-navy-lt)'],
+    ['Rejetés',  counts.reject, 'var(--cit-brick)'],
+    ['Neutres',  counts.skip,   'var(--cit-navy-lt)'],
     ['Favoris',  counts.favs,   'var(--cit-rust)'],
   ];
   return (
@@ -595,8 +607,11 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       jeuvideo: false, histoire: false, geographie: false, personnages: false }
   );
   const [explorationAnchorId, setExplorationAnchorId] = useState<string | null>(null);
+  const [incognito, setIncognito] = useState(false);
+  const incognitoRef = useRef(incognito);
+  incognitoRef.current = incognito;
 
-  const swipe = useSwipeDeck(FALLBACK_CONCEPTS, () => setDetailOpen(true));
+  const swipe = useSwipeDeck(FALLBACK_CONCEPTS, () => setDetailOpen(true), () => incognitoRef.current);
   const [rawDeck, setRawDeck] = useState<Concept[]>([]);
   const [currentFavorite, setCurrentFavorite] = useState(false);
   const [boostLabel, setBoostLabel] = useState<string | null>(null);
@@ -660,17 +675,27 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     await saveSettings({ hintsSeen: { ...(s?.hintsSeen ?? {}), swipe: true } });
   };
 
-  // Load algo weights once (for 'free' mode) + préférence contraste sémantique
+  // Load algo weights once (for 'free' mode) + préférence contraste sémantique + incognito
   useEffect(() => {
     getSettings().then(s => {
       if (s?.algorithmWeights) setAlgoWeights(s.algorithmWeights);
       if (s?.semanticContrastEnabled) setSemanticEnabled(true);
+      if (s?.incognito) setIncognito(true);
     });
   }, []);
 
   const enableSemanticContrast = async () => {
     setSemanticEnabled(true);
     await saveSettings({ semanticContrastEnabled: true });
+  };
+
+  const toggleIncognito = async () => {
+    const next = !incognito;
+    setIncognito(next);
+    await saveSettings({ incognito: next });
+    toast.show(next
+      ? { tone: 'info', title: 'Mode incognito activé', body: 'Vos décisions sont privées (exclues d\'un univers partagé).' }
+      : { tone: 'info', title: 'Mode incognito désactivé', body: 'Vos décisions redeviennent publiques.' });
   };
 
   // En mode 'free', re-pick la source à chaque changement de carte courante
@@ -901,6 +926,14 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
               ★ BOOST · {Math.min(boostInitial - swipe.deck.length + 1, boostInitial)}/{boostInitial}
             </Stamp>
           )}
+          <button onClick={toggleIncognito} title={incognito ? 'Incognito activé — cliquez pour repasser en public' : 'Activer le mode incognito (décisions privées)'} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            background: incognito ? 'var(--cit-navy-dk)' : 'transparent',
+            color: incognito ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
+            border: '2px solid var(--cit-navy-dk)', padding: '5px 12px', cursor: 'pointer',
+            fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+            letterSpacing: '.12em', textTransform: 'uppercase',
+          }}>{incognito ? '● Incognito' : '○ Public'}</button>
           <CitButton size="sm" onClick={() => onTabChange?.('search')}>⌕ Recherche</CitButton>
           <Sunburst size={68} color="var(--cit-mustard)"/>
         </>}
@@ -1036,6 +1069,8 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                   return;
                 }
                 swipe.back();
+              } else if (v === 'favorite') {
+                swipe.favorite();
               } else {
                 swipe.cycle(v);
               }
@@ -1113,9 +1148,11 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
               <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 16, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 12px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>→</kbd>
               <span className="cit-typed" style={{ fontSize: 12 }}>Adopter (ou swipe à droite)</span>
               <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 16, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 12px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>←</kbd>
-              <span className="cit-typed" style={{ fontSize: 12 }}>Recycler (ou swipe à gauche)</span>
+              <span className="cit-typed" style={{ fontSize: 12 }}>Rejeter (ou swipe à gauche)</span>
               <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 16, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 12px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>↑</kbd>
-              <span className="cit-typed" style={{ fontSize: 12 }}>Plus tard (ou swipe vers le haut)</span>
+              <span className="cit-typed" style={{ fontSize: 12 }}>Favori — adopte + ★ (ou swipe vers le haut)</span>
+              <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 16, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 12px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>↓</kbd>
+              <span className="cit-typed" style={{ fontSize: 12 }}>Neutre (ou swipe vers le bas)</span>
               <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 16, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 12px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>⌫</kbd>
               <span className="cit-typed" style={{ fontSize: 12 }}>Retour arrière (10 max)</span>
               <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 12, background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '4px 8px', textAlign: 'center', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>tap</kbd>

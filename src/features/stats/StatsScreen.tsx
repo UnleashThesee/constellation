@@ -127,8 +127,8 @@ export function StatsScreen({ onTabChange }: Props) {
           {[
             { label: 'DOSSIERS EXAMINÉS', v: String(total).padStart(3, '0'), color: 'var(--cit-navy)', trend: '7 derniers jours' },
             { label: 'ADOPTÉS',  v: String(adopt).padStart(3, '0'),  color: 'var(--cit-navy)',    trend: total > 0 ? `${adoptPct.toFixed(1)}% du total` : '—' },
-            { label: 'RECYCLÉS', v: String(reject).padStart(3, '0'), color: 'var(--cit-brick)',   trend: total > 0 ? `${rejectPct.toFixed(1)}% du total` : '—' },
-            { label: 'PLUS TARD', v: String(skip).padStart(3, '0'),  color: 'var(--cit-mustard)', trend: total > 0 ? `${skipPct.toFixed(1)}% du total` : '—' },
+            { label: 'REJETÉS',  v: String(reject).padStart(3, '0'), color: 'var(--cit-brick)',   trend: total > 0 ? `${rejectPct.toFixed(1)}% du total` : '—' },
+            { label: 'NEUTRES',  v: String(skip).padStart(3, '0'),  color: 'var(--cit-mustard)', trend: total > 0 ? `${skipPct.toFixed(1)}% du total` : '—' },
             { label: 'TEMPS D\'USAGE', v: usageMs > 0 ? formatUsage(usageMs) : '—', color: 'var(--cit-rust)', trend: usageMs > 0 ? 'cumulé sur ce navigateur' : 'aucune donnée' },
           ].map(s => (
             <div key={s.label} style={{
@@ -185,8 +185,8 @@ export function StatsScreen({ onTabChange }: Props) {
             <div style={{ display: 'flex', gap: 18, marginTop: 10 }}>
               {[
                 { c: 'var(--cit-navy)',    l: 'Adoptés' },
-                { c: 'var(--cit-mustard)', l: 'Plus tard' },
-                { c: 'var(--cit-brick)',   l: 'Recyclés' },
+                { c: 'var(--cit-mustard)', l: 'Neutres' },
+                { c: 'var(--cit-brick)',   l: 'Rejetés' },
               ].map((x, i) => (
                 <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 14, height: 14, background: x.c, border: '1.5px solid var(--cit-navy-dk)' }}/>
@@ -219,8 +219,8 @@ export function StatsScreen({ onTabChange }: Props) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
               {[
                 { c: 'var(--cit-navy)',    l: `Adoptés ${adoptPct.toFixed(1)}%` },
-                { c: 'var(--cit-mustard)', l: `Plus tard ${skipPct.toFixed(1)}%` },
-                { c: 'var(--cit-brick)',   l: `Recyclés ${rejectPct.toFixed(1)}%` },
+                { c: 'var(--cit-mustard)', l: `Neutres ${skipPct.toFixed(1)}%` },
+                { c: 'var(--cit-brick)',   l: `Rejetés ${rejectPct.toFixed(1)}%` },
               ].map((x, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 10, height: 10, background: x.c, border: '1.5px solid var(--cit-navy-dk)' }}/>
