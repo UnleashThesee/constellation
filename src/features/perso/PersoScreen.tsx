@@ -4,7 +4,7 @@ import { Sunburst, Stamp } from '../../components/ui/atoms';
 import {
   getAllPersonalCategories, createPersonalCategory, deletePersonalCategory, updatePersonalCategory,
   getConceptsInPersonalCategory, assignConceptToPersonalCategory, getAdoptedConcepts,
-  getTagUsage, db,
+  getTagUsage, mergeConcepts, db,
 } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { setPendingConcepts } from '../../lib/pending';
@@ -189,7 +189,32 @@ export function PersoScreen({ onTabChange }: Props) {
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
   const [adopted, setAdopted] = useState<Concept[]>([]);
+  const [bulkSel, setBulkSel] = useState<string[]>([]); // sélection multiple (ordre = clic), #24/#31
+  const [bulkCatId, setBulkCatId] = useState<string>('');
   const toast = useToast();
+
+  const toggleBulk = (id: string) => setBulkSel(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const bulkAssign = async () => {
+    if (!bulkCatId || bulkSel.length === 0) return;
+    await Promise.all(bulkSel.map(id => assignConceptToPersonalCategory(id, bulkCatId)));
+    const catName = cats.find(c => c.id === bulkCatId)?.name ?? 'catégorie';
+    toast.show({ tone: 'success', title: 'Concepts rangés', body: `${bulkSel.length} concept(s) → « ${catName} »` });
+    setBulkSel([]);
+    loadAll();
+  };
+
+  const handleMerge = async () => {
+    if (bulkSel.length !== 2) return;
+    const keep = adopted.find(c => c.id === bulkSel[0]);
+    const merge = adopted.find(c => c.id === bulkSel[1]);
+    if (!keep || !merge) return;
+    if (!confirm(`Fusionner « ${merge.name} » dans « ${keep.name} » ?\n\nToutes les références (étiquettes, notes, liens, combinaisons, idées) seront transférées à « ${keep.name} », puis « ${merge.name} » sera supprimé. Action irréversible.`)) return;
+    await mergeConcepts(keep.id, merge.id);
+    toast.show({ tone: 'success', title: 'Concepts fusionnés', body: `« ${merge.name} » absorbé dans « ${keep.name} ».` });
+    setBulkSel([]);
+    loadAll();
+  };
 
   const loadAll = async () => {
     const [catList, tagList, adoptedList] = await Promise.all([getAllPersonalCategories(), getTagUsage(), getAdoptedConcepts()]);
@@ -353,31 +378,65 @@ export function PersoScreen({ onTabChange }: Props) {
                 </div>
               )}
 
-              {/* Panneau de concepts adoptés à glisser */}
+              {/* Panneau de concepts adoptés : glisser-déposer OU sélection multiple (#24/#31) */}
               {cats.length > 0 && adopted.length > 0 && (
-                <CitPanel title="Glissez un concept sur une étiquette ↑" accent="cream" style={{ marginTop: 18 }}>
+                <CitPanel title="Glissez sur une étiquette ↑ ou cliquez pour sélectionner" accent="cream" style={{ marginTop: 18 }}>
+                  {bulkSel.length > 0 && (
+                    <div style={{
+                      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10,
+                      padding: '8px 10px', background: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)',
+                    }}>
+                      <span className="cit-condensed" style={{ fontSize: 11, fontWeight: 700 }}>★ {bulkSel.length} SÉLECTIONNÉ(S)</span>
+                      <select value={bulkCatId} onChange={e => setBulkCatId(e.target.value)} style={{
+                        border: '2px solid var(--cit-navy-dk)', background: 'var(--cit-cream)', padding: '3px 6px',
+                        fontFamily: "'Oswald', sans-serif", fontSize: 11,
+                      }}>
+                        <option value="">→ Ranger dans…</option>
+                        {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <CitButton size="sm" tone="navy" disabled={!bulkCatId} onClick={bulkAssign}>Ranger</CitButton>
+                      {bulkSel.length === 2 && (
+                        <CitButton size="sm" tone="brick" onClick={handleMerge}>⚗ Fusionner</CitButton>
+                      )}
+                      <button onClick={() => setBulkSel([])} style={{
+                        marginLeft: 'auto', background: 'transparent', border: '1.5px solid var(--cit-navy-dk)',
+                        cursor: 'pointer', fontFamily: "'Alfa Slab One', serif", fontSize: 11, padding: '1px 7px',
+                      }}>✕</button>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {adopted.map(c => (
-                      <span key={c.id}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('text/concept-id', c.id);
-                          e.dataTransfer.effectAllowed = 'copy';
-                        }}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '4px 10px',
-                          background: 'var(--cit-cream)',
-                          border: '2px solid var(--cit-navy-dk)',
-                          boxShadow: '2px 2px 0 var(--cit-navy-dk)',
-                          fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
-                          letterSpacing: '.06em', color: 'var(--cit-navy-dk)',
-                          cursor: 'grab',
-                        }}>
-                        ⠿ {c.name}
-                      </span>
-                    ))}
+                    {adopted.map(c => {
+                      const sel = bulkSel.includes(c.id);
+                      const order = bulkSel.indexOf(c.id);
+                      return (
+                        <span key={c.id}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/concept-id', c.id);
+                            e.dataTransfer.effectAllowed = 'copy';
+                          }}
+                          onClick={() => toggleBulk(c.id)}
+                          title={sel ? 'Cliquez pour désélectionner' : 'Cliquez pour sélectionner'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '4px 10px',
+                            background: sel ? 'var(--cit-navy-dk)' : 'var(--cit-cream)',
+                            color: sel ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
+                            border: '2px solid var(--cit-navy-dk)',
+                            boxShadow: sel ? 'inset 2px 2px 0 oklch(0% 0 0 / 0.3)' : '2px 2px 0 var(--cit-navy-dk)',
+                            fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+                            letterSpacing: '.06em', cursor: 'pointer', userSelect: 'none',
+                          }}>
+                          {sel ? `${order === 0 ? '①' : order === 1 ? '②' : '✓'} ` : '⠿ '}{c.name}
+                        </span>
+                      );
+                    })}
                   </div>
+                  {bulkSel.length === 2 && (
+                    <div className="cit-typed" style={{ fontSize: 10.5, color: 'var(--cit-navy-lt)', marginTop: 8 }}>
+                      ⚗ Fusion : « {adopted.find(c => c.id === bulkSel[1])?.name} » sera absorbé dans « {adopted.find(c => c.id === bulkSel[0])?.name} » (①).
+                    </div>
+                  )}
                 </CitPanel>
               )}
 

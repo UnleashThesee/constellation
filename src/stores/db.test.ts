@@ -4,7 +4,7 @@ import {
   db, cacheConcept, recordVerdict, getAdoptedConcepts,
   createTag, addTagToConcept, removeTagFromConcept, cleanupOrphanTags,
   createLink, cleanupDanglingRefs,
-  importFromJson,
+  importFromJson, mergeConcepts,
 } from './db';
 import type { Concept } from '../types';
 
@@ -143,5 +143,45 @@ describe('importFromJson', () => {
     await importFromJson(JSON.stringify({ concepts: [{ name: 'no id' }] }));
     // L'existant doit toujours être là
     expect(await db.concepts.get('existant')).toBeDefined();
+  });
+});
+
+describe('mergeConcepts', () => {
+  it('réaffecte interactions + supprime le doublon', async () => {
+    await recordVerdict(makeConcept({ id: 'keep', name: 'Garde' }), 'valid', 's1');
+    await recordVerdict(makeConcept({ id: 'dup', name: 'Doublon' }), 'valid', 's1');
+    await mergeConcepts('keep', 'dup');
+    expect(await db.concepts.get('dup')).toBeUndefined();
+    expect(await db.concepts.get('keep')).toBeDefined();
+    const ints = await db.interactions.toArray();
+    expect(ints.every(i => i.conceptId === 'keep')).toBe(true);
+  });
+
+  it('dédoublonne les étiquettes partagées', async () => {
+    await cacheConcept(makeConcept({ id: 'keep' }));
+    await cacheConcept(makeConcept({ id: 'dup', name: 'D' }));
+    await addTagToConcept('keep', 'commun');
+    await addTagToConcept('dup', 'commun');
+    await addTagToConcept('dup', 'propre');
+    await mergeConcepts('keep', 'dup');
+    const links = await db.conceptTags.where('conceptId').equals('keep').toArray();
+    // 'commun' (déjà présent) + 'propre' (déplacé) = 2, sans doublon
+    expect(links.length).toBe(2);
+    expect((await db.conceptTags.where('conceptId').equals('dup').toArray()).length).toBe(0);
+  });
+
+  it('conserve isFavorite si le doublon était favori', async () => {
+    await cacheConcept(makeConcept({ id: 'keep', isFavorite: false }));
+    await cacheConcept(makeConcept({ id: 'dup', name: 'D', isFavorite: true }));
+    await mergeConcepts('keep', 'dup');
+    expect((await db.concepts.get('keep'))?.isFavorite).toBe(true);
+  });
+
+  it('fusionne les liens et supprime les self-links', async () => {
+    await cacheConcept(makeConcept({ id: 'keep' }));
+    await cacheConcept(makeConcept({ id: 'dup', name: 'D' }));
+    await createLink('keep', 'dup'); // deviendrait keep–keep → supprimé
+    await mergeConcepts('keep', 'dup');
+    expect((await db.links.toArray()).length).toBe(0);
   });
 });

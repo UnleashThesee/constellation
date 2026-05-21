@@ -260,6 +260,92 @@ export async function getCachedConcept(id: string): Promise<Concept | undefined>
   return db.concepts.get(id);
 }
 
+/**
+ * Fusionne deux concepts (#31) : `mergeId` est absorbé dans `keepId`. Toutes les
+ * références (interactions, étiquettes, catégories perso, annotations, liens,
+ * combinaisons, idées) sont réaffectées à `keepId`, puis `mergeId` est supprimé.
+ * Idempotent sur les doublons (dédoublonne étiquettes/catégories/liens).
+ */
+export async function mergeConcepts(keepId: string, mergeId: string): Promise<void> {
+  if (keepId === mergeId) return;
+  await db.transaction('rw', [
+    db.concepts, db.interactions, db.conceptTags, db.conceptPersonalCategories,
+    db.annotations, db.links, db.combinations, db.ideas,
+  ], async () => {
+    // Interactions → keep
+    await db.interactions.where('conceptId').equals(mergeId).modify({ conceptId: keepId });
+
+    // Étiquettes : déplace celles absentes de keep, supprime les doublons
+    const keepTags = new Set((await db.conceptTags.where('conceptId').equals(keepId).toArray()).map(t => t.tagId));
+    for (const ct of await db.conceptTags.where('conceptId').equals(mergeId).toArray()) {
+      if (keepTags.has(ct.tagId)) await db.conceptTags.delete(ct.id!);
+      else await db.conceptTags.update(ct.id!, { conceptId: keepId });
+    }
+
+    // Catégories perso : idem
+    const keepCats = new Set((await db.conceptPersonalCategories.where('conceptId').equals(keepId).toArray()).map(c => c.categoryId));
+    for (const cpc of await db.conceptPersonalCategories.where('conceptId').equals(mergeId).toArray()) {
+      if (keepCats.has(cpc.categoryId)) await db.conceptPersonalCategories.delete(cpc.id!);
+      else await db.conceptPersonalCategories.update(cpc.id!, { conceptId: keepId });
+    }
+
+    // Annotation : fusionne le markdown si les deux existent
+    const keepAnn = await db.annotations.where('conceptId').equals(keepId).first();
+    const mergeAnn = await db.annotations.where('conceptId').equals(mergeId).first();
+    if (mergeAnn) {
+      if (keepAnn) {
+        await db.annotations.update(keepAnn.id!, {
+          markdown: `${keepAnn.markdown}\n\n---\n\n${mergeAnn.markdown}`,
+          updatedAt: new Date(),
+        });
+        await db.annotations.delete(mergeAnn.id!);
+      } else {
+        await db.annotations.update(mergeAnn.id!, { conceptId: keepId });
+      }
+    }
+
+    // Liens : réaffecte, supprime self-links et doublons
+    const seen = new Set<string>();
+    for (const l of await db.links.toArray()) {
+      const a = l.conceptAId === mergeId ? keepId : l.conceptAId;
+      const b = l.conceptBId === mergeId ? keepId : l.conceptBId;
+      if (a === b) { await db.links.delete(l.id); continue; }
+      const key = [a, b].sort().join('|');
+      if (seen.has(key)) { await db.links.delete(l.id); continue; }
+      seen.add(key);
+      if (a !== l.conceptAId || b !== l.conceptBId) await db.links.update(l.id, { conceptAId: a, conceptBId: b });
+    }
+
+    // Combinaisons : remplace mergeId dans items (dédoublonne)
+    for (const combo of await db.combinations.toArray()) {
+      if (!combo.items.some(it => it.conceptId === mergeId)) continue;
+      const map = new Map<string, number>();
+      combo.items.forEach(it => {
+        const id = it.conceptId === mergeId ? keepId : it.conceptId;
+        map.set(id, (map.get(id) ?? 0) + it.weight);
+      });
+      await db.combinations.update(combo.id, { items: [...map].map(([conceptId, weight]) => ({ conceptId, weight })) });
+    }
+
+    // Idées : remplace mergeId dans conceptIdsWithWeights (dédoublonne)
+    for (const idea of await db.ideas.toArray()) {
+      if (!idea.conceptIdsWithWeights.some(w => w.conceptId === mergeId)) continue;
+      const map = new Map<string, number>();
+      idea.conceptIdsWithWeights.forEach(w => {
+        const id = w.conceptId === mergeId ? keepId : w.conceptId;
+        map.set(id, (map.get(id) ?? 0) + w.weight);
+      });
+      await db.ideas.update(idea.id, { conceptIdsWithWeights: [...map].map(([conceptId, weight]) => ({ conceptId, weight })) });
+    }
+
+    // Conserve le statut favori si l'un des deux l'était, puis supprime le doublon
+    const keep = await db.concepts.get(keepId);
+    const merge = await db.concepts.get(mergeId);
+    if (keep && merge?.isFavorite && !keep.isFavorite) await db.concepts.update(keepId, { isFavorite: true });
+    await db.concepts.delete(mergeId);
+  });
+}
+
 export async function toggleFavorite(conceptId: string): Promise<boolean> {
   const c = await db.concepts.get(conceptId);
   if (!c) return false;
