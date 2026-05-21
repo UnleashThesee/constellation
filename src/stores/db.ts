@@ -135,6 +135,50 @@ export async function setFilterState(key: string, value: unknown): Promise<void>
   await saveSettings({ savedFilters: { ...(s?.savedFilters ?? {}), [key]: value } });
 }
 
+// ---- recherche plein-texte locale (#32) : concepts + annotations + idées ----
+
+export interface LocalSearchHit {
+  kind: 'concept' | 'annotation' | 'idea';
+  id: string;        // conceptId (concept/annotation) ou ideaId
+  title: string;
+  snippet: string;
+}
+
+function snippetAround(text: string, q: string): string {
+  const idx = text.toLowerCase().indexOf(q);
+  if (idx < 0) return text.slice(0, 140);
+  return (idx > 40 ? '…' : '') + text.slice(Math.max(0, idx - 40), idx + 100).trim();
+}
+
+export async function searchLocal(query: string): Promise<LocalSearchHit[]> {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  const [concepts, anns, ideas] = await Promise.all([
+    db.concepts.toArray(),
+    db.annotations.toArray(),
+    db.ideas.toArray(),
+  ]);
+  const nameById = new Map(concepts.map(c => [c.id, c.name]));
+  const hits: LocalSearchHit[] = [];
+  concepts.forEach(c => {
+    if (`${c.name} ${c.blurb} ${c.kind}`.toLowerCase().includes(q)) {
+      hits.push({ kind: 'concept', id: c.id, title: c.name, snippet: c.blurb.slice(0, 140) });
+    }
+  });
+  anns.forEach(a => {
+    if (a.markdown.toLowerCase().includes(q)) {
+      hits.push({ kind: 'annotation', id: a.conceptId, title: `Note · ${nameById.get(a.conceptId) ?? a.conceptId}`, snippet: snippetAround(a.markdown, q) });
+    }
+  });
+  ideas.forEach(i => {
+    const hay = `${i.title} ${i.content} ${i.notes} ${i.tags.join(' ')}`;
+    if (hay.toLowerCase().includes(q)) {
+      hits.push({ kind: 'idea', id: i.id, title: i.title, snippet: snippetAround(`${i.content} ${i.notes}`.trim(), q) });
+    }
+  });
+  return hits.slice(0, 60);
+}
+
 // ---- interactions ----
 
 export async function recordInteraction(

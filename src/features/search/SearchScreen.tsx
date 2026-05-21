@@ -4,7 +4,8 @@ import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { Sunburst, Stamp, Skeleton } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST } from '../../lib/categories';
 import { searchConcepts } from '../../services/wikidata';
-import { cacheConcept, recordInteraction, getAdoptedConcepts, createFreeConcept } from '../../stores/db';
+import { cacheConcept, recordInteraction, getAdoptedConcepts, createFreeConcept, getCachedConcept, searchLocal } from '../../stores/db';
+import type { LocalSearchHit } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import type { Concept, CategoryKey } from '../../types';
 
@@ -14,6 +15,8 @@ const SESSION_ID = `search-${Date.now()}`;
 
 export function SearchScreen({ onTabChange }: Props) {
   const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<'wikidata' | 'local'>('wikidata');
+  const [localHits, setLocalHits] = useState<LocalSearchHit[]>([]);
   const [results, setResults] = useState<Concept[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -32,16 +35,23 @@ export function SearchScreen({ onTabChange }: Props) {
   }, []);
 
   useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); setHasMore(false); return; }
+    if (query.trim().length < 2) { setResults([]); setLocalHits([]); setHasMore(false); return; }
     setLoading(true);
     const timer = setTimeout(() => {
-      searchConcepts(query.trim(), PAGE, 0)
-        .then(r => { setResults(r); setHasMore(r.length >= PAGE); })
-        .catch(() => { setResults([]); setHasMore(false); })
-        .finally(() => setLoading(false));
+      if (mode === 'local') {
+        searchLocal(query.trim())
+          .then(setLocalHits)
+          .catch(() => setLocalHits([]))
+          .finally(() => setLoading(false));
+      } else {
+        searchConcepts(query.trim(), PAGE, 0)
+          .then(r => { setResults(r); setHasMore(r.length >= PAGE); })
+          .catch(() => { setResults([]); setHasMore(false); })
+          .finally(() => setLoading(false));
+      }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, mode]);
 
   const loadMore = async () => {
     setLoadingMore(true);
@@ -112,14 +122,60 @@ export function SearchScreen({ onTabChange }: Props) {
           }}>{loading ? '★ Recherche…' : results.length > 0 ? `★ ${results.length} résultats` : ''}</span>
         </div>
 
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          {([
+            { id: 'wikidata' as const, label: '⌕ Wikidata' },
+            { id: 'local' as const, label: '★ Mon univers' },
+          ]).map(m => (
+            <button key={m.id} onClick={() => setMode(m.id)} style={{
+              background: mode === m.id ? 'var(--cit-navy-dk)' : 'transparent',
+              color: mode === m.id ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
+              border: '2px solid var(--cit-navy-dk)', padding: '5px 16px', cursor: 'pointer',
+              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+              letterSpacing: '.12em', textTransform: 'uppercase',
+            }}>{m.label}</button>
+          ))}
+        </div>
+
         {query.trim().length >= 2 && (
           <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', textAlign: 'center' }}>
-            ★ {loading ? 'INTERROGATION DE WIKIDATA…' : 'CHOISISSEZ UN CONCEPT ★'}
+            ★ {loading
+              ? (mode === 'local' ? 'RECHERCHE LOCALE…' : 'INTERROGATION DE WIKIDATA…')
+              : (mode === 'local' ? `${localHits.length} RÉSULTAT(S) DANS VOTRE UNIVERS ★` : 'CHOISISSEZ UN CONCEPT ★')}
+          </div>
+        )}
+
+        {mode === 'local' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {localHits.map(h => (
+              <button key={`${h.kind}-${h.id}-${h.title}`} onClick={async () => {
+                if (h.kind === 'idea') { onTabChange?.('ideas'); return; }
+                const c = await getCachedConcept(h.id);
+                if (c) setDetailConcept(c);
+              }} style={{
+                textAlign: 'left', cursor: 'pointer',
+                background: 'var(--cit-cream)', border: '3px solid var(--cit-navy-dk)',
+                boxShadow: '4px 4px 0 var(--cit-navy-dk)', padding: '12px 16px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span className="cit-condensed" style={{ fontSize: 9, padding: '2px 7px', background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', letterSpacing: '.12em' }}>
+                    {h.kind === 'concept' ? 'CONCEPT' : h.kind === 'annotation' ? 'NOTE' : 'IDÉE'}
+                  </span>
+                  <span className="cit-h1" style={{ fontSize: 17, lineHeight: 0.95 }}>{h.title}</span>
+                </div>
+                <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)' }}>{h.snippet}</div>
+              </button>
+            ))}
+            {!loading && query.trim().length >= 2 && localHits.length === 0 && (
+              <div className="cit-typed" style={{ fontSize: 13, color: 'var(--cit-navy-lt)', textAlign: 'center', padding: 20 }}>
+                Aucune correspondance dans vos concepts, notes ou idées.
+              </div>
+            )}
           </div>
         )}
 
         {/* Détection de désambiguïsation : plusieurs résultats avec un nom de base similaire */}
-        {(() => {
+        {mode === 'wikidata' && (() => {
           const baseNameOf = (s: string) => s.split(/[\s(]/)[0].toLowerCase();
           const counts: Record<string, number> = {};
           results.forEach(r => { const k = baseNameOf(r.name); counts[k] = (counts[k] ?? 0) + 1; });
@@ -140,6 +196,7 @@ export function SearchScreen({ onTabChange }: Props) {
           );
         })()}
 
+        {mode === 'wikidata' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {loading && results.length === 0 && Array.from({ length: 4 }).map((_, i) => (
             <div key={`skel-${i}`} style={{
@@ -248,6 +305,7 @@ export function SearchScreen({ onTabChange }: Props) {
             </div>
           )}
         </div>
+        )}
 
         {/* Concept libre form */}
         <div style={{
