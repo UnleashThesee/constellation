@@ -4,7 +4,7 @@ import { modalVariants } from '../../lib/motion';
 import { CitButton, CitPanel } from './CitizenShell';
 import { Stamp, Aster, Sunburst } from './atoms';
 import { CATEGORIES } from '../../lib/categories';
-import { updateIdea, deleteIdea, getCachedConcept, getSettings, saveDeepDive, getDeepDivesForIdea, saveIdea } from '../../stores/db';
+import { updateIdea, deleteIdea, restoreIdea, getCachedConcept, getSettings, saveDeepDive, getDeepDivesForIdea, saveIdea } from '../../stores/db';
 import { deepDiveIdea, generateIdeas, LlmError, type DeepDive } from '../../services/llm';
 import { useToast } from '../../lib/toast';
 import { Markdown } from '../../lib/markdown';
@@ -108,9 +108,12 @@ export function IdeaModal({ idea, open, onClose, onUpdate, onOpenConcept }: Prop
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Supprimer définitivement « ${idea.title} » ?`)) return;
+    const snapshot = idea;
     await deleteIdea(idea.id);
-    toast.show({ tone: 'info', title: 'Idée supprimée', body: `« ${idea.title} »` });
+    toast.show({
+      tone: 'info', title: 'Idée supprimée', body: `« ${idea.title} »`,
+      action: { label: 'Annuler', onAction: async () => { await restoreIdea(snapshot); onUpdate(); } },
+    });
     onUpdate();
     onClose();
   };

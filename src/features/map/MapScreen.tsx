@@ -6,6 +6,7 @@ import {
   getAdoptedConcepts, getConceptsByVerdict, giveSecondChance,
   getAllLinks, createLink, deleteLink, updateLinkNote,
   getAllPersonalCategories, getAllTags, db,
+  getFilterState, setFilterState,
 } from '../../stores/db';
 import { fetchRelatedQids } from '../../services/wikidata';
 import { useToast } from '../../lib/toast';
@@ -39,13 +40,27 @@ function positionsToNodes(concepts: Concept[], positions: LayoutPosition[]): Map
     .filter((n): n is MapNode => n !== null);
 }
 
-function layoutNodes(concepts: Concept[]): MapNode[] {
+type SeedMap = Record<string, { x: number; y: number; size: number }>;
+
+function layoutNodes(concepts: Concept[], seed?: SeedMap): MapNode[] {
   if (concepts.length === 0) return [];
-  const positions = computeForceLayout(concepts.map(c => ({
-    id: c.id,
-    cats: c.cats.map(([k]) => k),
-    isFavorite: !!c.isFavorite,
-  })));
+  const allSeeded = seed && concepts.every(c => seed[c.id]);
+  const positions = computeForceLayout(
+    concepts.map(c => ({ id: c.id, cats: c.cats.map(([k]) => k), isFavorite: !!c.isFavorite })),
+    { seed, iterations: allSeeded ? 30 : 80 },
+  );
+  return positionsToNodes(concepts, positions);
+}
+
+/** Reconstruit les nœuds directement depuis des positions sauvegardées (aucun calcul). */
+function nodesFromSeed(concepts: Concept[], seed: SeedMap | undefined): MapNode[] | null {
+  if (!seed || concepts.length === 0) return null;
+  const positions: LayoutPosition[] = [];
+  for (const c of concepts) {
+    const p = seed[c.id];
+    if (!p) return null;
+    positions.push({ id: c.id, x: p.x, y: p.y, size: p.size });
+  }
   return positionsToNodes(concepts, positions);
 }
 
@@ -941,6 +956,41 @@ export function MapScreen({ onTabChange }: Props) {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+
+  // #23 — persistance des filtres de carte (catégories perso, étiquettes, toggles)
+  const filtersRestored = useRef(false);
+  useEffect(() => {
+    getFilterState<{
+      cats?: Record<string, boolean>; personalCats?: string[]; tags?: string[];
+      favsOnly?: boolean; showEdges?: boolean; showRejected?: boolean; showSkipped?: boolean;
+    }>('map.filters').then(saved => {
+      if (saved) {
+        setFilters(f => ({
+          ...f,
+          cats: saved.cats ?? f.cats,
+          personalCats: new Set(saved.personalCats ?? []),
+          tags: new Set(saved.tags ?? []),
+          favsOnly: saved.favsOnly ?? f.favsOnly,
+          showEdges: saved.showEdges ?? f.showEdges,
+          showRejected: saved.showRejected ?? f.showRejected,
+          showSkipped: saved.showSkipped ?? f.showSkipped,
+        }));
+      }
+      filtersRestored.current = true;
+    });
+  }, []);
+  useEffect(() => {
+    if (!filtersRestored.current) return;
+    setFilterState('map.filters', {
+      cats: filters.cats,
+      personalCats: [...filters.personalCats],
+      tags: [...filters.tags],
+      favsOnly: filters.favsOnly,
+      showEdges: filters.showEdges,
+      showRejected: filters.showRejected,
+      showSkipped: filters.showSkipped,
+    });
+  }, [filters]);
   const [discovering, setDiscovering] = useState<{ active: boolean; current: number; total: number; created: number }>({ active: false, current: 0, total: 0, created: 0 });
   const toast = useToast();
 
@@ -1032,13 +1082,25 @@ export function MapScreen({ onTabChange }: Props) {
   const workerRef = useRef<Worker | null>(null);
   const reqIdRef = useRef(0);
 
+  // #26 — positions persistées : seed du layout pour éviter les sauts au reload
+  // ou à l'ajout de concepts. Vide tant que non chargé.
+  const [savedPositions, setSavedPositions] = useState<SeedMap | undefined>(undefined);
+  useEffect(() => {
+    getFilterState<SeedMap>('map.positions').then(p => { if (p) setSavedPositions(p); });
+  }, []);
+
   const syncNodes = useMemo(
-    () => (allConcepts.length <= WORKER_THRESHOLD ? layoutNodes(allConcepts) : []),
-    [allConcepts],
+    () => {
+      if (allConcepts.length > WORKER_THRESHOLD) return [];
+      return nodesFromSeed(allConcepts, savedPositions) ?? layoutNodes(allConcepts, savedPositions);
+    },
+    [allConcepts, savedPositions],
   );
 
   useEffect(() => {
     if (allConcepts.length <= WORKER_THRESHOLD) { setAsyncNodes(null); return; }
+    const seeded = nodesFromSeed(allConcepts, savedPositions);
+    if (seeded) { setAsyncNodes(seeded); return; }
     let cancelled = false;
     const reqId = ++reqIdRef.current;
     try {
@@ -1053,18 +1115,29 @@ export function MapScreen({ onTabChange }: Props) {
       worker.addEventListener('message', onMsg, { once: true });
       worker.postMessage({
         items: allConcepts.map(c => ({ id: c.id, cats: c.cats.map(([k]) => k), isFavorite: !!c.isFavorite })),
+        seed: savedPositions,
         reqId,
       });
       return () => { cancelled = true; worker.removeEventListener('message', onMsg); };
     } catch {
       // Fallback synchrone si les workers ne sont pas dispo
-      setAsyncNodes(layoutNodes(allConcepts));
+      setAsyncNodes(layoutNodes(allConcepts, savedPositions));
     }
-  }, [allConcepts]);
+  }, [allConcepts, savedPositions]);
 
   useEffect(() => () => { workerRef.current?.terminate(); }, []);
 
   const allNodes = allConcepts.length <= WORKER_THRESHOLD ? syncNodes : (asyncNodes ?? []);
+
+  // Persiste les positions calculées dès qu'elles ne correspondent plus au seed.
+  useEffect(() => {
+    if (allNodes.length === 0) return;
+    if (savedPositions && allConcepts.every(c => savedPositions[c.id])) return;
+    const map: SeedMap = {};
+    allNodes.forEach(n => { map[n.concept.id] = { x: n.x, y: n.y, size: n.size }; });
+    setSavedPositions(map);
+    setFilterState('map.positions', map);
+  }, [allNodes]);
   const filteredNodes = useMemo(() => allNodes.filter(n => {
     const dominantCat = n.concept.cats[0]?.[0] as CategoryKey | undefined;
     if (dominantCat && !filters.cats[dominantCat]) return false;

@@ -15,8 +15,16 @@ export interface LayoutPosition {
   size: number;
 }
 
-export function computeForceLayout(items: LayoutInput[]): LayoutPosition[] {
+export interface LayoutOptions {
+  // Positions sauvegardées (id → x/y) : les nœuds connus démarrent à leur place
+  // pour limiter les "layout shifts" quand l'ensemble change (#26).
+  seed?: Record<string, { x: number; y: number }>;
+  iterations?: number;
+}
+
+export function computeForceLayout(items: LayoutInput[], opts: LayoutOptions = {}): LayoutPosition[] {
   if (items.length === 0) return [];
+  const seed = opts.seed;
 
   // Init pseudo-radial groupé par catégorie dominante
   const groups: Record<string, LayoutInput[]> = {};
@@ -34,10 +42,11 @@ export function computeForceLayout(items: LayoutInput[]): LayoutPosition[] {
     groups[gk].forEach((c, ci) => {
       const localAngle = baseAngle + ((ci - (groups[gk].length - 1) / 2) * 0.15);
       const r = 22 + (ci % 3) * 5;
+      const s = seed?.[c.id];
       sim.push({
         id: c.id, cats: c.cats, fav: c.isFavorite,
-        x: 50 + Math.cos(localAngle) * r,
-        y: 50 + Math.sin(localAngle) * r,
+        x: s ? s.x : 50 + Math.cos(localAngle) * r,
+        y: s ? s.y : 50 + Math.sin(localAngle) * r,
         dx: 0, dy: 0,
       });
     });
@@ -52,7 +61,7 @@ export function computeForceLayout(items: LayoutInput[]): LayoutPosition[] {
     }
   }
 
-  const iterations = 80;
+  const iterations = opts.iterations ?? 80;
   const area = 100 * 100;
   const k = Math.sqrt(area / Math.max(1, sim.length));
   for (let it = 0; it < iterations; it++) {

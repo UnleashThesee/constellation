@@ -81,6 +81,7 @@ export interface AppSettings {
   totalUsageMs?: number;
   hintsSeen?: Record<string, boolean>;
   semanticContrastEnabled?: boolean;
+  savedFilters?: Record<string, unknown>;
 }
 
 export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross' | 'free';

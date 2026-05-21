@@ -5,12 +5,19 @@ import { playSound } from './sounds';
 
 export type ToastTone = 'success' | 'info' | 'warning';
 
+export interface ToastAction {
+  label: string;
+  onAction: () => void;
+}
+
 export interface Toast {
   id: number;
   tone: ToastTone;
   title: string;
   body?: string;
   kicker?: string;
+  action?: ToastAction;
+  durationMs?: number;
 }
 
 interface ToastContextValue {
@@ -37,7 +44,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { ...t, id }]);
     playSound(t.tone === 'success' ? 'toastSuccess' : t.tone === 'warning' ? 'toastWarning' : 'toastInfo');
-    setTimeout(() => dismiss(id), 4800);
+    setTimeout(() => dismiss(id), t.durationMs ?? (t.action ? 6500 : 4800));
   }, [dismiss]);
 
   return (
@@ -101,6 +108,17 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
           <div className="cit-typed" style={{ fontSize: 11, color: styles.fg, lineHeight: 1.45 }}>
             {toast.body}
           </div>
+        )}
+        {toast.action && (
+          <button
+            onClick={() => { toast.action!.onAction(); onClose(); }}
+            style={{
+              marginTop: 8, background: styles.fg, color: styles.bg,
+              border: `2px solid ${styles.fg}`, padding: '4px 12px', cursor: 'pointer',
+              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+              letterSpacing: '.12em', textTransform: 'uppercase',
+            }}
+          >↶ {toast.action.label}</button>
         )}
       </div>
       <button onClick={onClose} style={{

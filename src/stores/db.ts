@@ -123,6 +123,18 @@ export async function saveSettings(s: Partial<AppSettings>): Promise<void> {
   }
 }
 
+// ---- persistance des filtres d'écran (#23) ----
+
+export async function getFilterState<T = unknown>(key: string): Promise<T | undefined> {
+  const s = await getSettings();
+  return (s?.savedFilters as Record<string, T> | undefined)?.[key];
+}
+
+export async function setFilterState(key: string, value: unknown): Promise<void> {
+  const s = await getSettings();
+  await saveSettings({ savedFilters: { ...(s?.savedFilters ?? {}), [key]: value } });
+}
+
 // ---- interactions ----
 
 export async function recordInteraction(
@@ -421,6 +433,11 @@ export async function deleteCombination(id: string): Promise<void> {
   await db.combinations.delete(id);
 }
 
+/** Ré-insère une combinaison telle quelle (annulation de suppression). */
+export async function restoreCombination(combo: SavedCombination): Promise<void> {
+  await db.combinations.put(combo);
+}
+
 export async function updateCombination(id: string, updates: Partial<SavedCombination>): Promise<void> {
   await db.combinations.update(id, updates);
 }
@@ -483,6 +500,11 @@ export async function getAllIdeas(): Promise<Idea[]> {
 
 export async function deleteIdea(id: string): Promise<void> {
   await db.ideas.delete(id);
+}
+
+/** Ré-insère une idée telle quelle (annulation de suppression). */
+export async function restoreIdea(idea: Idea): Promise<void> {
+  await db.ideas.put(idea);
 }
 
 // ---- constraints (bibliothèque) ----

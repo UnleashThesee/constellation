@@ -6,7 +6,7 @@ import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
 import { IdeaModal } from '../../components/ui/IdeaModal';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES } from '../../lib/categories';
-import { getAllIdeas, getCachedConcept } from '../../stores/db';
+import { getAllIdeas, getCachedConcept, getFilterState, setFilterState } from '../../stores/db';
 import { relativeDate } from '../../lib/dates';
 import type { Idea, IdeaStatus, Concept } from '../../types';
 
@@ -143,6 +143,15 @@ function IdeaCard({ idea, conceptsById, onOpen }: {
 export function IdeasScreen({ onTabChange }: Props) {
   const [filter, setFilter] = useState<'all' | 'fav' | IdeaStatus>('all');
   const [sort, setSort] = useState<'recent' | 'alpha' | 'status'>('recent');
+  // #23 — persistance filtre + tri
+  useEffect(() => {
+    getFilterState<{ filter?: 'all' | 'fav' | IdeaStatus; sort?: 'recent' | 'alpha' | 'status' }>('ideas').then(s => {
+      if (s?.filter) setFilter(s.filter);
+      if (s?.sort) setSort(s.sort);
+    });
+  }, []);
+  const changeFilter = (f: 'all' | 'fav' | IdeaStatus) => { setFilter(f); setFilterState('ideas', { filter: f, sort }); };
+  const changeSort = (s: 'recent' | 'alpha' | 'status') => { setSort(s); setFilterState('ideas', { filter, sort: s }); };
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [conceptsById, setConceptsById] = useState<Record<string, Concept>>({});
   const [openIdea, setOpenIdea] = useState<Idea | null>(null);
@@ -223,7 +232,7 @@ export function IdeasScreen({ onTabChange }: Props) {
                 { id: 'inprogress' as const, label: `En cours (${ideas.filter(i => i.status === 'inprogress').length})` },
                 { id: 'done' as const,       label: `Réalisées (${ideas.filter(i => i.status === 'done').length})` },
               ].map(f => (
-                <button key={f.id} onClick={() => setFilter(f.id)} style={{
+                <button key={f.id} onClick={() => changeFilter(f.id)} style={{
                   background: filter === f.id ? 'var(--cit-navy-dk)' : 'transparent',
                   color: filter === f.id ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
                   border: '2px solid var(--cit-navy-dk)',
@@ -237,7 +246,7 @@ export function IdeasScreen({ onTabChange }: Props) {
             </div>
             <div style={{ flex: 1 }}/>
             <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)' }}>TRIER :</span>
-            <select value={sort} onChange={e => setSort(e.target.value as 'recent' | 'alpha')} style={{
+            <select value={sort} onChange={e => changeSort(e.target.value as 'recent' | 'alpha')} style={{
               border: '2px solid var(--cit-navy-dk)',
               background: 'var(--cit-cream)',
               padding: '4px 8px',

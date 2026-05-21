@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CitizenMasthead, CitizenFooter, CitButton } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp, Aster } from '../../components/ui/atoms';
-import { getAllCombinations, deleteCombination, getCachedConcept, duplicateCombination, updateCombination } from '../../stores/db';
+import { getAllCombinations, deleteCombination, restoreCombination, getCachedConcept, duplicateCombination, updateCombination, getFilterState, setFilterState } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { setPendingCombo } from '../../lib/pending';
 import type { SavedCombination, Concept } from '../../types';
@@ -130,6 +130,12 @@ export function CombosLibraryScreen({ onTabChange }: Props) {
   const [conceptsById, setConceptsById] = useState<Record<string, Concept>>({});
   const toast = useToast();
 
+  // #23 — restaure le filtre persisté au montage, le sauve à chaque changement
+  useEffect(() => {
+    getFilterState<'all' | 'fav' | 'active' | 'archived'>('combos.filter').then(f => { if (f) setFilter(f); });
+  }, []);
+  const changeFilter = (f: 'all' | 'fav' | 'active' | 'archived') => { setFilter(f); setFilterState('combos.filter', f); };
+
   const load = async () => {
     const arr = await getAllCombinations();
     setCombos(arr);
@@ -153,10 +159,16 @@ export function CombosLibraryScreen({ onTabChange }: Props) {
   const allConstraints = Array.from(new Set(combos.flatMap(c => c.constraints)));
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Supprimer définitivement « ${name} » ?`)) return;
+    const snapshot = combos.find(c => c.id === id);
     await deleteCombination(id);
-    toast.show({ tone: 'info', title: 'Combinaison supprimée', body: `« ${name} » a été retirée.` });
     load();
+    toast.show({
+      tone: 'info', title: 'Combinaison supprimée', body: `« ${name} » a été retirée.`,
+      action: snapshot ? {
+        label: 'Annuler',
+        onAction: async () => { await restoreCombination(snapshot); load(); },
+      } : undefined,
+    });
   };
 
   return (
@@ -185,7 +197,7 @@ export function CombosLibraryScreen({ onTabChange }: Props) {
           { id: 'active',   label: `Actives (${combos.filter(c => c.status === 'active').length})` },
           { id: 'archived', label: `Archivées (${combos.filter(c => c.status === 'archived').length})` },
         ] as const).map(f => (
-          <button key={f.id} onClick={() => setFilter(f.id)} style={{
+          <button key={f.id} onClick={() => changeFilter(f.id)} style={{
             background: filter === f.id ? 'var(--cit-navy-dk)' : 'transparent',
             color: filter === f.id ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
             border: '2px solid var(--cit-navy-dk)',
