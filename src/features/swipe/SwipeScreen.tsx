@@ -4,8 +4,8 @@ import { Sunburst, Stamp, StarBurst, PixelDie, Aster, SkeletonCard } from '../..
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
-import { fetchRandomConcepts, fetchNeighborConcepts, fetchCommonNeighborConcepts } from '../../services/wikidata';
-import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, db } from '../../stores/db';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraints } from '../../services/wikidata';
+import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
 import { consumePendingSwipeDeck } from '../../lib/pending';
@@ -47,11 +47,46 @@ const FALLBACK_CONCEPTS: Concept[] = [
 
 const MODES: Array<{ id: SwipeMode; label: string }> = [
   { id: 'random',   label: 'Aléatoire' },
-  { id: 'themed',   label: 'Thématique' },
-  { id: 'explore',  label: 'Exploration' },
+  { id: 'targeted', label: 'Ciblé' },
   { id: 'contrast', label: 'Contraste' },
-  { id: 'cross',    label: 'Croisement' },
-  { id: 'free',     label: 'Libre' },
+];
+
+/** Entrelace plusieurs listes proportionnellement à des poids (mode « mélange »). */
+function interleaveWeighted(lists: Concept[][], weights: number[]): Concept[] {
+  const out: Concept[] = [];
+  const seen = new Set<string>();
+  const pos = lists.map(() => 0);
+  const acc = lists.map(() => 0);
+  const tot = weights.reduce((s, w) => s + Math.max(1, w), 0) || 1;
+  let left = lists.reduce((s, l) => s + l.length, 0);
+  while (left > 0) {
+    let any = false;
+    for (let i = 0; i < lists.length; i++) {
+      acc[i] += Math.max(1, weights[i] ?? 1) / tot;
+      if (acc[i] >= 1 && pos[i] < lists[i].length) {
+        acc[i] -= 1;
+        const c = lists[i][pos[i]++]; left--; any = true;
+        if (!seen.has(c.id)) { seen.add(c.id); out.push(c); }
+      }
+    }
+    if (!any) {
+      for (let i = 0; i < lists.length; i++) {
+        while (pos[i] < lists[i].length) {
+          const c = lists[i][pos[i]++]; left--;
+          if (!seen.has(c.id)) { seen.add(c.id); out.push(c); }
+        }
+      }
+      break;
+    }
+  }
+  return out;
+}
+
+type ContrastSub = 'far' | 'adopted' | 'rejected';
+const CONTRAST_SUBS: Array<{ id: ContrastSub; label: string; hint: string }> = [
+  { id: 'far',      label: 'Loin de tout',          hint: 'Ni proche de vos adoptés ni de vos rejetés' },
+  { id: 'adopted',  label: 'Proche de mes adoptés', hint: 'Voisinage de ce que vous gardez' },
+  { id: 'rejected', label: 'Proche de mes rejetés', hint: 'Voisinage de ce que vous écartez' },
 ];
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -370,148 +405,125 @@ function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: S
 
 // ---- Mode-specific secondary banners ----
 
-function ThematicBanner({ active, toggle, count }: {
-  active: Record<string, boolean>; toggle: (k: CategoryKey) => void; count: number;
+function CibleBanner({ themes, onAdd, onRemove, onWeight, mixThemes, onToggleMix, anchorId, anchorOptions, onSetAnchor, suggestions, loading }: {
+  themes: Array<{ text: string; weight: number }>;
+  onAdd: (t: string) => void;
+  onRemove: (t: string) => void;
+  onWeight: (t: string, w: number) => void;
+  mixThemes: boolean;
+  onToggleMix: () => void;
+  anchorId: string | null;
+  anchorOptions: Concept[];
+  onSetAnchor: (id: string | null) => void;
+  suggestions: string[];
+  loading: boolean;
 }) {
+  const [input, setInput] = useState('');
+  const submit = () => { const v = input.trim(); if (v) { onAdd(v); setInput(''); } };
+  const free = suggestions.filter(s => !themes.some(t => t.text.toLowerCase() === s.toLowerCase())).slice(0, 6);
   return (
     <div style={{
-      padding: '10px 32px',
-      background: 'var(--cit-butter)',
-      borderBottom: '3px solid var(--cit-navy-dk)',
-      boxShadow: 'inset 0 4px 0 oklch(0% 0 0 / 0.08)',
-      position: 'relative', zIndex: 3,
+      padding: '10px 32px', background: 'var(--cit-butter)',
+      borderBottom: '3px solid var(--cit-navy-dk)', position: 'relative', zIndex: 3,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-        <Aster size={26}/>
-        <span className="cit-h1" style={{ fontSize: 20, lineHeight: 0.9 }}>
-          QUELLES CATÉGORIES VOULEZ-VOUS EXAMINER AUJOURD'HUI ?
-        </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+        <Aster size={24}/>
+        <span className="cit-h1" style={{ fontSize: 18, lineHeight: 0.9 }}>CIBLAGE DE LA PIOCHE</span>
         <div style={{ flex: 1 }}/>
-        <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>
-          {count} ACTIVE{count > 1 ? 'S' : ''}
-        </span>
+        {loading && <span className="cit-condensed cit-pulse-brick" style={{ fontSize: 10, color: 'var(--cit-brick)' }}>★ INTERROGATION WIKIDATA…</span>}
+        <button onClick={onToggleMix} title={mixThemes ? 'Mélange pondéré : tirage proportionnel' : 'Intersection stricte : concepts respectant TOUS les thèmes'} style={{
+          background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)',
+          padding: '4px 12px', cursor: 'pointer', fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
+          letterSpacing: '.1em', textTransform: 'uppercase',
+        }}>{mixThemes ? '⇆ Mélanger' : '∩ Croiser'}</button>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {CATEGORY_LIST.map(c => {
-          const on = !!active[c.key];
-          return (
-            <button key={c.key} onClick={() => toggle(c.key)} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '4px 10px 4px 4px',
-              background: on ? 'var(--cit-cream)' : 'transparent',
-              border: '2.5px solid var(--cit-navy-dk)',
-              borderLeft: `8px solid ${c.oklch}`,
-              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
-              letterSpacing: '.10em', textTransform: 'uppercase',
-              color: 'var(--cit-navy-dk)', cursor: 'pointer',
-              boxShadow: on ? '2px 2px 0 var(--cit-navy-dk)' : 'none',
-              opacity: on ? 1 : 0.55,
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder="Écrivez un thème : guerre, citations, instruments…"
+          style={{
+            flex: '1 1 240px', minWidth: 180, padding: '6px 12px',
+            border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+            fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)',
+          }}/>
+        <CitButton size="sm" tone="navy" onClick={submit}>+ Thème</CitButton>
+        <select value={anchorId ?? ''} onChange={e => onSetAnchor(e.target.value || null)} style={{
+          border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)', padding: '6px 8px',
+          fontFamily: "'Oswald', sans-serif", fontSize: 12, maxWidth: 220,
+        }}>
+          <option value="">⚓ Sans ancrage</option>
+          {anchorOptions.map(c => <option key={c.id} value={c.id}>⚓ {c.name}</option>)}
+        </select>
+      </div>
+
+      {themes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+          {themes.map(t => (
+            <span key={t.text} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 10px',
+              background: 'var(--cit-cream)', border: '2.5px solid var(--cit-navy-dk)',
+              boxShadow: '2px 2px 0 var(--cit-navy-dk)',
+              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, color: 'var(--cit-navy-dk)',
             }}>
-              {on && <span style={{ color: 'var(--cit-brick)' }}>✓</span>}
-              {c.label}
-            </button>
-          );
-        })}
-      </div>
+              {t.text}
+              {mixThemes && (
+                <input type="range" min={5} max={100} value={t.weight} onChange={e => onWeight(t.text, +e.target.value)} style={{ width: 60 }} title={`Poids ${t.weight}%`}/>
+              )}
+              {mixThemes && <span style={{ color: 'var(--cit-brick)', fontSize: 10 }}>{t.weight}%</span>}
+              <button onClick={() => onRemove(t.text)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-brick)', fontFamily: "'Alfa Slab One', serif", fontSize: 12 }}>✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {free.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, alignItems: 'center' }}>
+          <span className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)' }}>RÉCENTS ›</span>
+          {free.map(s => (
+            <button key={s} onClick={() => onAdd(s)} style={{
+              background: 'transparent', border: '1.5px dashed var(--cit-navy-dk)', cursor: 'pointer',
+              padding: '2px 8px', fontFamily: "'Oswald', sans-serif", fontSize: 10, color: 'var(--cit-navy-dk)',
+            }}>+ {s}</button>
+          ))}
+        </div>
+      )}
+
+      {themes.length === 0 && anchorId === null && (
+        <p className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', margin: '8px 0 0', fontStyle: 'italic' }}>
+          Ajoutez un thème ou ancrez un concept pour cibler la pioche. Sans rien, on tire au hasard.
+        </p>
+      )}
     </div>
   );
 }
 
-function CrossBanner({ selection, byId, mixCss }: {
-  selection: Array<{ id: string; weight: number }>;
-  byId: Record<string, Concept>;
-  mixCss: string;
-}) {
+function ContrasteBanner({ sub, onSet }: { sub: ContrastSub; onSet: (s: ContrastSub) => void }) {
   return (
     <div style={{
-      padding: '10px 32px',
-      background: 'var(--cit-cream)',
-      borderBottom: '3px solid var(--cit-navy-dk)',
-      display: 'flex', alignItems: 'center', gap: 14,
-      position: 'relative', zIndex: 3, flexWrap: 'wrap',
+      padding: '10px 32px', background: 'var(--cit-brick)',
+      borderBottom: '3px solid var(--cit-navy-dk)', position: 'relative', zIndex: 3,
+      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
     }}>
-      <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', whiteSpace: 'nowrap' }}>★ Croisement ›</span>
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        {selection.length === 0 ? (
-          <span className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
-            Aucun concept sélectionné — adoptez d'abord puis revenez ici.
-          </span>
-        ) : selection.map(s => {
-          const c = byId[s.id];
-          if (!c) return null;
-          const color = conceptDominant(c.cats).css;
-          return (
-            <span key={s.id} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '3px 9px 3px 3px',
-              background: 'var(--cit-cream)',
-              border: '2px solid var(--cit-navy-dk)',
-              borderLeft: `8px solid ${color}`,
-              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
-              letterSpacing: '.06em', color: 'var(--cit-navy-dk)',
-            }}>{c.name}<span style={{ color: 'var(--cit-brick)' }}>{s.weight}%</span></span>
-          );
-        })}
-      </div>
-      <div style={{ flex: 1 }}/>
-      <span className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>RÉSULTANTE ›</span>
-      <div style={{
-        width: 32, height: 32, borderRadius: '50%',
-        background: mixCss, border: '2.5px solid var(--cit-navy-dk)',
-        boxShadow: '2px 2px 0 var(--cit-navy-dk)',
-      }}/>
+      <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)', whiteSpace: 'nowrap' }}>★ Contraste ›</span>
+      {CONTRAST_SUBS.map(s => {
+        const on = s.id === sub;
+        return (
+          <button key={s.id} onClick={() => onSet(s.id)} title={s.hint} style={{
+            background: on ? 'var(--cit-cream)' : 'transparent',
+            color: on ? 'var(--cit-brick)' : 'var(--cit-cream)',
+            border: `2px solid ${on ? 'var(--cit-cream)' : 'oklch(100% 0 0 / 0.5)'}`,
+            padding: '4px 12px', cursor: 'pointer', fontFamily: "'Oswald', sans-serif",
+            fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase',
+          }}>{s.label}</button>
+        );
+      })}
+      <span className="cit-typed" style={{ fontSize: 10.5, color: 'var(--cit-cream)', marginLeft: 'auto' }}>
+        {CONTRAST_SUBS.find(s => s.id === sub)?.hint}
+      </span>
     </div>
-  );
-}
-
-function ExplorationAnchorPanel({ anchor }: { anchor: Concept | null }) {
-  if (!anchor) {
-    return (
-      <CitPanel title="Concept de référence">
-        <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 6 }}>
-          ★ POINT D'ANCRAGE
-        </div>
-        <p className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', lineHeight: 1.5, margin: 0, fontStyle: 'italic' }}>
-          Adoptez d'abord un concept pour qu'il serve d'ancrage à l'exploration.
-        </p>
-      </CitPanel>
-    );
-  }
-  const color = conceptDominant(anchor.cats).css;
-  const short = anchor.name.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
-  return (
-    <CitPanel title="Concept de référence">
-      <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 6 }}>
-        ★ POINT D'ANCRAGE DE L'EXPLORATION
-      </div>
-      <div style={{
-        padding: '8px 12px',
-        background: 'var(--cit-butter)',
-        border: '2.5px solid var(--cit-navy-dk)',
-        borderLeft: `12px solid ${color}`,
-        boxShadow: '3px 3px 0 var(--cit-navy-dk)',
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <span style={{
-          width: 36, height: 36, borderRadius: '50%',
-          background: color,
-          border: '2px solid var(--cit-navy-dk)',
-          display: 'grid', placeItems: 'center',
-          fontFamily: "'Alfa Slab One', serif", fontSize: 12, color: 'var(--cit-cream)',
-          textShadow: '1px 1px 0 var(--cit-navy-dk)',
-        }}>{short}</span>
-        <div style={{ minWidth: 0 }}>
-          <div className="cit-h1" style={{ fontSize: 16, lineHeight: 0.95 }}>{anchor.name}</div>
-          <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>★ Adopté</div>
-        </div>
-      </div>
-      <div className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)', lineHeight: 1.5, marginTop: 10 }}>
-        Le Bureau cherche des concepts qui éclairent <strong style={{ color: 'var(--cit-brick)' }}>{anchor.name}</strong> par voisinage sémantique.
-      </div>
-      <CitButton size="sm" style={{ width: '100%', justifyContent: 'center', marginTop: 10 }}>
-        ↻ Changer d'ancrage
-      </CitButton>
-    </CitPanel>
   );
 }
 
@@ -572,41 +584,24 @@ function RegistrePanel({ history }: { history: Array<{ name: string; verdict: st
   );
 }
 
-const FOOTERS: Record<SwipeMode, string> = {
+const FOOTERS: Partial<Record<SwipeMode, string>> = {
   random:   'MODE ALÉATOIRE · LE BUREAU LANCE LES DÉS POUR VOUS',
-  themed:   'MODE THÉMATIQUE · LE BUREAU TIRE DANS VOS CATÉGORIES',
-  explore:  'MODE EXPLORATION · LE BUREAU TIRE DEPUIS UN CONCEPT-PIVOT',
+  targeted: 'MODE CIBLÉ · LE BUREAU TIRE SELON VOS THÈMES ET ANCRAGE',
   contrast: 'MODE CONTRASTE · LE BUREAU CHERCHE CE QUI VOUS DÉRANGE',
-  cross:    'MODE CROISEMENT · LE BUREAU TIRE DES FICHES À L\'INTERSECTION',
-  free:     'MODE LIBRE · LE BUREAU SUIT VOS CURSEURS D\'ALGORITHME',
 };
-
-/** Tire une source selon les proportions des curseurs algo (exploration/aléatoire/contraste/trending). */
-function pickSourceFromWeights(weights?: { explore: number; random: number; contrast: number; trending: number }): SwipeMode {
-  const w = weights ?? { explore: 35, random: 30, contrast: 20, trending: 15 };
-  // Trending est désactivé en mono-user → on le redistribue sur Aléatoire
-  const explore = w.explore;
-  const random = w.random + w.trending;
-  const contrast = w.contrast;
-  const total = explore + random + contrast;
-  if (total <= 0) return 'random';
-  const r = Math.random() * total;
-  if (r < explore) return 'explore';
-  if (r < explore + random) return 'random';
-  return 'contrast';
-}
 
 export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => void }) {
   const [mode, setMode] = useState<SwipeMode>('random');
   const [loading, setLoading] = useState(true);
   const [adopted, setAdopted] = useState<Concept[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [thematicCats, setThematicCats] = useState<Record<string, boolean>>(
-    { philosophie: true, sciences: false, humaines: false, economie: false,
-      litterature: true, arts: false, musique: false, cinema: false,
-      jeuvideo: false, histoire: false, geographie: false, personnages: false }
-  );
+  // Mode Ciblé : thèmes (texte libre, résolus via Wikidata) + ancrage + intersection/mélange
+  const [themes, setThemes] = useState<Array<{ text: string; weight: number }>>([]);
+  const [mixThemes, setMixThemes] = useState(false);
   const [explorationAnchorId, setExplorationAnchorId] = useState<string | null>(null);
+  const [contrastSub, setContrastSub] = useState<ContrastSub>('far');
+  const [savedThemes, setSavedThemes] = useState<string[]>([]);
+  const [targetedLoading, setTargetedLoading] = useState(false);
   const [incognito, setIncognito] = useState(false);
   const incognitoRef = useRef(incognito);
   incognitoRef.current = incognito;
@@ -616,8 +611,6 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [currentFavorite, setCurrentFavorite] = useState(false);
   const [boostLabel, setBoostLabel] = useState<string | null>(null);
   const [boostInitial, setBoostInitial] = useState(0);
-  const [freeSource, setFreeSource] = useState<SwipeMode>('random');
-  const [algoWeights, setAlgoWeights] = useState<{ explore: number; random: number; contrast: number; trending: number } | undefined>(undefined);
   const [showHints, setShowHints] = useState(false);
   const [todayCounts, setTodayCounts] = useState({ valid: 0, reject: 0, skip: 0, favs: 0 });
   const [semanticEnabled, setSemanticEnabled] = useState(false);
@@ -675,19 +668,30 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     await saveSettings({ hintsSeen: { ...(s?.hintsSeen ?? {}), swipe: true } });
   };
 
-  // Load algo weights once (for 'free' mode) + préférence contraste sémantique + incognito
+  // Préférences au montage : contraste sémantique + incognito + thèmes récents
   useEffect(() => {
     getSettings().then(s => {
-      if (s?.algorithmWeights) setAlgoWeights(s.algorithmWeights);
       if (s?.semanticContrastEnabled) setSemanticEnabled(true);
       if (s?.incognito) setIncognito(true);
     });
+    getAllConstraints().then(cs => setSavedThemes(cs.sort((a, b) => b.useCount - a.useCount).map(c => c.text)));
   }, []);
 
   const enableSemanticContrast = async () => {
     setSemanticEnabled(true);
     await saveSettings({ semanticContrastEnabled: true });
   };
+
+  // Gestion des thèmes (mode Ciblé) — chaque thème ajouté est mémorisé dans la
+  // bibliothèque de contraintes (partagée avec l'onglet Croiser).
+  const addTheme = (text: string) => {
+    const t = text.trim();
+    if (!t || themes.some(x => x.text.toLowerCase() === t.toLowerCase())) return;
+    setThemes(prev => [...prev, { text: t, weight: 50 }]);
+    recordConstraintUsage(t).then(() => getAllConstraints().then(cs => setSavedThemes(cs.sort((a, b) => b.useCount - a.useCount).map(c => c.text))));
+  };
+  const removeTheme = (text: string) => setThemes(prev => prev.filter(x => x.text !== text));
+  const setThemeWeight = (text: string, w: number) => setThemes(prev => prev.map(x => x.text === text ? { ...x, weight: w } : x));
 
   const toggleIncognito = async () => {
     const next = !incognito;
@@ -699,11 +703,6 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   };
 
   // En mode 'free', re-pick la source à chaque changement de carte courante
-  const currentCardId = swipe.current?.id;
-  useEffect(() => {
-    if (mode === 'free') setFreeSource(pickSourceFromWeights(algoWeights));
-  }, [mode, algoWeights, currentCardId]);
-
   // Initial big pool fetch — consomme un éventuel boost-deck en priorité
   useEffect(() => {
     (async () => {
@@ -739,104 +738,90 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     });
   }, []);
 
-  // Mode-driven deck filtering : the visible deck changes when the user
-  // toggles modes / categories / anchors.
-  const activeThematicCatKeys = (Object.entries(thematicCats).filter(([, on]) => on).map(([k]) => k)) as CategoryKey[];
+  // Deck piloté par le mode (#refonte) :
+  //  · random  → pool aléatoire tel quel
+  //  · targeted → thèmes (Wikidata, intersection ou mélange) + ancrage optionnel
+  //  · contrast → sous-mode loin de tout / proche adoptés / proche rejetés
+  // Fallback silencieux sur le pool aléatoire si rien ne remonte.
   useEffect(() => {
     if (rawDeck.length === 0) return;
-    let deck: Concept[] = rawDeck;
-
-    switch (mode) {
-      case 'themed': {
-        if (activeThematicCatKeys.length === 0) { deck = rawDeck; break; }
-        const matched = rawDeck.filter(c => c.cats.some(([k]) => activeThematicCatKeys.includes(k as CategoryKey)));
-        deck = matched.length > 0 ? matched : rawDeck;
-        break;
-      }
-      case 'explore': {
-        // anchor's categories drive the filter
-        const anchorConcept = adopted.find(c => c.id === explorationAnchorId);
-        if (!anchorConcept) { deck = rawDeck; break; }
-        const anchorCats = new Set(anchorConcept.cats.map(([k]) => k));
-        const matched = rawDeck.filter(c => c.cats.some(([k]) => anchorCats.has(k)));
-        deck = matched.length > 0 ? matched : rawDeck;
-        break;
-      }
-      case 'contrast': {
-        // concepts that share NO categories with user's adopted ones
-        if (adopted.length === 0) { deck = rawDeck; break; }
-        const userCats = new Set<string>();
-        adopted.forEach(c => c.cats.forEach(([k]) => userCats.add(k)));
-        const matched = rawDeck.filter(c => !c.cats.some(([k]) => userCats.has(k)));
-        deck = matched.length > 0 ? matched : rawDeck;
-        break;
-      }
-      case 'cross': {
-        // concepts that share categories with ALL 3 most-recent adopted
-        const top = adopted.slice(0, 3);
-        if (top.length < 2) { deck = rawDeck; break; }
-        const topCatSets = top.map(c => new Set(c.cats.map(([k]) => k)));
-        const matched = rawDeck.filter(c =>
-          c.cats.some(([k]) => topCatSets.every(cats => cats.has(k)))
-        );
-        deck = matched.length > 0 ? matched : rawDeck;
-        break;
-      }
-      case 'free':
-        // Le mode libre = mix de plusieurs sources selon les curseurs
-        deck = rawDeck;
-        break;
-      case 'random':
-      default:
-        deck = rawDeck;
-    }
-    swipe.setDeck(deck);
-  }, [mode, activeThematicCatKeys.join(','), explorationAnchorId, rawDeck.length, adopted.length]);
-
-  // #11 — Couche Wikidata réelle pour Exploration & Croisement : on remplace
-  // le deck filtré client-side par de vrais voisins sémantiques (P31/P279/…)
-  // dès qu'ils arrivent. Fallback silencieux sur le filtre client-side si vide.
-  useEffect(() => {
+    if (mode === 'random') { swipe.setDeck(rawDeck); return; }
     let cancelled = false;
     (async () => {
+      setTargetedLoading(true);
       try {
-        if (mode === 'explore') {
+        const excluded = await getExcludedConceptIds();
+        let fresh: Concept[] = [];
+
+        if (mode === 'targeted') {
+          const themeTexts = themes.map(t => t.text);
           const anchorConcept = adopted.find(c => c.id === explorationAnchorId);
-          const qid = anchorConcept?.wikidataId;
-          if (!qid) return;
-          const [neighbors, excluded] = await Promise.all([
-            fetchNeighborConcepts([qid], 25),
-            getExcludedConceptIds(),
-          ]);
-          const fresh = neighbors.filter(c => !excluded.has(c.id));
-          if (!cancelled && fresh.length >= 3) {
-            await Promise.all(fresh.map(c => cacheConcept(c)));
-            swipe.setDeck(fresh);
+          const anchorQid = anchorConcept?.wikidataId;
+
+          let themeResults: Concept[] = [];
+          if (themeTexts.length > 0) {
+            if (mixThemes && themeTexts.length > 1) {
+              const per = await Promise.all(themeTexts.map(t => fetchConceptsByConstraints([t], 18)));
+              themeResults = interleaveWeighted(per, themes.map(t => t.weight));
+            } else {
+              themeResults = await fetchConceptsByConstraints(themeTexts, 40);
+            }
           }
-        } else if (mode === 'cross') {
-          const qids = adopted.slice(0, 4).map(c => c.wikidataId).filter((q): q is string => !!q);
-          if (qids.length < 2) return;
-          const [common, excluded] = await Promise.all([
-            fetchCommonNeighborConcepts(qids, 25),
-            getExcludedConceptIds(),
-          ]);
-          const fresh = common.filter(c => !excluded.has(c.id));
-          if (!cancelled && fresh.length >= 3) {
-            await Promise.all(fresh.map(c => cacheConcept(c)));
-            swipe.setDeck(fresh);
+          const anchorResults = anchorQid ? await fetchNeighborConcepts([anchorQid], 40) : [];
+
+          if (themeTexts.length > 0 && anchorQid) {
+            const tIds = new Set(themeResults.map(c => c.id));
+            const both = anchorResults.filter(c => tIds.has(c.id));
+            fresh = both.length >= 3 ? both : [...themeResults, ...anchorResults];
+          } else if (themeTexts.length > 0) {
+            fresh = themeResults;
+          } else if (anchorQid) {
+            fresh = anchorResults;
+          } else {
+            fresh = rawDeck;
+          }
+        } else if (mode === 'contrast') {
+          if (contrastSub === 'far') {
+            const rejected = await getConceptsByVerdict('reject');
+            const userCats = new Set<string>();
+            adopted.forEach(c => c.cats.forEach(([k]) => userCats.add(k)));
+            rejected.forEach(c => c.cats.forEach(([k]) => userCats.add(k)));
+            fresh = rawDeck.filter(c => !c.cats.some(([k]) => userCats.has(k)));
+            if (fresh.length < 3) fresh = rawDeck;
+          } else if (contrastSub === 'adopted') {
+            const qids = adopted.slice(0, 6).map(c => c.wikidataId).filter((q): q is string => !!q);
+            fresh = qids.length ? await fetchNeighborConcepts(qids, 40) : rawDeck;
+          } else {
+            const rejected = await getConceptsByVerdict('reject');
+            const qids = rejected.slice(0, 6).map(c => c.wikidataId).filter((q): q is string => !!q);
+            fresh = qids.length ? await fetchNeighborConcepts(qids, 40) : rawDeck;
           }
         }
-      } catch { /* fallback : on garde le deck client-side */ }
+
+        fresh = fresh.filter(c => !excluded.has(c.id));
+        if (!cancelled) {
+          if (fresh.length >= 1) {
+            await Promise.all(fresh.map(c => cacheConcept(c)));
+            swipe.setDeck(fresh);
+          } else {
+            swipe.setDeck(rawDeck);
+          }
+        }
+      } catch {
+        if (!cancelled) swipe.setDeck(rawDeck);
+      } finally {
+        if (!cancelled) setTargetedLoading(false);
+      }
     })();
     return () => { cancelled = true; };
-  }, [mode, explorationAnchorId, adopted.length]);
+  }, [mode, themes, mixThemes, explorationAnchorId, contrastSub, rawDeck.length, adopted.length]);
 
   // #13 — Contraste sémantique réel (opt-in) : on classe le pool par distance
   // cosinus croissante au barycentre sémantique des concepts adoptés. Les plus
   // éloignés (les plus "dérangeants") passent en tête. Fallback silencieux sur
   // le filtre catégoriel si le modèle est indisponible (hors-ligne, échec CDN).
   useEffect(() => {
-    if (mode !== 'contrast' || !semanticEnabled) return;
+    if (mode !== 'contrast' || contrastSub !== 'far' || !semanticEnabled) return;
     if (adopted.length === 0 || rawDeck.length === 0) return;
     let cancelled = false;
     (async () => {
@@ -861,7 +846,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       }
     })();
     return () => { cancelled = true; };
-  }, [mode, semanticEnabled, adopted.length, rawDeck.length]);
+  }, [mode, contrastSub, semanticEnabled, adopted.length, rawDeck.length]);
 
   const current = swipe.current;
   const anchor = adopted.find(c => c.id === explorationAnchorId) ?? null;
@@ -871,19 +856,6 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     if (!current) { setCurrentFavorite(false); return; }
     getCachedConcept(current.id).then(c => setCurrentFavorite(!!c?.isFavorite));
   }, [current?.id]);
-  const activeThematicCats = activeThematicCatKeys;
-
-  // Cross mode: use up to 3 most recent adopted as the cross selection
-  const crossSelection = useMemo(() => {
-    const top = adopted.slice(0, 3);
-    if (top.length === 0) return [];
-    const evenWeight = Math.round(100 / top.length);
-    return top.map(c => ({ id: c.id, weight: evenWeight }));
-  }, [adopted]);
-  const crossById = Object.fromEntries(adopted.map(c => [c.id, c]));
-  const crossMix = combinationMix(crossSelection
-    .map(s => ({ cats: crossById[s.id]?.cats ?? [], weight: s.weight }))
-    .filter(s => s.cats.length > 0));
 
   // Per-mode card props
   const cardProps = (() => {
@@ -891,24 +863,17 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     switch (mode) {
       case 'random':
         return { sourceOverride: 'TIRAGE ALÉATOIRE', badge: <PixelDie size={18}/> };
-      case 'themed': {
-        const labels = activeThematicCats.slice(0, 2).map(k => CATEGORIES[k].label).join(' + ');
-        return { sourceOverride: labels ? `Tiré dans ${labels}` : 'Mode thématique · sélectionnez des catégories' };
+      case 'targeted': {
+        const parts: string[] = [];
+        if (themes.length > 0) parts.push(themes.map(t => t.text).join(mixThemes ? ' / ' : ' ∩ '));
+        if (anchor) parts.push(`⚓ ${anchor.name}`);
+        return { sourceOverride: parts.length ? `Ciblé · ${parts.join(' · ')}` : 'Ciblé · ajoutez un thème ou un ancrage' };
       }
-      case 'explore':
-        return { sourceOverride: anchor ? `LIÉ À ${anchor.name.toUpperCase()}` : 'Exploration · choisissez un ancrage' };
       case 'contrast':
-        return { sourceOverride: 'Contraste · loin de votre univers', contrast: true };
-      case 'cross':
-        return { sourceOverride: `Croisement · à l'intersection de ${crossSelection.length} concepts`, leftBorder: crossSelection.length > 0 ? crossMix.css : undefined };
-      case 'free': {
-        const picked = freeSource;
-        const labelMap: Record<SwipeMode, string> = {
-          random: 'Aléatoire', explore: 'Exploration', contrast: 'Contraste',
-          themed: 'Thématique', cross: 'Croisement', free: 'Libre',
+        return {
+          sourceOverride: `Contraste · ${CONTRAST_SUBS.find(s => s.id === contrastSub)?.label.toLowerCase()}`,
+          contrast: contrastSub === 'far',
         };
-        return { sourceOverride: `Libre · ${labelMap[picked].toLowerCase()} sélectionné par vos curseurs` };
-      }
       default: return {};
     }
   })();
@@ -963,15 +928,23 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       <ModeBar mode={mode} setMode={setMode} queueSize={swipe.deck.length}/>
 
       {/* Mode-specific banners */}
-      {mode === 'themed' && (
-        <ThematicBanner
-          active={thematicCats}
-          toggle={(k) => setThematicCats(p => ({ ...p, [k]: !p[k] }))}
-          count={activeThematicCats.length}
+      {mode === 'targeted' && (
+        <CibleBanner
+          themes={themes}
+          onAdd={addTheme}
+          onRemove={removeTheme}
+          onWeight={setThemeWeight}
+          mixThemes={mixThemes}
+          onToggleMix={() => setMixThemes(v => !v)}
+          anchorId={explorationAnchorId}
+          anchorOptions={adopted}
+          onSetAnchor={setExplorationAnchorId}
+          suggestions={savedThemes}
+          loading={targetedLoading}
         />
       )}
-      {mode === 'cross' && (
-        <CrossBanner selection={crossSelection} byId={crossById} mixCss={crossMix.css}/>
+      {mode === 'contrast' && (
+        <ContrasteBanner sub={contrastSub} onSet={setContrastSub}/>
       )}
 
       <div style={{
@@ -991,14 +964,11 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
             ) : (
               <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>
                 {mode === 'random'   && <>Mode <strong>ALÉATOIRE</strong>. Le Bureau tire sans tenir compte de votre profil.</>}
-                {mode === 'themed'   && <>Mode <strong>THÉMATIQUE</strong>. {activeThematicCats.length} catégorie{activeThematicCats.length > 1 ? 's' : ''} active{activeThematicCats.length > 1 ? 's' : ''}.</>}
-                {mode === 'explore'  && <>Mode <strong>EXPLORATION</strong>. Voisinages sémantiques d'un concept-pivot.</>}
-                {mode === 'contrast' && <>Mode <strong>CONTRASTE</strong>. Le Bureau cherche des concepts éloignés de votre profil.</>}
-                {mode === 'cross'    && <>Mode <strong>CROISEMENT</strong>. Tirage à l'intersection sémantique de vos concepts.</>}
-                {mode === 'free'     && <>Mode <strong>LIBRE</strong>. Le Bureau suit vos curseurs d'algorithme.</>}
+                {mode === 'targeted' && <>Mode <strong>CIBLÉ</strong>. Écrivez des thèmes (résolus via Wikidata) et/ou ancrez un concept. {mixThemes ? 'Tirage mélangé pondéré.' : 'Intersection stricte de tous les thèmes.'}</>}
+                {mode === 'contrast' && <>Mode <strong>CONTRASTE</strong>. {CONTRAST_SUBS.find(s => s.id === contrastSub)?.hint}.</>}
               </p>
             )}
-            {mode === 'contrast' && (
+            {mode === 'contrast' && contrastSub === 'far' && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--cit-navy-dk)' }}>
                 {!semanticEnabled ? (
                   <>
@@ -1102,21 +1072,12 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           )}
         </div>
 
-        {/* Right panel — Exploration replaces with anchor panel */}
+        {/* Right panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {mode === 'explore' ? (
-            <>
-              <ExplorationAnchorPanel anchor={anchor}/>
-              <RegistrePanel history={swipe.history}/>
-            </>
-          ) : (
-            <>
-              <RegistrePanel history={swipe.history}/>
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <StarBurst size={120} rotate={-8}>NOUVELLE<br/>FICHE<br/>EXAMINÉE</StarBurst>
-              </div>
-            </>
-          )}
+          <RegistrePanel history={swipe.history}/>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <StarBurst size={120} rotate={-8}>NOUVELLE<br/>FICHE<br/>EXAMINÉE</StarBurst>
+          </div>
         </div>
       </div>
 

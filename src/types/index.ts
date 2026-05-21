@@ -86,7 +86,7 @@ export interface AppSettings {
   incognito?: boolean;
 }
 
-export type SwipeMode = 'random' | 'themed' | 'explore' | 'contrast' | 'cross' | 'free';
+export type SwipeMode = 'random' | 'targeted' | 'contrast' | 'themed' | 'explore' | 'cross' | 'free';
 
 export interface SessionStats {
   valid: number;

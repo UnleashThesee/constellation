@@ -214,140 +214,6 @@ function ThemeSwatch({ name, sub, preview, active, onClick }: {
 
 // ---- Algorithm sliders ----
 
-function AlgoSliders({ vals, setVals }: {
-  vals: { explore: number; random: number; contrast: number; trending: number };
-  setVals: (v: typeof vals | ((p: typeof vals) => typeof vals)) => void;
-}) {
-  const sum = vals.explore + vals.random + vals.contrast + vals.trending;
-  const items = [
-    { id: 'explore'  as const, label: 'Exploration', sub: 'Tirer vers les zones inconnues',       color: 'var(--cit-brick)',   disabled: false },
-    { id: 'random'   as const, label: 'Aléatoire',   sub: 'Tirage hors-univers',                  color: 'var(--cit-mustard)', disabled: false },
-    { id: 'contrast' as const, label: 'Contraste',   sub: 'Concepts éloignés de votre profil',    color: 'var(--cit-navy)',    disabled: false },
-    { id: 'trending' as const, label: 'Trending',    sub: 'Disponible en version connectée',      color: 'oklch(55% 0.20 295)', disabled: true },
-  ];
-  // Proportional rebalance : ajuste les 3 autres curseurs proportionnellement
-  // pour conserver une somme de 100.
-  const setOne = (id: keyof typeof vals, v: number) => setVals(p => {
-    const next = { ...p, [id]: v };
-    const others = (['explore', 'random', 'contrast', 'trending'] as const).filter(k => k !== id);
-    const remaining = 100 - v;
-    const othersSum = others.reduce((s, k) => s + p[k], 0);
-    if (othersSum === 0) {
-      const each = Math.round(remaining / others.length);
-      others.forEach(k => { next[k] = each; });
-    } else {
-      others.forEach(k => { next[k] = Math.round((p[k] / othersSum) * remaining); });
-    }
-    // adjust for rounding to hit exactly 100
-    const total = next.explore + next.random + next.contrast + next.trending;
-    const diff = 100 - total;
-    if (diff !== 0) {
-      const biggest = others.reduce((a, b) => next[a] >= next[b] ? a : b);
-      next[biggest] += diff;
-    }
-    return next;
-  });
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) auto', gap: 16, alignItems: 'stretch' }}>
-      {items.map(it => (
-        <div key={it.id} title={it.disabled ? 'Disponible en version connectée (mono-utilisateur ici)' : undefined} style={{
-          padding: '12px 10px 10px',
-          background: it.disabled ? 'var(--cit-paper-dk)' : 'var(--cit-cream)',
-          border: '2.5px solid var(--cit-navy-dk)',
-          boxShadow: '3px 3px 0 var(--cit-navy-dk)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-          opacity: it.disabled ? 0.5 : 1,
-          pointerEvents: it.disabled ? 'none' : 'auto',
-        }}>
-          <div className="cit-condensed" style={{ fontSize: 11, fontWeight: 700, color: 'var(--cit-navy-dk)', textAlign: 'center' }}>
-            ★ {it.label.toUpperCase()}
-          </div>
-          <BigKnob value={vals[it.id]} onChange={v => !it.disabled && setOne(it.id, v)} color={it.color}/>
-          <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', textAlign: 'center', lineHeight: 1.3 }}>
-            {it.sub}
-          </div>
-        </div>
-      ))}
-      <div style={{
-        padding: '12px 16px',
-        background: sum === 100 ? 'var(--cit-navy-dk)' : 'var(--cit-brick)',
-        color: 'var(--cit-cream)',
-        border: '2.5px solid var(--cit-navy-dk)',
-        boxShadow: '3px 3px 0 var(--cit-navy-dk)',
-        display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 4,
-        minWidth: 140,
-      }}>
-        <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)' }}>★ SOMME ★</div>
-        <div className="cit-h1 cit-h1--reverse" style={{ fontSize: 56, lineHeight: 0.9, textShadow: '2px 2px 0 var(--cit-brick)' }}>
-          {sum}<span style={{ fontSize: 22, color: 'var(--cit-butter)' }}>%</span>
-        </div>
-        <div className="cit-typed" style={{ fontSize: 10, color: sum === 100 ? 'var(--cit-butter)' : 'var(--cit-cream)', textAlign: 'center' }}>
-          {sum === 100 ? 'Parfaitement réparti.' : `Ajustez ${sum > 100 ? '−' : '+'}${Math.abs(100 - sum)} %`}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BigKnob({ value, onChange, color }: { value: number; onChange: (v: number) => void; color: string }) {
-  const angle = -135 + (value / 100) * 270;
-  const startDrag = (e: React.PointerEvent) => {
-    const startY = e.clientY;
-    const startV = value;
-    const move = (ev: PointerEvent) => {
-      const dy = startY - ev.clientY;
-      const next = Math.max(0, Math.min(100, startV + dy * 0.8));
-      onChange(Math.round(next));
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
-  return (
-    <div onPointerDown={startDrag} style={{
-      width: 88, height: 88, borderRadius: '50%',
-      background: 'radial-gradient(circle at 30% 30%, oklch(38% 0.05 250), var(--cit-navy-dk) 75%)',
-      border: '3px solid var(--cit-navy-dk)',
-      boxShadow:
-        'inset 0 2px 0 oklch(50% 0.06 250 / 0.5), inset 0 -4px 6px oklch(0% 0 0 / 0.4), ' +
-        '4px 4px 0 var(--cit-navy-dk), 0 6px 14px oklch(0% 0 0 / 0.5)',
-      position: 'relative', cursor: 'grab', userSelect: 'none',
-    }}>
-      {[-135, -90, -45, 0, 45, 90, 135].map((a, i) => (
-        <span key={i} style={{ position: 'absolute', inset: 0, transform: `rotate(${a}deg)`, pointerEvents: 'none' }}>
-          <span style={{
-            position: 'absolute', top: 2, left: '50%',
-            width: 2, height: 6, background: 'var(--cit-butter)',
-            transform: 'translateX(-50%)',
-          }}/>
-        </span>
-      ))}
-      <span style={{
-        position: 'absolute', inset: 4, transform: `rotate(${angle}deg)`,
-        transition: 'transform .1s ease', pointerEvents: 'none',
-      }}>
-        <span style={{
-          position: 'absolute', top: 4, left: '50%',
-          width: 4, height: 26, background: color,
-          transform: 'translateX(-50%)', boxShadow: `0 0 10px ${color}`,
-        }}/>
-      </span>
-      <span style={{
-        position: 'absolute', inset: '32%',
-        background: 'var(--cit-butter)',
-        border: '2.5px solid var(--cit-navy-dk)',
-        borderRadius: '50%',
-        display: 'grid', placeItems: 'center',
-        fontFamily: "'Alfa Slab One', serif", fontSize: 14, color: 'var(--cit-navy-dk)',
-      }}>{value}</span>
-    </div>
-  );
-}
-
 // ---- Demolish modal ----
 
 function DemolishModal({ open, onCancel, onConfirm }: { open: boolean; onCancel: () => void; onConfirm: () => void }) {
@@ -407,7 +273,6 @@ export function SettingsScreen({ onTabChange }: Props) {
   const [serendipity, setSerendipity] = useState(42);
   const [autoLink, setAutoLink] = useState(true);
   const [theme, setTheme] = useState('citizen');
-  const [algoVals, setAlgoVals] = useState({ explore: 35, random: 25, contrast: 25, trending: 15 });
   const [notifs, setNotifs] = useState({ daily: true, weekly: false, contrast: true, idea: true });
   const [demolishOpen, setDemolishOpen] = useState(false);
   const [colorPickerCat, setColorPickerCat] = useState<Category | null>(null);
@@ -417,8 +282,6 @@ export function SettingsScreen({ onTabChange }: Props) {
   const [volume, setVolume] = useState(40);
   const [chromaticOn, setChromaticOn] = useState(true);
   const [skipDelay, setSkipDelay] = useState(30);
-  const [presets, setPresets] = useState<NonNullable<AppSettings['algorithmPresets']>>([]);
-  const [newPresetName, setNewPresetName] = useState('');
   const toast = useToast();
 
   useEffect(() => {
@@ -427,13 +290,11 @@ export function SettingsScreen({ onTabChange }: Props) {
         setTheme(s.theme as string);
         if (s.llmProvider) setLlmProvider(s.llmProvider);
         if (s.llmKey) setLlmKey(s.llmKey);
-        if (s.algorithmWeights) setAlgoVals(s.algorithmWeights);
         if (s.paletteOverrides) setCatColors(s.paletteOverrides);
         if (typeof s.soundsEnabled === 'boolean') setSoundsOn(s.soundsEnabled);
         if (typeof s.masterVolume === 'number') setVolume(Math.round(s.masterVolume * 100));
         if (typeof s.chromaticEnabled === 'boolean') setChromaticOn(s.chromaticEnabled);
         if (typeof s.skipDelayDays === 'number') setSkipDelay(s.skipDelayDays);
-        if (Array.isArray(s.algorithmPresets)) setPresets(s.algorithmPresets);
       }
     });
     getSettings().then(s => { if (s?.operatorName) setName(s.operatorName); });
@@ -449,7 +310,6 @@ export function SettingsScreen({ onTabChange }: Props) {
 
   useEffect(() => { saveSettings({ theme }).catch(() => {}); applyThemeClass(theme); }, [theme]);
   useEffect(() => { saveSettings({ llmProvider: llmProvider as 'claude' | 'openai', llmKey }).catch(() => {}); }, [llmProvider, llmKey]);
-  useEffect(() => { saveSettings({ algorithmWeights: algoVals }).catch(() => {}); }, [algoVals]);
   useEffect(() => { saveSettings({ operatorName: name }).catch(() => {}); }, [name]);
   useEffect(() => { saveSettings({ skipDelayDays: skipDelay }).catch(() => {}); }, [skipDelay]);
   useEffect(() => {
@@ -637,79 +497,6 @@ export function SettingsScreen({ onTabChange }: Props) {
           </div>
         </CitPanel>
 
-        <CitPanel title="Curseurs d'algorithme" style={{ marginBottom: 22 }}>
-          <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', marginBottom: 14 }}>
-            Comment voulez-vous que le Bureau pioche vos fiches ? La somme doit faire 100 %.
-            Utilisez le mode <strong>« Libre »</strong> au Swipe pour appliquer ces curseurs.
-          </div>
-          <AlgoSliders vals={algoVals} setVals={setAlgoVals}/>
-
-          <div style={{ marginTop: 18, paddingTop: 14, borderTop: '2px dashed var(--cit-navy-dk)' }}>
-            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 8 }}>
-              ★ PRESETS NOMMÉS
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <input value={newPresetName} onChange={e => setNewPresetName(e.target.value)}
-                placeholder="Nom du preset (ex. : Curieux modéré)…"
-                style={{
-                  flex: 1, padding: '8px 12px',
-                  border: '2.5px solid var(--cit-navy-dk)',
-                  background: 'var(--cit-paper)',
-                  fontFamily: "'Special Elite', monospace", fontSize: 13,
-                  color: 'var(--cit-navy-dk)',
-                  boxShadow: 'inset 0 2px 0 oklch(0% 0 0 / 0.1), 3px 3px 0 var(--cit-navy-dk)',
-                }}/>
-              <CitButton tone="brick" onClick={async () => {
-                if (!newPresetName.trim()) {
-                  toast.show({ tone: 'warning', title: 'Nom requis' });
-                  return;
-                }
-                const next = [...presets, { name: newPresetName.trim(), weights: algoVals }];
-                setPresets(next);
-                await saveSettings({ algorithmPresets: next });
-                setNewPresetName('');
-                toast.show({ tone: 'success', title: 'Preset enregistré', body: `« ${newPresetName} » sauvegardé.` });
-              }}>★ Enregistrer</CitButton>
-            </div>
-            {presets.length === 0 ? (
-              <div className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
-                Aucun preset enregistré. Saisissez un nom et cliquez Enregistrer pour sauvegarder
-                la configuration actuelle.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {presets.map((p, i) => (
-                  <div key={i} style={{
-                    display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 10, alignItems: 'center',
-                    padding: '6px 10px',
-                    background: 'var(--cit-cream)',
-                    border: '2px solid var(--cit-navy-dk)',
-                    boxShadow: '2px 2px 0 var(--cit-navy-dk)',
-                  }}>
-                    <span className="cit-h1" style={{ fontSize: 14, lineHeight: 1 }}>{p.name}</span>
-                    <span className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>
-                      EXP {p.weights.explore} · ALÉ {p.weights.random} · CTR {p.weights.contrast} · TRD {p.weights.trending}
-                    </span>
-                    <CitButton size="sm" tone="butter" onClick={() => {
-                      setAlgoVals(p.weights);
-                      toast.show({ tone: 'success', title: `Preset « ${p.name} » appliqué` });
-                    }}>★ Appliquer</CitButton>
-                    <button onClick={async () => {
-                      if (!confirm(`Supprimer le preset « ${p.name} » ?`)) return;
-                      const next = presets.filter((_, j) => j !== i);
-                      setPresets(next);
-                      await saveSettings({ algorithmPresets: next });
-                    }} style={{
-                      padding: '4px 8px', background: 'var(--cit-cream)', color: 'var(--cit-brick)',
-                      border: '2px solid var(--cit-navy-dk)',
-                      fontFamily: "'Alfa Slab One', serif", fontSize: 11, cursor: 'pointer',
-                    }}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </CitPanel>
 
         <CitPanel title="Système chromatique des catégories" style={{ marginBottom: 22 }}>
           <div className="cit-typed" style={{ fontSize: 12, color: 'var(--cit-navy-lt)', marginBottom: 14 }}>
