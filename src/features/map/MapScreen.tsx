@@ -52,6 +52,54 @@ function layoutNodes(concepts: Concept[], seed?: SeedMap): MapNode[] {
   return positionsToNodes(concepts, positions);
 }
 
+/** Exporte la carte courante en PNG (#28) : dessine nœuds + liens sur un canvas
+ * hors-écran haute résolution et déclenche un téléchargement. */
+function exportMapPng(nodes: MapNode[], edges: Array<{ a: string; b: string }>, showEdges: boolean): void {
+  if (nodes.length === 0) return;
+  const W = 2000, H = 1400, pad = 60;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.fillStyle = 'oklch(94% 0.02 85)';
+  ctx.fillRect(0, 0, W, H);
+  const px = (n: MapNode) => ({ x: pad + (n.x / 100) * (W - pad * 2), y: pad + (n.y / 100) * (H - pad * 2) });
+  const byId = new Map(nodes.map(n => [n.concept.id, n]));
+  if (showEdges) {
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'oklch(35% 0.07 250 / 0.35)';
+    edges.forEach(e => {
+      const A = byId.get(e.a), B = byId.get(e.b);
+      if (!A || !B) return;
+      const pa = px(A), pb = px(B);
+      ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+    });
+  }
+  const showLabels = nodes.length <= 140;
+  nodes.forEach(n => {
+    const p = px(n);
+    const r = Math.max(6, n.size);
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = n.dominant; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = 'oklch(20% 0.07 250)'; ctx.stroke();
+    if (showLabels) {
+      ctx.fillStyle = 'oklch(20% 0.07 250)';
+      ctx.font = '600 18px Oswald, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(n.concept.name.slice(0, 28), p.x, p.y + r + 20);
+    }
+  });
+  ctx.fillStyle = 'oklch(20% 0.07 250)';
+  ctx.font = '700 34px "Alfa Slab One", serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('CONSTELLATION · MON UNIVERS', pad, 44);
+  const url = canvas.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `constellation-univers-${new Date().toISOString().slice(0, 10)}.png`;
+  a.click();
+}
+
 /** Reconstruit les nœuds directement depuis des positions sauvegardées (aucun calcul). */
 function nodesFromSeed(concepts: Concept[], seed: SeedMap | undefined): MapNode[] | null {
   if (!seed || concepts.length === 0) return null;
@@ -1218,6 +1266,9 @@ export function MapScreen({ onTabChange }: Props) {
               {discovering.active
                 ? `⌛ Découverte ${discovering.current}/${discovering.total}…`
                 : '★ Découvrir liaisons Wikidata'}
+            </CitButton>
+            <CitButton size="sm" tone="butter" disabled={filteredNodes.length === 0} onClick={() => exportMapPng(filteredNodes, edges, filters.showEdges)}>
+              ⤓ Export PNG
             </CitButton>
             <Stamp tone="brick" rotate={-5} size={12}>★ {adopted.length} NŒUDS ADOPTÉS</Stamp>
             <Sunburst size={68} color="var(--cit-mustard)"/>

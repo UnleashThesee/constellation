@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { CitizenMasthead, CitizenFooter, CitPanel } from '../../components/ui/CitizenShell';
 import { Sunburst, Stamp } from '../../components/ui/atoms';
 import { CATEGORIES, CATEGORY_LIST } from '../../lib/categories';
@@ -9,13 +10,19 @@ interface Props { onTabChange?: (id: string) => void }
 
 interface DayStats { d: string; v: number; r: number; s: number; date: string }
 
-function computeDailyStats(ints: Interaction[]): DayStats[] {
+const statNavBtn: CSSProperties = {
+  background: 'var(--cit-butter)', color: 'var(--cit-navy-dk)',
+  border: '2px solid var(--cit-navy-dk)', width: 22, height: 20, lineHeight: '16px',
+  fontFamily: "'Alfa Slab One', serif", fontSize: 12, cursor: 'pointer', padding: 0,
+};
+
+function computeDailyStats(ints: Interaction[], weekOffset = 0): DayStats[] {
   const days: DayStats[] = [];
   const now = new Date();
   const labels = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
-    d.setDate(now.getDate() - i);
+    d.setDate(now.getDate() - i - weekOffset * 7);
     const key = d.toISOString().slice(0, 10);
     days.push({
       d: labels[d.getDay()],
@@ -34,6 +41,7 @@ export function StatsScreen({ onTabChange }: Props) {
   const [topConstraints, setTopConstraints] = useState<SavedConstraint[]>([]);
   const [combosCount, setCombosCount] = useState(0);
   const [usageMs, setUsageMs] = useState(0);
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = semaine en cours, +1 = précédente…
 
   useEffect(() => {
     db.interactions.toArray().then(arr => setInts(arr.map(i => ({ ...i, timestamp: new Date(i.timestamp) }))));
@@ -79,8 +87,11 @@ export function StatsScreen({ onTabChange }: Props) {
   const reject = ints.filter(i => i.verdict === 'reject').length;
   const skip = ints.filter(i => i.verdict === 'skip').length;
 
-  const days = computeDailyStats(ints);
+  const days = computeDailyStats(ints, weekOffset);
   const maxDay = Math.max(...days.map(d => d.v + d.r + d.s), 1);
+  const weekRangeLabel = days.length
+    ? `${new Date(days[0].date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} – ${new Date(days[days.length - 1].date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}`
+    : '';
 
   // Top categories (from adopted concepts)
   const catTotals: Record<string, number> = {};
@@ -134,7 +145,16 @@ export function StatsScreen({ onTabChange }: Props) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18, marginBottom: 18 }}>
-          <CitPanel title="Frise des verdicts · 7 derniers jours">
+          <CitPanel title={
+            <>
+              <span>Frise des verdicts · {weekOffset === 0 ? '7 derniers jours' : weekRangeLabel}</span>
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <button onClick={() => setWeekOffset(o => o + 1)} title="Semaine précédente" style={statNavBtn}>←</button>
+                <span className="cit-condensed" style={{ fontSize: 9, opacity: 0.85 }}>{weekRangeLabel}</span>
+                <button onClick={() => setWeekOffset(o => Math.max(0, o - 1))} disabled={weekOffset === 0} title="Semaine suivante" style={{ ...statNavBtn, opacity: weekOffset === 0 ? 0.35 : 1, cursor: weekOffset === 0 ? 'not-allowed' : 'pointer' }}>→</button>
+              </span>
+            </>
+          }>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 200, padding: '8px 6px 0', borderBottom: '2.5px solid var(--cit-navy-dk)' }}>
               {days.map((d, i) => {
                 const sum = d.v + d.r + d.s;
