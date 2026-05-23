@@ -73,7 +73,6 @@ OFFSET ${offset}
 // ---- Wikidata item → catégories heuristiques ----
 
 const WIKIDATA_TYPE_TO_CAT: Array<[string[], CategoryKey[]]> = [
-  [['Q5'], ['personnages']],
   [['Q36180', 'Q482980', 'Q4964182', 'Q1930187'], ['litterature']],
   [['Q11424', 'Q201658'], ['cinema']],
   [['Q482994', 'Q215380', 'Q488205'], ['musique']],
@@ -87,17 +86,45 @@ const WIKIDATA_TYPE_TO_CAT: Array<[string[], CategoryKey[]]> = [
   [['Q82794', 'Q1187580'], ['geographie']],
 ];
 
-function guessCategories(instanceOf: string[], description: string): CategoryWeight[] {
+// Occupation (P106) → catégorie. Pour les personnes, c'est le meilleur signal
+// (leur métier, pas leur P31 qui vaut juste « être humain »).
+const OCCUPATION_TO_CAT: Record<string, CategoryKey> = {
+  Q4964182: 'philosophie',
+  Q36180: 'litterature', Q49757: 'litterature', Q6625963: 'litterature', Q214917: 'litterature', Q12144794: 'litterature',
+  Q901: 'sciences', Q169470: 'sciences', Q170790: 'sciences', Q864503: 'sciences', Q593644: 'sciences', Q11063: 'sciences', Q205375: 'sciences',
+  Q639669: 'musique', Q36834: 'musique', Q177220: 'musique', Q486748: 'musique',
+  Q1028181: 'arts', Q1281618: 'arts', Q3391743: 'arts', Q33231: 'arts', Q644687: 'arts',
+  Q2526255: 'cinema', Q33999: 'cinema', Q2500638: 'cinema', Q28389: 'cinema', Q3282637: 'cinema',
+  Q201788: 'histoire', Q3621491: 'histoire',
+  Q188094: 'economie', Q43845: 'economie',
+  Q82955: 'humaines', Q2306091: 'humaines', Q212980: 'humaines', Q4773904: 'humaines', Q121594: 'humaines',
+  Q901402: 'geographie',
+  Q1238570: 'jeuvideo',
+};
+const OCCUPATION_KIND: Record<string, string> = {
+  Q4964182: 'Philosophe', Q36180: 'Écrivain·e', Q49757: 'Poète·sse', Q901: 'Scientifique',
+  Q169470: 'Physicien·ne', Q170790: 'Mathématicien·ne', Q639669: 'Musicien·ne', Q36834: 'Compositeur·rice',
+  Q1028181: 'Peintre', Q2526255: 'Réalisateur·rice', Q33999: 'Acteur·rice', Q201788: 'Historien·ne',
+  Q188094: 'Économiste', Q82955: 'Politique',
+};
+
+function guessCategories(instanceOf: string[], occupations: string[], description: string): CategoryWeight[] {
   const scores: Partial<Record<CategoryKey, number>> = {};
 
+  // 1. Occupations (P106) — signal le plus fiable pour les personnes
+  for (const occ of occupations) {
+    const cat = OCCUPATION_TO_CAT[occ];
+    if (cat) scores[cat] = (scores[cat] ?? 0) + 3;
+  }
+
+  // 2. Types (P31)
   for (const [types, cats] of WIKIDATA_TYPE_TO_CAT) {
-    const match = types.some(t => instanceOf.includes(t));
-    if (match) {
-      for (const cat of cats) {
-        scores[cat] = (scores[cat] ?? 0) + 1;
-      }
+    if (types.some(t => instanceOf.includes(t))) {
+      for (const cat of cats) scores[cat] = (scores[cat] ?? 0) + 1;
     }
   }
+  // Une personne est aussi « personnage » (en secondaire si elle a un champ)
+  if (instanceOf.includes('Q5')) scores.personnages = (scores.personnages ?? 0) + (occupations.some(o => OCCUPATION_TO_CAT[o]) ? 1 : 2);
 
   // Heuristiques textuelles sur la description
   const desc = description.toLowerCase();
@@ -133,9 +160,12 @@ function guessCategories(instanceOf: string[], description: string): CategoryWei
   return sorted.map(([k, v]) => [k, Math.round((v / catTotal) * 100) / 100] as CategoryWeight);
 }
 
-function guessKind(instanceOf: string[], description: string): string {
+function guessKind(instanceOf: string[], occupations: string[], description: string): string {
   const desc = description.toLowerCase();
-  if (instanceOf.includes('Q5')) return 'Personnage';
+  if (instanceOf.includes('Q5')) {
+    const occ = occupations.find(o => OCCUPATION_KIND[o]);
+    return occ ? OCCUPATION_KIND[occ] : 'Personnage';
+  }
   if (instanceOf.some(i => ['Q7397', 'Q16166344'].includes(i))) return 'Jeu vidéo';
   if (instanceOf.some(i => ['Q11424', 'Q201658'].includes(i))) return 'Film';
   if (instanceOf.some(i => ['Q482994', 'Q215380'].includes(i))) return 'Œuvre musicale';
@@ -353,10 +383,9 @@ function bindingToConcept(b: RawBinding): Concept | null {
   const qid = b.item.value.replace('http://www.wikidata.org/entity/', '');
   const name = b.itemLabel.value;
   const desc = b.itemDescription?.value ?? '';
-  const instanceLabels = b.instanceLabel?.value ? [b.instanceLabel.value] : [];
 
-  const cats = guessCategories([], desc);
-  const kind = guessKind(instanceLabels, desc);
+  const cats = guessCategories([], [], desc);
+  const kind = guessKind([], [], desc);
 
   return {
     id: qid,
@@ -428,10 +457,12 @@ export async function fetchConceptById(qid: string): Promise<Concept | null> {
   const desc =
     entity.descriptions?.fr?.value ?? entity.descriptions?.en?.value ?? '';
 
-  const instanceOf: string[] = (entity.claims?.P31 ?? [])
+  const claimIds = (prop: string): string[] => (entity.claims?.[prop] ?? [])
     .map((c: { mainsnak?: { datavalue?: { value?: { id?: string } } } }) =>
       c.mainsnak?.datavalue?.value?.id)
     .filter(Boolean);
+  const instanceOf = claimIds('P31');
+  const occupations = claimIds('P106');
 
   const frTitle = entity.sitelinks?.frwiki?.title;
   const portrait = frTitle ? await fetchWikipediaThumbnail(frTitle) : undefined;
@@ -440,8 +471,8 @@ export async function fetchConceptById(qid: string): Promise<Concept | null> {
     id: qid,
     wikidataId: qid,
     name,
-    kind: guessKind(instanceOf, desc),
-    cats: guessCategories(instanceOf, desc),
+    kind: guessKind(instanceOf, occupations, desc),
+    cats: guessCategories(instanceOf, occupations, desc),
     blurb: desc || `${name} — entité Wikidata.`,
     refs: [],
     portrait,
