@@ -507,11 +507,54 @@ export function resolveConstraints(constraints: string[]): ConstraintResolution 
 }
 
 /**
- * #12 — Récupère des concepts respectant des contraintes Wikidata conjonctives.
- * Construit `?item wdt:P31/wdt:P279* wd:<QID>` (AND) pour chaque contrainte mappable.
+ * Résout un mot-clé en QID Wikidata via l'API `wbsearchentities` (recherche
+ * live, français puis anglais). Renvoie le meilleur item, ou null.
  */
-export async function fetchConceptsByConstraints(constraints: string[], limit = 12): Promise<Concept[]> {
-  const { mappable } = resolveConstraints(constraints);
+export async function searchEntityId(query: string): Promise<string | null> {
+  const lookup = async (lang: string): Promise<string | null> => {
+    try {
+      const url = new URL(WIKIDATA_API);
+      url.searchParams.set('action', 'wbsearchentities');
+      url.searchParams.set('search', query);
+      url.searchParams.set('language', lang);
+      url.searchParams.set('uselang', lang);
+      url.searchParams.set('type', 'item');
+      url.searchParams.set('limit', '1');
+      url.searchParams.set('format', 'json');
+      url.searchParams.set('origin', '*');
+      const res = await fetch(url.toString());
+      if (!res.ok) return null;
+      const data = await res.json();
+      const id = data.search?.[0]?.id;
+      return typeof id === 'string' && /^Q\d+$/.test(id) ? id : null;
+    } catch {
+      return null;
+    }
+  };
+  return (await lookup('fr')) ?? (await lookup('en'));
+}
+
+/**
+ * Comme `resolveConstraints`, mais complète les termes inconnus de la table
+ * figée par une recherche Wikidata live. Tout thème en langage naturel devient
+ * ainsi mappable, sans dépendre du dictionnaire codé en dur.
+ */
+export async function resolveConstraintsLive(constraints: string[]): Promise<ConstraintResolution> {
+  const base = resolveConstraints(constraints);
+  if (base.unmappable.length === 0) return base;
+  const mappable = [...base.mappable];
+  const unmappable: string[] = [];
+  const found = await Promise.all(base.unmappable.map(t => searchEntityId(t)));
+  base.unmappable.forEach((t, i) => {
+    const qid = found[i];
+    if (qid) mappable.push({ text: t, qid });
+    else unmappable.push(t);
+  });
+  return { mappable, unmappable };
+}
+
+/** Construit et exécute la requête SPARQL conjonctive pour des contraintes déjà résolues. */
+async function conceptsForResolved(mappable: Array<{ text: string; qid: string }>, limit: number): Promise<Concept[]> {
   if (mappable.length === 0) return [];
   const clauses = mappable.map(m => `?item wdt:P31/wdt:P279* wd:${m.qid} .`).join('\n  ');
   const query = `
@@ -528,6 +571,21 @@ LIMIT ${limit}`;
   } catch {
     return [];
   }
+}
+
+/**
+ * #12 — Récupère des concepts respectant des contraintes Wikidata conjonctives.
+ * Construit `?item wdt:P31/wdt:P279* wd:<QID>` (AND) pour chaque contrainte mappable.
+ */
+export async function fetchConceptsByConstraints(constraints: string[], limit = 12): Promise<Concept[]> {
+  const { mappable } = resolveConstraints(constraints);
+  return conceptsForResolved(mappable, limit);
+}
+
+/** Variante du précédent qui résout les thèmes via Wikidata live (au-delà de la table figée). */
+export async function fetchConceptsByConstraintsLive(constraints: string[], limit = 12): Promise<Concept[]> {
+  const { mappable } = await resolveConstraintsLive(constraints);
+  return conceptsForResolved(mappable, limit);
 }
 
 /**

@@ -4,7 +4,7 @@ import { Sunburst, Stamp, StarBurst, PixelDie, Aster, SkeletonCard } from '../..
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
-import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraints } from '../../services/wikidata';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
@@ -761,10 +761,10 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           let themeResults: Concept[] = [];
           if (themeTexts.length > 0) {
             if (mixThemes && themeTexts.length > 1) {
-              const per = await Promise.all(themeTexts.map(t => fetchConceptsByConstraints([t], 18)));
+              const per = await Promise.all(themeTexts.map(t => fetchConceptsByConstraintsLive([t], 18)));
               themeResults = interleaveWeighted(per, themes.map(t => t.weight));
             } else {
-              themeResults = await fetchConceptsByConstraints(themeTexts, 40);
+              themeResults = await fetchConceptsByConstraintsLive(themeTexts, 40);
             }
           }
           const anchorResults = anchorQid ? await fetchNeighborConcepts([anchorQid], 40) : [];
