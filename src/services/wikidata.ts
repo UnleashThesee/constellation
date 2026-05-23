@@ -695,6 +695,21 @@ export async function fetchConceptsByConstraintsLive(constraints: string[], limi
 }
 
 /**
+ * Contraintes avec QID éventuellement déjà connu (choisi via autocomplétion) :
+ * évite la ré-résolution ambiguë (ex. « armes » = armoiries vs armement).
+ * Conjonctif (intersection de tous les types).
+ */
+export async function fetchConceptsForConstraints(items: Array<{ text: string; qid?: string }>, limit = 12, offset = 0): Promise<Concept[]> {
+  const resolved = await Promise.all(items.map(async it => {
+    const qid = (it.qid && /^Q\d+$/.test(it.qid)) ? it.qid : await searchEntityId(it.text);
+    return qid ? { text: it.text, qid } : null;
+  }));
+  const mappable = resolved.filter((x): x is { text: string; qid: string } => !!x);
+  if (mappable.length === 0) return [];
+  return conceptsForResolved(mappable, limit, offset);
+}
+
+/**
  * Entrée libre du mode Ciblé : résout le mot une fois, puis fusionne ses
  * « membres » (instances/sous-classes, si c'est une famille) ET son « voisinage »
  * (entités reliées, si c'est un concept précis). Couvre les deux cas d'un coup.

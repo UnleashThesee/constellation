@@ -1,10 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { OnboardingScreen } from './features/onboarding/OnboardingScreen';
-import {
-  PostOnboardingHome, getSkipPostOnboarding, setSkipPostOnboarding, markPostOnboardingSeen, hasSeenPostOnboarding,
-} from './features/onboarding/PostOnboardingHome';
 import { SwipeScreen } from './features/swipe/SwipeScreen';
 import { MapScreen } from './features/map/MapScreen';
 import { CombinatorScreen } from './features/combinator/CombinatorScreen';
@@ -22,7 +18,7 @@ import { setPendingSwipeDeck } from './lib/pending';
 import { MobileBottomNav } from './components/ui/MobileBottomNav';
 import { ToastProvider } from './lib/toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { getProfile, getSettings, saveSettings, runMaintenance } from './stores/db';
+import { getProfile, saveProfile, getSettings, saveSettings, runMaintenance } from './stores/db';
 import { applyPaletteOverrides, CATEGORIES, CATEGORY_LIST } from './lib/categories';
 
 const THEME_CLASSES = ['theme-cit-phos', 'theme-cit-amber', 'theme-cit-dossier', 'theme-cit-bristol'];
@@ -152,37 +148,18 @@ export default function App() {
         runMaintenance();
 
         const profile = await getProfile();
-        if (!profile?.onboardingDone) { setState('onboarding'); return; }
-        const skip = await getSkipPostOnboarding();
-        const seen = await hasSeenPostOnboarding();
-        // Show post-onboarding home only on first launch after onboarding completion
-        if (!skip && !seen) { setState('post-onboarding'); await markPostOnboardingSeen(); }
-        else setState('app');
+        if (!profile?.onboardingDone) {
+          // Plus d'onboarding/quizz : on initialise silencieusement et on entre direct.
+          await saveProfile({ onboardingDone: true }).catch(() => {});
+        }
+        setState('app');
       } catch {
-        setState('onboarding');
+        setState('app');
       }
     })();
   }, []);
 
   if (state === 'loading') return <LoadingScreen />;
-  if (state === 'onboarding') return (
-    <ToastProvider>
-      <ErrorBoundary label="Onboarding" onReset={() => window.location.reload()}>
-        <OnboardingScreen onComplete={() => setState('post-onboarding')} />
-      </ErrorBoundary>
-    </ToastProvider>
-  );
-  if (state === 'post-onboarding') return (
-    <ToastProvider>
-      <OfflineBanner/>
-      <ErrorBoundary label="Accueil" onReset={() => setState('app')}>
-        <PostOnboardingHome
-          onEnter={() => setState('app')}
-          onSkipForever={async () => { await setSkipPostOnboarding(true); setState('app'); }}
-        />
-      </ErrorBoundary>
-    </ToastProvider>
-  );
 
   const screen = (
     <Routes>

@@ -4,7 +4,7 @@ import { Sunburst, Stamp, PixelDie, Aster, SkeletonCard } from '../../components
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
-import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, fetchConceptsForEntry, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, fetchConceptImage, type SemanticRelation } from '../../services/wikidata';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsForConstraints, fetchConceptsForEntry, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, fetchConceptImage, type SemanticRelation } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, addTagToConcept, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
@@ -117,17 +117,6 @@ function CitIconNeutral() {
 }
 
 // ---- Mini-schémas explicatifs ----
-function SchemaAnchor() {
-  return (
-    <svg width="46" height="30" viewBox="0 0 46 30" fill="none" stroke="var(--cit-navy)" strokeWidth="1.3" style={{ flexShrink: 0 }}>
-      <line x1="23" y1="15" x2="8" y2="6"/><line x1="23" y1="15" x2="39" y2="6"/>
-      <line x1="23" y1="15" x2="8" y2="24"/><line x1="23" y1="15" x2="39" y2="24"/>
-      <circle cx="8" cy="6" r="2.4" fill="var(--cit-navy)" stroke="none"/><circle cx="39" cy="6" r="2.4" fill="var(--cit-navy)" stroke="none"/>
-      <circle cx="8" cy="24" r="2.4" fill="var(--cit-navy)" stroke="none"/><circle cx="39" cy="24" r="2.4" fill="var(--cit-navy)" stroke="none"/>
-      <circle cx="23" cy="15" r="5" fill="var(--cit-brick)" stroke="var(--cit-navy-dk)" strokeWidth="1.5"/>
-    </svg>
-  );
-}
 function EyeIcon({ off }: { off?: boolean }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -490,46 +479,42 @@ function CibleBanner({ entries, onAdd, onRemove, onWeight, mixThemes, onToggleMi
   const free = suggestions.filter(s => !entries.some(e => e.text.toLowerCase() === s.toLowerCase())).slice(0, 6);
   return (
     <div style={{
-      padding: '10px 32px', background: 'var(--cit-butter)',
-      borderBottom: '3px solid var(--cit-navy-dk)', position: 'relative', zIndex: 3,
+      padding: '7px 24px 8px', background: 'var(--cit-butter)',
+      borderBottom: '2px solid var(--cit-navy-dk)', position: 'relative', zIndex: 3,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-        <Aster size={24}/>
-        <span className="cit-h1" style={{ fontSize: 18, lineHeight: 0.9 }}>CIBLAGE DE LA PIOCHE</span>
-        <div style={{ flex: 1 }}/>
-        {loading && <span className="cit-condensed cit-pulse-brick" style={{ fontSize: 10, color: 'var(--cit-brick)' }}>★ INTERROGATION WIKIDATA…</span>}
+      {/* Ligne compacte : titre · saisie · bascule combinaison */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-dk)', whiteSpace: 'nowrap', letterSpacing: '.06em' }}>★ CIBLER ›</span>
+        <div style={{ flex: '1 1 280px', minWidth: 200 }}>
+          <InlineAddConcept
+            onPick={c => onAdd(c.name, c.wikidataId)}
+            onSubmitText={t => onAdd(t)}
+            placeholder="guerre, instruments, Kant… (famille ou concept précis)"/>
+        </div>
+        {entries.length >= 2 && (
+          <div style={{ display: 'inline-flex', border: '2px solid var(--cit-navy-dk)', flexShrink: 0 }}>
+            {([['inter', '∩ Intersection'], ['mix', '⇆ Mélange']] as const).map(([k, label]) => {
+              const on = (k === 'mix') === mixThemes;
+              return (
+                <button key={k} onClick={() => { if ((k === 'mix') !== mixThemes) onToggleMix(); }}
+                  title={k === 'inter' ? 'Concepts respectant TOUTES les entrées à la fois' : 'Doser le % de chaque entrée avec les curseurs sur les puces'}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 9px', cursor: 'pointer',
+                    background: on ? 'var(--cit-navy-dk)' : 'transparent', color: on ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
+                    border: 'none', borderRight: k === 'inter' ? '2px solid var(--cit-navy-dk)' : 'none',
+                    fontFamily: "'Oswald', sans-serif", fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+                  }}><SchemaMix kind={k}/> {label}</button>
+              );
+            })}
+          </div>
+        )}
+        {loading && <span className="cit-condensed cit-pulse-brick" style={{ fontSize: 10, color: 'var(--cit-brick)', flexShrink: 0 }}>★ WIKIDATA…</span>}
       </div>
-
-      <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ COMMENT COMBINER VOS ENTRÉES ?</div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-        {([['inter', '∩ Intersection', 'Concepts respectant TOUTES les entrées à la fois'], ['mix', '⇆ Mélange pondéré', 'Chaque entrée contribue selon son poids (curseurs)']] as const).map(([k, label, sub]) => {
-          const on = (k === 'mix') === mixThemes;
-          return (
-            <button key={k} onClick={() => { if ((k === 'mix') !== mixThemes) onToggleMix(); }} style={{
-              flex: 1, display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
-              background: on ? 'var(--cit-cream)' : 'transparent',
-              border: '2.5px solid var(--cit-navy-dk)',
-              boxShadow: on ? '3px 3px 0 var(--cit-brick)' : 'none',
-              opacity: on ? 1 : 0.55, cursor: 'pointer', padding: '5px 10px',
-            }}>
-              <SchemaMix kind={k}/>
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '.06em', color: 'var(--cit-navy-dk)' }}>{label}</span>
-                <span style={{ display: 'block', fontFamily: "'Special Elite', monospace", fontSize: 9.5, color: 'var(--cit-navy-lt)', lineHeight: 1.2 }}>{sub}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-        <SchemaAnchor/>
-        <span className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)' }}>★ CE QUI VOUS INTÉRESSE — famille (ses membres) ou concept précis (son voisinage) · choisissez dans la liste ou Entrée</span>
-      </div>
-      <InlineAddConcept
-        onPick={c => onAdd(c.name, c.wikidataId)}
-        onSubmitText={t => onAdd(t)}
-        placeholder="guerre, instruments, Kant, Daft Punk…"/>
+      {entries.length >= 2 && mixThemes && (
+        <div className="cit-typed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', margin: '4px 0 0', fontStyle: 'italic' }}>
+          Mélange : réglez le poids (%) de chaque entrée avec les curseurs sur les puces ci-dessous.
+        </div>
+      )}
 
       {entries.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
@@ -754,10 +739,8 @@ function RegistrePanel({ history }: { history: Array<{ name: string; verdict: st
 }
 
 /** Contraintes de pioche (plusieurs possibles, intersection), valables dans toutes les procédures. */
-function ConstraintPanel({ constraints, onAdd, onRemove }: { constraints: string[]; onAdd: (t: string) => void; onRemove: (t: string) => void }) {
-  const [input, setInput] = useState('');
+function ConstraintPanel({ constraints, onAdd, onRemove, noMatch }: { constraints: Array<{ text: string; qid?: string }>; onAdd: (t: string, qid?: string) => void; onRemove: (t: string) => void; noMatch: boolean }) {
   const active = constraints.length > 0;
-  const submit = () => { const v = input.trim(); if (v) { onAdd(v); setInput(''); } };
   return (
     <div style={{ marginBottom: 2 }}>
       {/* Bandeau en entonnoir (trapèze qui se rétrécit) → métaphore du filtrage */}
@@ -775,33 +758,29 @@ function ConstraintPanel({ constraints, onAdd, onRemove }: { constraints: string
         padding: '8px 12px', boxShadow: '3px 3px 0 var(--cit-navy-dk)',
       }}>
         <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', lineHeight: 1.35, marginBottom: 6 }}>
-          Ne garde que ces <strong>types</strong> — cumulez-en plusieurs pour affiner très finement.
+          Ne garde que ces <strong>types</strong> — choisissez dans la liste pour viser le bon concept.
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') submit(); }}
-            placeholder="personnages, objets, livres…"
-            style={{
-              flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '6px 10px',
-              border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
-              fontFamily: "'Special Elite', monospace", fontSize: 12, color: 'var(--cit-navy-dk)',
-            }}/>
-          <CitButton size="sm" tone="brick" onClick={submit}>+</CitButton>
-        </div>
+        <InlineAddConcept
+          onPick={c => onAdd(c.name, c.wikidataId)}
+          onSubmitText={t => onAdd(t)}
+          placeholder="personnages, objets, livres…"/>
         {constraints.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
             {constraints.map(c => (
-              <span key={c} style={{
+              <span key={c.text} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 5px 3px 9px',
                 background: 'var(--cit-brick)', color: 'var(--cit-cream)',
                 fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '.04em',
               }}>
-                ▽ {c}
-                <button onClick={() => onRemove(c)} title="Retirer" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-cream)', fontFamily: "'Alfa Slab One', serif", fontSize: 11 }}>✕</button>
+                ▽ {c.text}
+                <button onClick={() => onRemove(c.text)} title="Retirer" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-cream)', fontFamily: "'Alfa Slab One', serif", fontSize: 11 }}>✕</button>
               </span>
             ))}
+          </div>
+        )}
+        {noMatch && (
+          <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-brick)', lineHeight: 1.35, marginTop: 8, fontStyle: 'italic' }}>
+            ⚠ Aucune carte ne croise cette contrainte avec vos critères — on élargit au type seul.
           </div>
         )}
       </div>
@@ -829,11 +808,12 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [incognito, setIncognito] = useState(false);
   const incognitoRef = useRef(incognito);
   incognitoRef.current = incognito;
-  const [constraints, setConstraints] = useState<string[]>([]);
-  const addConstraint = (t: string) => { const v = t.trim(); if (v) setConstraints(prev => prev.some(x => x.toLowerCase() === v.toLowerCase()) ? prev : [...prev, v]); };
-  const removeConstraint = (t: string) => setConstraints(prev => prev.filter(x => x !== t));
+  const [constraints, setConstraints] = useState<Array<{ text: string; qid?: string }>>([]);
+  const [constraintNoMatch, setConstraintNoMatch] = useState(false);
+  const addConstraint = (t: string, qid?: string) => { const v = t.trim(); if (v) setConstraints(prev => prev.some(x => x.text.toLowerCase() === v.toLowerCase()) ? prev : [...prev, { text: v, qid }]); };
+  const removeConstraint = (t: string) => setConstraints(prev => prev.filter(x => x.text !== t));
 
-  const swipe = useSwipeDeck(FALLBACK_CONCEPTS, () => setDetailOpen(true), () => incognitoRef.current);
+  const swipe = useSwipeDeck([], () => setDetailOpen(true), () => incognitoRef.current);
   const [rawDeck, setRawDeck] = useState<Concept[]>([]);
   const [currentFavorite, setCurrentFavorite] = useState(false);
   const [boostLabel, setBoostLabel] = useState<string | null>(null);
@@ -944,7 +924,10 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         const pool = filtered.length > 0 ? filtered : concepts;
         await Promise.all(pool.map(c => cacheConcept(c)));
         setRawDeck(pool);
-      } catch { /* keep fallback */ } finally {
+      } catch {
+        // Hors-ligne / échec : repli sur quelques fiches, mélangées (pas toujours les mêmes)
+        setRawDeck([...FALLBACK_CONCEPTS].sort(() => Math.random() - 0.5));
+      } finally {
         setLoading(false);
       }
     })();
@@ -1009,10 +992,14 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
         // Contraintes (toutes procédures) : restreint à l'intersection des types Wikidata
         if (constraints.length > 0) {
-          const allowed = await fetchConceptsByConstraintsLive(constraints, 80);
+          const allowed = await fetchConceptsForConstraints(constraints, 80);
           const ids = new Set(allowed.map(c => c.wikidataId).filter(Boolean));
           const inter = fresh.filter(c => c.wikidataId && ids.has(c.wikidataId));
+          // Pas d'intersection avec les thèmes : on élargit au type seul, et on le signale.
+          if (!cancelled) setConstraintNoMatch(inter.length === 0 && (entries.length > 0 || mode !== 'random'));
           fresh = inter.length >= 1 ? inter : allowed;
+        } else if (!cancelled) {
+          setConstraintNoMatch(false);
         }
 
         fresh = fresh.filter(c => !excluded.has(c.id));
@@ -1048,7 +1035,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         const excluded = await getExcludedConceptIds();
         let batch: Concept[] = [];
         if (constraints.length > 0) {
-          batch = await fetchConceptsByConstraintsLive(constraints, 24, page * 24);
+          batch = await fetchConceptsForConstraints(constraints, 24, page * 24);
         } else if (mode === 'targeted' && entries.length > 0) {
           const per = await Promise.all(entries.map(e => fetchConceptsForEntry(e.text, 16, e.qid, page * 16)));
           batch = per.flat();
@@ -1414,7 +1401,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
         {/* Right panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <ConstraintPanel constraints={constraints} onAdd={addConstraint} onRemove={removeConstraint}/>
+          <ConstraintPanel constraints={constraints} onAdd={addConstraint} onRemove={removeConstraint} noMatch={constraintNoMatch}/>
           <RegistrePanel history={swipe.history}/>
         </div>
       </div>
