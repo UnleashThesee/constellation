@@ -4,7 +4,7 @@ import { Sunburst, Stamp, StarBurst, PixelDie, Aster, SkeletonCard } from '../..
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
-import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, searchConcepts } from '../../services/wikidata';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, searchConcepts, fetchSemanticRelations, type SemanticRelation } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
@@ -135,7 +135,7 @@ function CitCat({ catKey, weight }: { catKey: CategoryKey; weight?: number }) {
   );
 }
 
-function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast, isFavorite, onToggleFavorite }: {
+function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast, isFavorite, onToggleFavorite, relations }: {
   concept: Concept;
   tilt: 'right' | 'left' | 'up' | 'down' | null;
   dragOffset: { x: number; y: number };
@@ -147,6 +147,7 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
   contrast?: boolean;
   isFavorite?: boolean;
   onToggleFavorite?: () => void;
+  relations?: SemanticRelation[];
 }) {
   const isDragging = dragOffset.x !== 0 || dragOffset.y !== 0;
   const rotate = isDragging ? `rotate(${dragOffset.x * 0.04 - 0.6}deg)` : 'rotate(-0.6deg)';
@@ -326,8 +327,30 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
               ★ Catégories
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {concept.cats.map(([k, w]) => <CitCat key={k} catKey={k} weight={w}/>)}
+              {concept.cats.map(([k]) => <CitCat key={k} catKey={k}/>)}
             </div>
+
+            {relations && relations.length > 0 && (
+              <>
+                <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', margin: '12px 0 4px' }}>
+                  ★ Relations Wikidata
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {relations.slice(0, 10).map((r, i) => (
+                    <span key={i} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px',
+                      background: 'var(--cit-cream)', border: '2px solid var(--cit-navy-dk)',
+                      borderLeft: '5px solid var(--cit-navy)',
+                      fontFamily: "'Oswald', sans-serif", fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
+                      color: 'var(--cit-navy-dk)',
+                    }}>
+                      <span style={{ color: 'var(--cit-brick)', fontSize: 9, textTransform: 'uppercase' }}>{r.propertyLabel}</span>
+                      <span style={{ textTransform: 'uppercase' }}>{r.targetLabel}</span>
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -679,6 +702,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [todayCounts, setTodayCounts] = useState({ valid: 0, reject: 0, skip: 0, favs: 0 });
   const [semanticEnabled, setSemanticEnabled] = useState(false);
   const [semanticBusy, setSemanticBusy] = useState(false);
+  const [currentRelations, setCurrentRelations] = useState<SemanticRelation[]>([]);
   const toast = useToast();
 
   // Bilan du jour : compteurs depuis minuit local (refresh à chaque verdict)
@@ -936,6 +960,16 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     getCachedConcept(current.id).then(c => setCurrentFavorite(!!c?.isFavorite));
   }, [current?.id]);
 
+  // Relations Wikidata de la carte courante (chargées à la volée, cache 30j)
+  useEffect(() => {
+    setCurrentRelations([]);
+    const qid = current?.wikidataId;
+    if (!qid) return;
+    let cancelled = false;
+    fetchSemanticRelations(qid).then(r => { if (!cancelled) setCurrentRelations(r); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [current?.id]);
+
   // Raccourci clavier « F » → ouvre/ferme la fiche complète
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -1109,6 +1143,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                 animClass={swipe.animClass}
                 onPointerDown={swipe.onPointerDown}
                 isFavorite={currentFavorite}
+                relations={currentRelations}
                 onToggleFavorite={async () => {
                   await cacheConcept(current);
                   const next = await toggleFavorite(current.id);
