@@ -266,17 +266,6 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
             </div>
           </div>
           <Sunburst size={88} color="var(--cit-butter)" behindColor="var(--cit-brick)"/>
-          {onToggleFavorite && (
-            <button onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }} onPointerDown={e => e.stopPropagation()} style={{
-              position: 'absolute', top: 6, right: 6, zIndex: 6,
-              background: isFavorite ? 'var(--cit-butter)' : 'transparent',
-              color: isFavorite ? 'var(--cit-navy-dk)' : 'var(--cit-butter)',
-              border: '2px solid var(--cit-butter)',
-              fontFamily: "'Alfa Slab One', serif", fontSize: 18,
-              padding: '2px 10px', cursor: 'pointer',
-              boxShadow: isFavorite ? '2px 2px 0 var(--cit-navy-dk)' : 'none',
-            }} title={isFavorite ? 'Retirer favori' : 'Marquer favori'}>★</button>
-          )}
         </div>
 
         {/* Body 2-col */}
@@ -419,51 +408,69 @@ function CitizenActions({ onAction }: { onAction: (v: 'reject' | 'skip' | 'valid
   );
 }
 
-function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: SwipeMode) => void; queueSize: number }) {
-  const isContrast = mode === 'contrast';
-  const bg = isContrast ? 'var(--cit-brick)' : 'var(--cit-paper-dk)';
-  const labelColor = isContrast ? 'var(--cit-cream)' : 'var(--cit-navy-dk)';
+const MODE_ACCENT: Partial<Record<SwipeMode, string>> = {
+  random:   'var(--cit-navy-lt)',
+  targeted: 'var(--cit-rust)',
+  contrast: 'var(--cit-navy)',
+};
+const MODE_TAGLINE: Partial<Record<SwipeMode, string>> = {
+  random:   'au hasard, large',
+  targeted: 'thèmes & concepts',
+  contrast: 'sortir de sa bulle',
+};
+
+function ModeSchema({ id, on }: { id: SwipeMode; on: boolean }) {
+  const col = on ? 'var(--cit-cream)' : 'var(--cit-navy)';
+  const s = { flexShrink: 0 } as const;
+  if (id === 'random') return (
+    <svg width="26" height="26" viewBox="0 0 28 28" fill={col} stroke="none" style={s}>
+      <circle cx="7" cy="8" r="2.4"/><circle cx="21" cy="6" r="2.4"/><circle cx="13" cy="15" r="2.4"/><circle cx="22" cy="20" r="2.4"/><circle cx="6" cy="21" r="2.4"/>
+    </svg>
+  );
+  if (id === 'targeted') return (
+    <svg width="26" height="26" viewBox="0 0 28 28" fill="none" stroke={col} strokeWidth="2" style={s}>
+      <circle cx="14" cy="14" r="10"/><circle cx="14" cy="14" r="5"/><circle cx="14" cy="14" r="1.6" fill={col} stroke="none"/>
+    </svg>
+  );
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '10px 32px',
-      background: bg,
-      borderBottom: isContrast ? '3px solid var(--cit-navy-dk)' : '2px solid var(--cit-navy-dk)',
-    }}>
-      <span className="cit-condensed" style={{ fontSize: 11, color: labelColor, whiteSpace: 'nowrap' }}>
-        ★ Procédure ›
-      </span>
-      <div style={{ display: 'flex', gap: 4 }}>
+    <svg width="26" height="26" viewBox="0 0 28 28" fill="none" stroke={col} strokeWidth="2" style={s}>
+      <circle cx="14" cy="14" r="10"/>
+      <path d="M14 4 A10 10 0 0 0 14 24 Z" fill={col} stroke="none"/>
+    </svg>
+  );
+}
+
+function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: SwipeMode) => void; queueSize: number }) {
+  return (
+    <div style={{ padding: '12px 32px 10px', background: 'var(--cit-paper)', borderBottom: '2px solid var(--cit-navy-dk)' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'stretch', gap: 18, flexWrap: 'wrap' }}>
         {MODES.map(m => {
           const on = m.id === mode;
-          const activeBg = isContrast ? 'var(--cit-cream)' : 'var(--cit-navy-dk)';
-          const activeFg = isContrast ? 'var(--cit-brick)' : 'var(--cit-butter)';
-          const idleFg = isContrast ? 'var(--cit-butter)' : 'var(--cit-navy-dk)';
-          const idleBorder = isContrast ? 'oklch(0% 0 0 / 0.4)' : 'var(--cit-navy-dk)';
+          const accent = MODE_ACCENT[m.id] ?? 'var(--cit-navy)';
           return (
             <button key={m.id} onClick={() => { playSound('modeChange'); setMode(m.id); }} style={{
-              background: on ? activeBg : 'transparent',
-              color: on ? activeFg : idleFg,
-              border: `2px solid ${on ? activeBg : idleBorder}`,
-              padding: '4px 12px',
-              fontFamily: "'Oswald', sans-serif",
-              fontSize: 12, letterSpacing: '.12em', fontWeight: 600, textTransform: 'uppercase',
-              cursor: 'pointer',
-              boxShadow: on ? (isContrast ? '2px 2px 0 var(--cit-navy-dk)' : '2px 2px 0 var(--cit-brick)') : 'none',
-            }}>{m.label}</button>
+              display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+              minWidth: 188, padding: '8px 18px',
+              background: on ? 'var(--cit-navy-dk)' : 'var(--cit-cream)',
+              color: on ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
+              border: '2.5px solid var(--cit-navy-dk)', borderLeft: `7px solid ${accent}`,
+              boxShadow: on ? `4px 4px 0 ${accent}` : 'none',
+              opacity: on ? 1 : 0.72, cursor: 'pointer',
+            }}>
+              <ModeSchema id={m.id} on={on}/>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase' }}>{m.label}</span>
+                <span style={{ display: 'block', fontFamily: "'Special Elite', monospace", fontSize: 10, opacity: 0.8, lineHeight: 1.2 }}>{MODE_TAGLINE[m.id]}</span>
+              </span>
+            </button>
           );
         })}
       </div>
-      <div style={{ flex: 1 }}/>
-      {isContrast ? (
-        <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)' }}>
-          ★ FISSURATION DE BULLE EN COURS ★
+      <div style={{ textAlign: 'center', marginTop: 7 }}>
+        <span className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', letterSpacing: '.14em' }}>
+          ★ PROCÉDURE · FILE : <span style={{ color: 'var(--cit-rust)', fontWeight: 700 }}>{queueSize}</span>
         </span>
-      ) : (
-        <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>
-          FILE : <span style={{ color: 'var(--cit-brick)', fontWeight: 700 }}>{queueSize}</span>
-        </span>
-      )}
+      </div>
     </div>
   );
 }
@@ -565,29 +572,49 @@ function CibleBanner({ entries, onAdd, onRemove, onWeight, mixThemes, onToggleMi
   );
 }
 
+function ContrastSchema({ id, on }: { id: ContrastSub; on: boolean }) {
+  const col = on ? 'var(--cit-cream)' : 'var(--cit-navy)';
+  const s = { flexShrink: 0 } as const;
+  if (id === 'far') return (
+    <svg width="26" height="24" viewBox="0 0 28 24" fill="none" stroke={col} strokeWidth="1.6" style={s}>
+      <circle cx="8" cy="12" r="5" fill={col} stroke="none"/>
+      <line x1="14" y1="12" x2="22" y2="7" strokeDasharray="2 2"/>
+      <circle cx="23" cy="6" r="2.4"/>
+    </svg>
+  );
+  // adopted / rejected : un point proche d'un amas
+  return (
+    <svg width="26" height="24" viewBox="0 0 28 24" fill="none" stroke={col} strokeWidth="1.6" style={s}>
+      <circle cx="9" cy="12" r="5" fill={col} stroke="none"/>
+      <circle cx="18" cy="12" r="2.6" fill={col} stroke="none"/>
+      {id === 'rejected' && <path d="M5 8 L13 16 M13 8 L5 16" stroke="var(--cit-brick)" strokeWidth="2"/>}
+    </svg>
+  );
+}
+
 function ContrasteBanner({ sub, onSet }: { sub: ContrastSub; onSet: (s: ContrastSub) => void }) {
   return (
-    <div style={{
-      padding: '10px 32px', background: 'var(--cit-brick)',
-      borderBottom: '3px solid var(--cit-navy-dk)', position: 'relative', zIndex: 3,
-      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-    }}>
-      <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)', whiteSpace: 'nowrap' }}>★ Contraste ›</span>
-      {CONTRAST_SUBS.map(s => {
-        const on = s.id === sub;
-        return (
-          <button key={s.id} onClick={() => onSet(s.id)} title={s.hint} style={{
-            background: on ? 'var(--cit-cream)' : 'transparent',
-            color: on ? 'var(--cit-brick)' : 'var(--cit-cream)',
-            border: `2px solid ${on ? 'var(--cit-cream)' : 'oklch(100% 0 0 / 0.5)'}`,
-            padding: '4px 12px', cursor: 'pointer', fontFamily: "'Oswald', sans-serif",
-            fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase',
-          }}>{s.label}</button>
-        );
-      })}
-      <span className="cit-typed" style={{ fontSize: 10.5, color: 'var(--cit-cream)', marginLeft: 'auto' }}>
-        {CONTRAST_SUBS.find(s => s.id === sub)?.hint}
-      </span>
+    <div style={{ padding: '10px 32px', background: 'var(--cit-paper-dk)', borderBottom: '2px solid var(--cit-navy-dk)', position: 'relative', zIndex: 3 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'stretch', gap: 14, flexWrap: 'wrap' }}>
+        {CONTRAST_SUBS.map(s => {
+          const on = s.id === sub;
+          return (
+            <button key={s.id} onClick={() => onSet(s.id)} title={s.hint} style={{
+              display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', minWidth: 198, padding: '7px 14px',
+              background: on ? 'var(--cit-navy-dk)' : 'var(--cit-cream)',
+              color: on ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
+              border: '2.5px solid var(--cit-navy-dk)', borderLeft: '7px solid var(--cit-rust)',
+              boxShadow: on ? '4px 4px 0 var(--cit-rust)' : 'none', opacity: on ? 1 : 0.72, cursor: 'pointer',
+            }}>
+              <ContrastSchema id={s.id} on={on}/>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontFamily: "'Oswald', sans-serif", fontSize: 12.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' }}>{s.label}</span>
+                <span style={{ display: 'block', fontFamily: "'Special Elite', monospace", fontSize: 9.5, opacity: 0.8, lineHeight: 1.2 }}>{s.hint}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -726,10 +753,11 @@ function RegistrePanel({ history }: { history: Array<{ name: string; verdict: st
   );
 }
 
-/** Contrainte de pioche, valable dans toutes les procédures (filtre par classe Wikidata). */
-function ConstraintPanel({ value, onSet }: { value: string; onSet: (v: string) => void }) {
+/** Contraintes de pioche (plusieurs possibles, intersection), valables dans toutes les procédures. */
+function ConstraintPanel({ constraints, onAdd, onRemove }: { constraints: string[]; onAdd: (t: string) => void; onRemove: (t: string) => void }) {
   const [input, setInput] = useState('');
-  const active = !!value;
+  const active = constraints.length > 0;
+  const submit = () => { const v = input.trim(); if (v) { onAdd(v); setInput(''); } };
   return (
     <div style={{ marginBottom: 2 }}>
       {/* Bandeau en entonnoir (trapèze qui se rétrécit) → métaphore du filtrage */}
@@ -747,29 +775,34 @@ function ConstraintPanel({ value, onSet }: { value: string; onSet: (v: string) =
         padding: '8px 12px', boxShadow: '3px 3px 0 var(--cit-navy-dk)',
       }}>
         <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', lineHeight: 1.35, marginBottom: 6 }}>
-          Ne garde qu'un <strong>type</strong> (personnages, objets, films…), tous modes.
-          <br/><span style={{ color: 'var(--cit-brick)' }}>Kant + livres</span> → livres liés à Kant.
+          Ne garde que ces <strong>types</strong> — cumulez-en plusieurs pour affiner très finement.
         </div>
-        {value ? (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 10px',
-            background: 'var(--cit-brick)', color: 'var(--cit-cream)',
-            fontFamily: "'Oswald', sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: '.06em',
-          }}>
-            ▽ {value}
-            <button onClick={() => onSet('')} title="Retirer la contrainte" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-cream)', fontFamily: "'Alfa Slab One', serif", fontSize: 12 }}>✕</button>
-          </span>
-        ) : (
+        <div style={{ display: 'flex', gap: 6 }}>
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && input.trim()) { onSet(input.trim()); setInput(''); } }}
-            placeholder="Filtrer : personnages, objets…"
+            onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+            placeholder="personnages, objets, livres…"
             style={{
-              width: '100%', boxSizing: 'border-box', padding: '6px 10px',
+              flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '6px 10px',
               border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
               fontFamily: "'Special Elite', monospace", fontSize: 12, color: 'var(--cit-navy-dk)',
             }}/>
+          <CitButton size="sm" tone="brick" onClick={submit}>+</CitButton>
+        </div>
+        {constraints.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+            {constraints.map(c => (
+              <span key={c} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 5px 3px 9px',
+                background: 'var(--cit-brick)', color: 'var(--cit-cream)',
+                fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '.04em',
+              }}>
+                ▽ {c}
+                <button onClick={() => onRemove(c)} title="Retirer" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-cream)', fontFamily: "'Alfa Slab One', serif", fontSize: 11 }}>✕</button>
+              </span>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -796,7 +829,9 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [incognito, setIncognito] = useState(false);
   const incognitoRef = useRef(incognito);
   incognitoRef.current = incognito;
-  const [constraint, setConstraint] = useState('');
+  const [constraints, setConstraints] = useState<string[]>([]);
+  const addConstraint = (t: string) => { const v = t.trim(); if (v) setConstraints(prev => prev.some(x => x.toLowerCase() === v.toLowerCase()) ? prev : [...prev, v]); };
+  const removeConstraint = (t: string) => setConstraints(prev => prev.filter(x => x !== t));
 
   const swipe = useSwipeDeck(FALLBACK_CONCEPTS, () => setDetailOpen(true), () => incognitoRef.current);
   const [rawDeck, setRawDeck] = useState<Concept[]>([]);
@@ -941,7 +976,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   // Fallback silencieux sur le pool aléatoire si rien ne remonte.
   useEffect(() => {
     if (rawDeck.length === 0) return;
-    if (mode === 'random' && !constraint.trim()) { swipe.setDeck(rawDeck); return; }
+    if (mode === 'random' && constraints.length === 0) { swipe.setDeck(rawDeck); return; }
     let cancelled = false;
     (async () => {
       setTargetedLoading(true);
@@ -985,10 +1020,9 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           }
         }
 
-        // Contrainte (toutes procédures) : restreint la pioche à une classe Wikidata
-        const ct = constraint.trim();
-        if (ct) {
-          const allowed = await fetchConceptsByConstraintsLive([ct], 80);
+        // Contraintes (toutes procédures) : restreint à l'intersection des types Wikidata
+        if (constraints.length > 0) {
+          const allowed = await fetchConceptsByConstraintsLive(constraints, 80);
           const ids = new Set(allowed.map(c => c.wikidataId).filter(Boolean));
           const inter = fresh.filter(c => c.wikidataId && ids.has(c.wikidataId));
           fresh = inter.length >= 1 ? inter : allowed;
@@ -1010,13 +1044,13 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       }
     })();
     return () => { cancelled = true; };
-  }, [mode, entries, mixThemes, contrastSub, constraint, rawDeck.length, adopted.length]);
+  }, [mode, entries, mixThemes, contrastSub, constraints, rawDeck.length, adopted.length]);
 
   // Variété dans TOUS les modes : à mesure qu'on swipe, recharge un lot frais
   // (avec pagination/décalage) et l'ajoute à la pioche — évite le bouclage partout.
   const lastRefillRef = useRef(0);
   const refillPageRef = useRef(0);
-  useEffect(() => { refillPageRef.current = 0; }, [mode, entries, constraint, contrastSub]);
+  useEffect(() => { refillPageRef.current = 0; }, [mode, entries, constraints, contrastSub]);
   useEffect(() => {
     const total = swipe.counts.valid + swipe.counts.reject + swipe.counts.skip;
     if (total === 0 || total % 15 !== 0 || total === lastRefillRef.current) return;
@@ -1025,10 +1059,9 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     (async () => {
       try {
         const excluded = await getExcludedConceptIds();
-        const ct = constraint.trim();
         let batch: Concept[] = [];
-        if (ct) {
-          batch = await fetchConceptsByConstraintsLive([ct], 24, page * 24);
+        if (constraints.length > 0) {
+          batch = await fetchConceptsByConstraintsLive(constraints, 24, page * 24);
         } else if (mode === 'targeted' && entries.length > 0) {
           const per = await Promise.all(entries.map(e => fetchConceptsForEntry(e.text, 16, e.qid, page * 16)));
           batch = per.flat();
@@ -1043,7 +1076,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         if (batch.length) { await Promise.all(batch.map(c => cacheConcept(c))); swipe.appendDeck(batch); }
       } catch { /* ignore */ }
     })();
-  }, [swipe.counts, mode, entries, contrastSub, constraint, adopted]);
+  }, [swipe.counts, mode, entries, contrastSub, constraints, adopted]);
 
   // #13 — Contraste sémantique réel (opt-in) : on classe le pool par distance
   // cosinus croissante au barycentre sémantique des concepts adoptés. Les plus
@@ -1395,7 +1428,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
         {/* Right panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <ConstraintPanel value={constraint} onSet={setConstraint}/>
+          <ConstraintPanel constraints={constraints} onAdd={addConstraint} onRemove={removeConstraint}/>
           <RegistrePanel history={swipe.history}/>
         </div>
       </div>
