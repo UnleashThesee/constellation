@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node -e \"require('fs').rmSync('dist/_redirects',{force:true})\"",
     "lint": "eslint .",
     "preview": "npm run build && wrangler dev",
     "test": "vitest run",
