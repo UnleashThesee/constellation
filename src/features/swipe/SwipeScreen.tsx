@@ -5,7 +5,7 @@ import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../compo
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
 import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, fetchConceptsForEntry, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, fetchConceptImage, type SemanticRelation } from '../../services/wikidata';
-import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, db } from '../../stores/db';
+import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, addTagToConcept, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
 import { consumePendingSwipeDeck } from '../../lib/pending';
@@ -128,11 +128,12 @@ function SchemaAnchor() {
     </svg>
   );
 }
-function SchemaConstraint() {
+function EyeIcon({ off }: { off?: boolean }) {
   return (
-    <svg width="46" height="30" viewBox="0 0 46 30" fill="none" stroke="var(--cit-navy)" strokeWidth="1.3" style={{ flexShrink: 0 }}>
-      <circle cx="7" cy="6" r="2.3"/><rect x="19" y="3.5" width="5" height="5"/><polygon points="36,3.5 39,9 33,9"/>
-      <path d="M5 13 H41 L27 21 V27 H19 V21 Z" fill="var(--cit-brick)" fillOpacity="0.15" stroke="var(--cit-navy-dk)" strokeWidth="1.4"/>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/>
+      <circle cx="12" cy="12" r="3"/>
+      {off && <line x1="3" y1="3" x2="21" y2="21" stroke="var(--cit-brick)" strokeWidth="2.4"/>}
     </svg>
   );
 }
@@ -335,7 +336,7 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
               background: 'var(--cit-paper)', borderLeft: '4px solid var(--cit-mustard)',
               padding: '8px 12px',
             }}>
-              <p className="cit-typed" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--cit-navy-dk)' }}>
+              <p className="cit-typed" style={{ margin: 0, fontSize: 15, lineHeight: 1.62, color: 'var(--cit-navy-dk)' }}>
                 {extract || concept.blurb}
               </p>
             </div>
@@ -728,37 +729,50 @@ function RegistrePanel({ history }: { history: Array<{ name: string; verdict: st
 /** Contrainte de pioche, valable dans toutes les procédures (filtre par classe Wikidata). */
 function ConstraintPanel({ value, onSet }: { value: string; onSet: (v: string) => void }) {
   const [input, setInput] = useState('');
+  const active = !!value;
   return (
-    <CitPanel title="Contrainte de la pioche">
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
-        <SchemaConstraint/>
-        <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', lineHeight: 1.35 }}>
-          Ne garde qu'un <strong>type</strong> de chose, quel que soit le mode (ex. personnages, objets, films).
-          <br/>Se combine avec Ciblé : <span style={{ color: 'var(--cit-brick)' }}>Kant + livres</span> → les livres liés à Kant.
-        </div>
+    <div style={{ marginBottom: 2 }}>
+      {/* Bandeau en entonnoir (trapèze qui se rétrécit) → métaphore du filtrage */}
+      <div style={{
+        background: active ? 'var(--cit-brick)' : 'var(--cit-navy-dk)', color: 'var(--cit-cream)',
+        clipPath: 'polygon(0 0, 100% 0, 82% 100%, 18% 100%)',
+        padding: '8px 14px 12px', textAlign: 'center',
+        fontFamily: "'Alfa Slab One', serif", fontSize: 13, letterSpacing: '.04em',
+      }}>
+        ▽ CONTRAINDRE LA PIOCHE
       </div>
-      {value ? (
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 10px',
-          background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
-          fontFamily: "'Oswald', sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: '.06em',
-        }}>
-          ⊓ {value}
-          <button onClick={() => onSet('')} title="Retirer la contrainte" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-butter)', fontFamily: "'Alfa Slab One', serif", fontSize: 12 }}>✕</button>
-        </span>
-      ) : (
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && input.trim()) { onSet(input.trim()); setInput(''); } }}
-          placeholder="Filtrer : personnages, objets…"
-          style={{
-            width: '100%', boxSizing: 'border-box', padding: '6px 10px',
-            border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
-            fontFamily: "'Special Elite', monospace", fontSize: 12, color: 'var(--cit-navy-dk)',
-          }}/>
-      )}
-    </CitPanel>
+      <div style={{ textAlign: 'center', color: active ? 'var(--cit-brick)' : 'var(--cit-navy-dk)', marginTop: -3, fontSize: 13, lineHeight: 1 }}>▼</div>
+      <div style={{
+        background: 'var(--cit-paper)', border: '2.5px solid var(--cit-navy-dk)', borderTop: '4px solid var(--cit-brick)',
+        padding: '8px 12px', boxShadow: '3px 3px 0 var(--cit-navy-dk)',
+      }}>
+        <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', lineHeight: 1.35, marginBottom: 6 }}>
+          Ne garde qu'un <strong>type</strong> (personnages, objets, films…), tous modes.
+          <br/><span style={{ color: 'var(--cit-brick)' }}>Kant + livres</span> → livres liés à Kant.
+        </div>
+        {value ? (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 10px',
+            background: 'var(--cit-brick)', color: 'var(--cit-cream)',
+            fontFamily: "'Oswald', sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: '.06em',
+          }}>
+            ▽ {value}
+            <button onClick={() => onSet('')} title="Retirer la contrainte" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-cream)', fontFamily: "'Alfa Slab One', serif", fontSize: 12 }}>✕</button>
+          </span>
+        ) : (
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && input.trim()) { onSet(input.trim()); setInput(''); } }}
+            placeholder="Filtrer : personnages, objets…"
+            style={{
+              width: '100%', boxSizing: 'border-box', padding: '6px 10px',
+              border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+              fontFamily: "'Special Elite', monospace", fontSize: 12, color: 'var(--cit-navy-dk)',
+            }}/>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -796,6 +810,8 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [currentRelations, setCurrentRelations] = useState<SemanticRelation[]>([]);
   const [currentExtract, setCurrentExtract] = useState<string | null>(null);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [tagInput, setTagInput] = useState('');
   const toast = useToast();
 
   // Bilan du jour : compteurs depuis minuit local (refresh à chaque verdict)
@@ -1093,15 +1109,28 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     return () => { cancelled = true; };
   }, [current?.id]);
 
-  // Raccourci clavier « F » → ouvre/ferme la fiche complète
+  // Raccourcis clavier : « F » fiche complète · « T » étiquette rapide
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if ((e.key === 'f' || e.key === 'F') && current) setDetailOpen(o => !o);
+      if (!current) return;
+      if (e.key === 'f' || e.key === 'F') setDetailOpen(o => !o);
+      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); setTagOpen(o => !o); }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [current]);
+
+  // Étiquette rapide sur la carte courante (sans ouvrir la fiche)
+  const submitTag = async () => {
+    const t = tagInput.trim();
+    if (!t || !current) { setTagOpen(false); return; }
+    await cacheConcept(current);
+    await addTagToConcept(current.id, t).catch(() => {});
+    setTagInput('');
+    setTagOpen(false);
+    toast.show({ tone: 'success', title: 'Étiquette ajoutée', body: `« ${t} » → ${current.name}.` });
+  };
 
   // Per-mode card props
   const cardProps = (() => {
@@ -1135,14 +1164,19 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
               ★ BOOST · {Math.min(boostInitial - swipe.deck.length + 1, boostInitial)}/{boostInitial}
             </Stamp>
           )}
-          <button onClick={toggleIncognito} title={incognito ? 'Incognito activé — cliquez pour repasser en public' : 'Activer le mode incognito (décisions privées)'} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            background: incognito ? 'var(--cit-navy-dk)' : 'transparent',
-            color: incognito ? 'var(--cit-butter)' : 'var(--cit-navy-dk)',
-            border: '2px solid var(--cit-navy-dk)', padding: '5px 12px', cursor: 'pointer',
+          <button onClick={toggleIncognito} title={incognito ? 'INCOGNITO : vos décisions sont privées (exclues d’un univers partagé). Cliquez pour repasser en public.' : 'PUBLIC : vos décisions peuvent être partagées. Cliquez pour passer en incognito (privé).'} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 7,
+            background: incognito ? 'var(--cit-brick)' : 'transparent',
+            color: incognito ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
+            border: `2.5px solid ${incognito ? 'var(--cit-brick)' : 'var(--cit-navy-dk)'}`,
+            padding: '5px 12px', cursor: 'pointer',
             fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
             letterSpacing: '.12em', textTransform: 'uppercase',
-          }}>{incognito ? '● Incognito' : '○ Public'}</button>
+            boxShadow: incognito ? '2px 2px 0 var(--cit-navy-dk)' : 'none',
+          }}>
+            <EyeIcon off={incognito}/>
+            {incognito ? 'Incognito · privé' : 'Public · visible'}
+          </button>
           <CitButton size="sm" onClick={() => onTabChange?.('search')}>⌕ Recherche</CitButton>
           <Sunburst size={68} color="var(--cit-mustard)"/>
         </>}
@@ -1234,6 +1268,18 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
               </div>
             )}
           </CitPanel>
+          <CitPanel title="Raccourcis">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 13, background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)', padding: '2px 9px', boxShadow: '2px 2px 0 var(--cit-brick)' }}>F</kbd>
+                <span className="cit-typed" style={{ fontSize: 11.5, color: 'var(--cit-navy-dk)' }}>Ouvrir la <strong>fiche complète</strong></span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <kbd style={{ fontFamily: "'Alfa Slab One', serif", fontSize: 13, background: 'var(--cit-rust)', color: 'var(--cit-cream)', border: '2px solid var(--cit-navy-dk)', padding: '2px 9px', boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>T</kbd>
+                <span className="cit-typed" style={{ fontSize: 11.5, color: 'var(--cit-navy-dk)' }}>Poser une <strong>étiquette</strong> sur la carte</span>
+              </div>
+            </div>
+          </CitPanel>
         </div>
 
         {/* Card column */}
@@ -1280,8 +1326,24 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
             }}/>
           </div>
 
+          {current && tagOpen && (
+            <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 8 }}>
+              <input
+                autoFocus
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitTag(); else if (e.key === 'Escape') { setTagOpen(false); setTagInput(''); } }}
+                placeholder={`Étiquette pour « ${current.name} »…`}
+                style={{
+                  flex: '0 1 340px', padding: '7px 12px', border: '2.5px solid var(--cit-rust)',
+                  background: 'var(--cit-cream)', fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)',
+                }}/>
+              <CitButton size="sm" tone="brick" onClick={submitTag}>✎ Étiqueter</CitButton>
+            </div>
+          )}
+
           {current && (
-            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center' }}>
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
               <button onClick={() => setDetailOpen(true)} style={{
                 background: 'var(--cit-navy-dk)',
                 color: 'var(--cit-butter)',
@@ -1292,6 +1354,16 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                 cursor: 'pointer',
                 boxShadow: '3px 3px 0 var(--cit-brick)',
               }}>★ Voir la fiche complète ↗ <span style={{ opacity: 0.65, fontSize: 11 }}>· touche F</span></button>
+              <button onClick={() => setTagOpen(o => !o)} style={{
+                background: tagOpen ? 'var(--cit-rust)' : 'transparent',
+                color: tagOpen ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
+                border: '2.5px solid var(--cit-navy-dk)',
+                padding: '9px 18px',
+                fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700,
+                letterSpacing: '.14em', textTransform: 'uppercase',
+                cursor: 'pointer',
+                boxShadow: '3px 3px 0 var(--cit-navy-dk)',
+              }}>✎ Étiqueter <span style={{ opacity: 0.65, fontSize: 11 }}>· touche T</span></button>
             </div>
           )}
 

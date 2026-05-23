@@ -302,23 +302,37 @@ export async function fetchWikipediaExtract(title: string): Promise<string | und
   if (cached) return cached;
 
   const encoded = encodeURIComponent(title.replace(/ /g, '_'));
-  // Intro complète (plusieurs phrases) via l'API action, FR puis EN.
-  const fromApi = async (host: string): Promise<string | undefined> => {
+  // Récupère un extrait, avec une longueur cible homogène : on rallonge les trop
+  // courts (plus de phrases) et on plafonne les trop longs (coupe à la phrase).
+  const fromApi = async (host: string, params: string): Promise<string | undefined> => {
     try {
-      const url = `https://${host}/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&redirects=1&format=json&origin=*&titles=${encoded}`;
+      const url = `https://${host}/w/api.php?action=query&prop=extracts&explaintext=1&redirects=1&format=json&origin=*&${params}&titles=${encoded}`;
       const res = await fetch(url);
       if (!res.ok) return undefined;
       const data = await res.json();
       const pages = (data.query?.pages ?? {}) as Record<string, { extract?: string }>;
-      const first = Object.values(pages)[0];
-      const ex = first?.extract?.trim();
+      const ex = Object.values(pages)[0]?.extract?.trim();
       return ex && ex.length > 0 ? ex : undefined;
     } catch { return undefined; }
   };
-  let extract = await fromApi('fr.wikipedia.org');
-  if (!extract) extract = await fromApi('en.wikipedia.org');
-  // Cap raisonnable (quelques paragraphes) pour ne pas noyer la carte.
-  if (extract && extract.length > 2000) extract = extract.slice(0, 2000).replace(/\s+\S*$/, '') + '…';
+  const best = async (host: string): Promise<string | undefined> => {
+    const intro = await fromApi(host, 'exintro=1');
+    if (intro && intro.length >= 260) return intro;
+    // Trop court → on élargit à quelques phrases (au-delà de l'intro)
+    const more = await fromApi(host, 'exsentences=5');
+    return (more && more.length > (intro?.length ?? 0)) ? more : intro;
+  };
+  let extract = await best('fr.wikipedia.org');
+  if (!extract || extract.length < 120) {
+    const en = await best('en.wikipedia.org');
+    if (en && en.length > (extract?.length ?? 0)) extract = en;
+  }
+  // Plafond homogène : coupe à la fin d'une phrase autour de 620 caractères.
+  if (extract && extract.length > 620) {
+    const cut = extract.slice(0, 620);
+    const lastDot = cut.lastIndexOf('. ');
+    extract = (lastDot > 320 ? cut.slice(0, lastDot + 1) : cut.replace(/\s+\S*$/, '')) + ' […]';
+  }
   if (extract) cacheWikiSet(cacheKey, extract).catch(() => {});
   return extract;
 }
