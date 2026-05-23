@@ -4,7 +4,7 @@ import { Sunburst, Stamp, PixelDie, Aster, SkeletonCard } from '../../components
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
-import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, fetchConceptImage, type SemanticRelation } from '../../services/wikidata';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, fetchConceptsForEntry, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, fetchConceptImage, type SemanticRelation } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
@@ -467,23 +467,19 @@ function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: S
 
 // ---- Mode-specific secondary banners ----
 
-function CibleBanner({ themes, onAdd, onRemove, onWeight, mixThemes, onToggleMix, anchors, onAddAnchor, onRemoveAnchor, onAnchorWeight, suggestions, loading }: {
-  themes: Array<{ text: string; weight: number }>;
+function CibleBanner({ entries, onAdd, onRemove, onWeight, mixThemes, onToggleMix, suggestions, loading }: {
+  entries: Array<{ text: string; weight: number }>;
   onAdd: (t: string) => void;
   onRemove: (t: string) => void;
   onWeight: (t: string, w: number) => void;
   mixThemes: boolean;
   onToggleMix: () => void;
-  anchors: Array<{ qid: string; name: string; weight: number }>;
-  onAddAnchor: (c: Concept) => void;
-  onRemoveAnchor: (qid: string) => void;
-  onAnchorWeight: (qid: string, w: number) => void;
   suggestions: string[];
   loading: boolean;
 }) {
   const [input, setInput] = useState('');
   const submit = () => { const v = input.trim(); if (v) { onAdd(v); setInput(''); } };
-  const free = suggestions.filter(s => !themes.some(t => t.text.toLowerCase() === s.toLowerCase())).slice(0, 6);
+  const free = suggestions.filter(s => !entries.some(e => e.text.toLowerCase() === s.toLowerCase())).slice(0, 6);
   return (
     <div style={{
       padding: '10px 32px', background: 'var(--cit-butter)',
@@ -518,67 +514,39 @@ function CibleBanner({ themes, onAdd, onRemove, onWeight, mixThemes, onToggleMix
         })}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <div>
-          <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ THÈMES — une famille → ses membres</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') submit(); }}
-              placeholder="guerre, citations, instruments…"
-              style={{
-                flex: 1, minWidth: 120, padding: '6px 12px',
-                border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
-                fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)',
-              }}/>
-            <CitButton size="sm" tone="navy" onClick={submit}>+ Thème</CitButton>
-          </div>
-        </div>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <SchemaAnchor/>
-            <span className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)' }}>⚓ ANCRÉS — un concept précis → son voisinage</span>
-          </div>
-          <InlineAddConcept onPick={onAddAnchor} placeholder="⚓ Ancrer un concept : Kant, Daft Punk…"/>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+        <SchemaAnchor/>
+        <span className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)' }}>★ CE QUI VOUS INTÉRESSE — famille (ses membres) ou concept précis (son voisinage)</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder="guerre, instruments, Kant, Daft Punk…"
+          style={{
+            flex: 1, minWidth: 160, padding: '7px 12px',
+            border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+            fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)',
+          }}/>
+        <CitButton size="sm" tone="navy" onClick={submit}>+ Ajouter</CitButton>
       </div>
 
-      {themes.length > 0 && (
+      {entries.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-          {themes.map(t => (
-            <span key={t.text} style={{
+          {entries.map(e => (
+            <span key={e.text} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 10px',
               background: 'var(--cit-cream)', border: '2.5px solid var(--cit-navy-dk)',
               boxShadow: '2px 2px 0 var(--cit-navy-dk)',
               fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, color: 'var(--cit-navy-dk)',
             }}>
-              {t.text}
+              {e.text}
               {mixThemes && (
-                <input type="range" min={5} max={100} value={t.weight} onChange={e => onWeight(t.text, +e.target.value)} style={{ width: 60 }} title={`Poids ${t.weight}%`}/>
+                <input type="range" min={5} max={100} value={e.weight} onChange={ev => onWeight(e.text, +ev.target.value)} style={{ width: 60 }} title={`Poids ${e.weight}%`}/>
               )}
-              {mixThemes && <span style={{ color: 'var(--cit-brick)', fontSize: 10 }}>{t.weight}%</span>}
-              <button onClick={() => onRemove(t.text)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-brick)', fontFamily: "'Alfa Slab One', serif", fontSize: 12 }}>✕</button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {anchors.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          {anchors.map(a => (
-            <span key={a.qid} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 10px',
-              background: 'var(--cit-cream)', border: '2.5px solid var(--cit-navy)',
-              boxShadow: '2px 2px 0 var(--cit-navy)',
-              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, color: 'var(--cit-navy-dk)',
-            }}>
-              ⚓ {a.name}
-              {mixThemes && (
-                <input type="range" min={5} max={100} value={a.weight} onChange={e => onAnchorWeight(a.qid, +e.target.value)} style={{ width: 60 }} title={`Poids ${a.weight}%`}/>
-              )}
-              {mixThemes && <span style={{ color: 'var(--cit-brick)', fontSize: 10 }}>{a.weight}%</span>}
-              <button onClick={() => onRemoveAnchor(a.qid)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-brick)', fontFamily: "'Alfa Slab One', serif", fontSize: 12 }}>✕</button>
+              {mixThemes && <span style={{ color: 'var(--cit-brick)', fontSize: 10 }}>{e.weight}%</span>}
+              <button onClick={() => onRemove(e.text)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-brick)', fontFamily: "'Alfa Slab One', serif", fontSize: 12 }}>✕</button>
             </span>
           ))}
         </div>
@@ -596,9 +564,9 @@ function CibleBanner({ themes, onAdd, onRemove, onWeight, mixThemes, onToggleMix
         </div>
       )}
 
-      {themes.length === 0 && anchors.length === 0 && (
+      {entries.length === 0 && (
         <p className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', margin: '8px 0 0', fontStyle: 'italic' }}>
-          Écrivez un thème (une famille) et/ou ancrez des concepts précis (leur voisinage). Sans rien, on tire au hasard.
+          Écrivez ce qui vous intéresse — une famille (« guerre ») ou un concept précis (« Kant »). Le Bureau trouve les concepts liés. Sans rien, on tire au hasard.
         </p>
       )}
     </div>
@@ -770,7 +738,7 @@ function ConstraintPanel({ value, onSet }: { value: string; onSet: (v: string) =
         <SchemaConstraint/>
         <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', lineHeight: 1.35 }}>
           Ne garde qu'un <strong>type</strong> de chose, quel que soit le mode (ex. personnages, objets, films).
-          <br/><span style={{ color: 'var(--cit-brick)' }}>≠ ancrage</span> (qui part d'un concept précis vers son voisinage).
+          <br/>Se combine avec Ciblé : <span style={{ color: 'var(--cit-brick)' }}>Kant + livres</span> → les livres liés à Kant.
         </div>
       </div>
       {value ? (
@@ -810,9 +778,8 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [adopted, setAdopted] = useState<Concept[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   // Mode Ciblé : thèmes (texte libre, résolus via Wikidata) + ancrage + intersection/mélange
-  const [themes, setThemes] = useState<Array<{ text: string; weight: number }>>([]);
+  const [entries, setEntries] = useState<Array<{ text: string; weight: number }>>([]);
   const [mixThemes, setMixThemes] = useState(false);
-  const [anchors, setAnchors] = useState<Array<{ qid: string; name: string; weight: number }>>([]);
   const [contrastSub, setContrastSub] = useState<ContrastSub>('far');
   const [savedThemes, setSavedThemes] = useState<string[]>([]);
   const [targetedLoading, setTargetedLoading] = useState(false);
@@ -900,24 +867,16 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     await saveSettings({ semanticContrastEnabled: true });
   };
 
-  // Gestion des thèmes (mode Ciblé) — chaque thème ajouté est mémorisé dans la
-  // bibliothèque de contraintes (partagée avec l'onglet Croiser).
-  const addTheme = (text: string) => {
+  // Mode Ciblé — entrées libres (un thème OU un concept précis) ; chaque ajout
+  // est mémorisé dans la bibliothèque de contraintes pour les suggestions.
+  const addEntry = (text: string) => {
     const t = text.trim();
-    if (!t || themes.some(x => x.text.toLowerCase() === t.toLowerCase())) return;
-    setThemes(prev => [...prev, { text: t, weight: 50 }]);
+    if (!t || entries.some(x => x.text.toLowerCase() === t.toLowerCase())) return;
+    setEntries(prev => [...prev, { text: t, weight: 50 }]);
     recordConstraintUsage(t).then(() => getAllConstraints().then(cs => setSavedThemes(cs.sort((a, b) => b.useCount - a.useCount).map(c => c.text))));
   };
-  const removeTheme = (text: string) => setThemes(prev => prev.filter(x => x.text !== text));
-  const setThemeWeight = (text: string, w: number) => setThemes(prev => prev.map(x => x.text === text ? { ...x, weight: w } : x));
-  // Ancrages : concepts précis écrits librement (résolus Wikidata) → leur voisinage pilote la pioche
-  const addAnchor = (c: Concept) => {
-    const qid = c.wikidataId;
-    if (!qid) return;
-    setAnchors(prev => prev.find(a => a.qid === qid) ? prev : [...prev, { qid, name: c.name, weight: 50 }]);
-  };
-  const removeAnchor = (qid: string) => setAnchors(prev => prev.filter(a => a.qid !== qid));
-  const setAnchorWeight = (qid: string, w: number) => setAnchors(prev => prev.map(a => a.qid === qid ? { ...a, weight: w } : a));
+  const removeEntry = (text: string) => setEntries(prev => prev.filter(x => x.text !== text));
+  const setEntryWeight = (text: string, w: number) => setEntries(prev => prev.map(x => x.text === text ? { ...x, weight: w } : x));
 
   const toggleIncognito = async () => {
     const next = !incognito;
@@ -979,38 +938,22 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         let fresh: Concept[] = mode === 'random' ? rawDeck : [];
 
         if (mode === 'targeted') {
-          const themeTexts = themes.map(t => t.text);
-
-          let themeResults: Concept[] = [];
-          if (themeTexts.length > 0) {
-            if (mixThemes && themeTexts.length > 1) {
-              const per = await Promise.all(themeTexts.map(t => fetchConceptsByConstraintsLive([t], 18)));
-              themeResults = interleaveWeighted(per, themes.map(t => t.weight));
-            } else {
-              themeResults = await fetchConceptsByConstraintsLive(themeTexts, 40);
-            }
-          }
-
-          let anchorResults: Concept[] = [];
-          if (anchors.length > 0) {
-            const per = await Promise.all(anchors.map(a => fetchNeighborConcepts([a.qid], 18)));
-            anchorResults = interleaveWeighted(per, anchors.map(a => a.weight));
-          }
-
-          if (themeResults.length > 0 && anchorResults.length > 0) {
-            if (!mixThemes) {
-              const aIds = new Set(anchorResults.map(c => c.id));
-              const both = themeResults.filter(c => aIds.has(c.id));
-              fresh = both.length >= 3 ? both : interleaveWeighted([themeResults, anchorResults], [1, 1]);
-            } else {
-              fresh = interleaveWeighted([themeResults, anchorResults], [1, 1]);
-            }
-          } else if (themeResults.length > 0) {
-            fresh = themeResults;
-          } else if (anchorResults.length > 0) {
-            fresh = anchorResults;
-          } else {
+          if (entries.length === 0) {
             fresh = rawDeck;
+          } else {
+            // Chaque entrée = membres (si famille) + voisinage (si concept précis), fusionnés.
+            const per = await Promise.all(entries.map(e => fetchConceptsForEntry(e.text, mixThemes ? 18 : 30)));
+            if (entries.length === 1) {
+              fresh = per[0];
+            } else if (mixThemes) {
+              fresh = interleaveWeighted(per, entries.map(e => e.weight));
+            } else {
+              // Intersection : concepts présents dans TOUTES les entrées
+              const sets = per.map(list => new Set(list.map(c => c.id)));
+              const inter = (per[0] ?? []).filter(c => sets.every(s => s.has(c.id)));
+              fresh = inter.length >= 3 ? inter : interleaveWeighted(per, entries.map(e => e.weight));
+            }
+            if (fresh.length === 0) fresh = rawDeck;
           }
         } else if (mode === 'contrast') {
           if (contrastSub === 'far') {
@@ -1055,7 +998,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       }
     })();
     return () => { cancelled = true; };
-  }, [mode, themes, mixThemes, anchors, contrastSub, constraint, rawDeck.length, adopted.length]);
+  }, [mode, entries, mixThemes, contrastSub, constraint, rawDeck.length, adopted.length]);
 
   // #13 — Contraste sémantique réel (opt-in) : on classe le pool par distance
   // cosinus croissante au barycentre sémantique des concepts adoptés. Les plus
@@ -1138,10 +1081,8 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       case 'random':
         return { sourceOverride: 'TIRAGE ALÉATOIRE', badge: <PixelDie size={18}/> };
       case 'targeted': {
-        const parts: string[] = [];
-        if (themes.length > 0) parts.push(themes.map(t => t.text).join(mixThemes ? ' / ' : ' ∩ '));
-        if (anchors.length > 0) parts.push(anchors.map(a => `⚓ ${a.name}`).join(' · '));
-        return { sourceOverride: parts.length ? `Ciblé · ${parts.join(' · ')}` : 'Ciblé · ajoutez un thème ou un ancrage' };
+        const label = entries.map(e => e.text).join(mixThemes ? ' / ' : ' ∩ ');
+        return { sourceOverride: label ? `Ciblé · ${label}` : 'Ciblé · écrivez ce qui vous intéresse' };
       }
       case 'contrast':
         return {
@@ -1204,16 +1145,12 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       {/* Mode-specific banners */}
       {mode === 'targeted' && (
         <CibleBanner
-          themes={themes}
-          onAdd={addTheme}
-          onRemove={removeTheme}
-          onWeight={setThemeWeight}
+          entries={entries}
+          onAdd={addEntry}
+          onRemove={removeEntry}
+          onWeight={setEntryWeight}
           mixThemes={mixThemes}
           onToggleMix={() => setMixThemes(v => !v)}
-          anchors={anchors}
-          onAddAnchor={addAnchor}
-          onRemoveAnchor={removeAnchor}
-          onAnchorWeight={setAnchorWeight}
           suggestions={savedThemes}
           loading={targetedLoading}
         />
@@ -1234,7 +1171,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           <CitPanel title="La procédure" accent={contextualAlert?.tone === 'saturation' ? 'brick' : 'butter'}>
             <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.55, margin: 0, color: 'var(--cit-navy-dk)' }}>
               {mode === 'random' && <><strong>ALÉATOIRE.</strong> Le Bureau tire au hasard dans tout le catalogue, sans tenir compte de votre profil. Pour découvrir large.</>}
-              {mode === 'targeted' && <><strong>CIBLÉ.</strong> Vous composez la pioche : des <strong>thèmes</strong> (familles de concepts) et/ou des <strong>concepts ancrés</strong> dont le Bureau propose le voisinage.</>}
+              {mode === 'targeted' && <><strong>CIBLÉ.</strong> Écrivez ce qui vous intéresse (une famille comme « guerre » ou un concept précis comme « Kant ») : le Bureau pioche les concepts liés. Filtrez par type avec la contrainte à droite.</>}
               {mode === 'contrast' && <><strong>CONTRASTE.</strong> Le Bureau vous confronte à l'inattendu — {CONTRAST_SUBS.find(s => s.id === contrastSub)?.hint?.toLowerCase()}.</>}
             </p>
             {contextualAlert && (

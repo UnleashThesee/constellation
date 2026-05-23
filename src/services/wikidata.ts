@@ -632,6 +632,26 @@ export async function fetchConceptsByConstraintsLive(constraints: string[], limi
 }
 
 /**
+ * Entrée libre du mode Ciblé : résout le mot une fois, puis fusionne ses
+ * « membres » (instances/sous-classes, si c'est une famille) ET son « voisinage »
+ * (entités reliées, si c'est un concept précis). Couvre les deux cas d'un coup.
+ */
+export async function fetchConceptsForEntry(text: string, limit = 24): Promise<Concept[]> {
+  const qid = await searchEntityId(text);
+  if (!qid) return [];
+  const [members, neighbors] = await Promise.all([
+    conceptsForResolved([{ text, qid }], limit),
+    fetchNeighborConcepts([qid], limit),
+  ]);
+  const seen = new Set<string>();
+  const out: Concept[] = [];
+  for (const c of [...members, ...neighbors]) {
+    if (c.id !== qid && !seen.has(c.id)) { seen.add(c.id); out.push(c); }
+  }
+  return out;
+}
+
+/**
  * #11 Exploration — voisins Wikidata (forward + reverse) d'un ensemble de Q-IDs,
  * via les propriétés sémantiques filtrées, triés par notoriété.
  */
