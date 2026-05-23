@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSwipeDeck } from './useSwipeDeck';
-import { Sunburst, Stamp, StarBurst, PixelDie, Aster, SkeletonCard } from '../../components/ui/atoms';
+import { Sunburst, Stamp, PixelDie, Aster, SkeletonCard } from '../../components/ui/atoms';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
@@ -382,14 +382,13 @@ function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: S
   const isContrast = mode === 'contrast';
   const bg = isContrast ? 'var(--cit-brick)' : 'var(--cit-paper-dk)';
   const labelColor = isContrast ? 'var(--cit-cream)' : 'var(--cit-navy-dk)';
-  const activeHint = MODES.find(m => m.id === mode)?.hint ?? '';
   return (
     <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
       padding: '10px 32px',
       background: bg,
       borderBottom: isContrast ? '3px solid var(--cit-navy-dk)' : '2px solid var(--cit-navy-dk)',
     }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <span className="cit-condensed" style={{ fontSize: 11, color: labelColor, whiteSpace: 'nowrap' }}>
         ★ Procédure ›
       </span>
@@ -424,11 +423,6 @@ function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: S
           FILE : <span style={{ color: 'var(--cit-brick)', fontWeight: 700 }}>{queueSize}</span>
         </span>
       )}
-    </div>
-    <p className="cit-typed" style={{
-      margin: '7px 0 0', fontSize: 11.5, lineHeight: 1.4,
-      color: isContrast ? 'var(--cit-butter)' : 'var(--cit-navy-lt)',
-    }}>{activeHint}</p>
     </div>
   );
 }
@@ -466,8 +460,14 @@ function CibleBanner({ themes, onAdd, onRemove, onWeight, mixThemes, onToggleMix
           background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)',
           padding: '4px 12px', cursor: 'pointer', fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
           letterSpacing: '.1em', textTransform: 'uppercase',
-        }}>{mixThemes ? '⇆ Mélanger' : '∩ Croiser'}</button>
+        }}>{mixThemes ? '⇆ Mélange pondéré' : '∩ Intersection'}</button>
       </div>
+
+      <p className="cit-typed" style={{ fontSize: 10.5, color: 'var(--cit-navy-lt)', margin: '0 0 8px', fontStyle: 'italic' }}>
+        {mixThemes
+          ? 'Mélange : chaque entrée contribue à la pioche selon son poids (curseurs).'
+          : 'Intersection : on ne garde que les concepts qui respectent toutes les entrées à la fois.'}
+      </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div>
@@ -693,6 +693,39 @@ function RegistrePanel({ history }: { history: Array<{ name: string; verdict: st
   );
 }
 
+/** Contrainte de pioche, valable dans toutes les procédures (filtre par classe Wikidata). */
+function ConstraintPanel({ value, onSet }: { value: string; onSet: (v: string) => void }) {
+  const [input, setInput] = useState('');
+  return (
+    <CitPanel title="Contrainte de la pioche">
+      <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 6, letterSpacing: '.04em' }}>
+        Ne montrer qu'un type, quel que soit le mode (ex. personnages, objets, films).
+      </div>
+      {value ? (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 10px',
+          background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
+          fontFamily: "'Oswald', sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: '.06em',
+        }}>
+          ⊓ {value}
+          <button onClick={() => onSet('')} title="Retirer la contrainte" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--cit-butter)', fontFamily: "'Alfa Slab One', serif", fontSize: 12 }}>✕</button>
+        </span>
+      ) : (
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && input.trim()) { onSet(input.trim()); setInput(''); } }}
+          placeholder="Filtrer : personnages, objets…"
+          style={{
+            width: '100%', boxSizing: 'border-box', padding: '6px 10px',
+            border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
+            fontFamily: "'Special Elite', monospace", fontSize: 12, color: 'var(--cit-navy-dk)',
+          }}/>
+      )}
+    </CitPanel>
+  );
+}
+
 const FOOTERS: Partial<Record<SwipeMode, string>> = {
   random:   'MODE ALÉATOIRE · LE BUREAU LANCE LES DÉS POUR VOUS',
   targeted: 'MODE CIBLÉ · LE BUREAU TIRE SELON VOS THÈMES ET ANCRAGE',
@@ -714,8 +747,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [incognito, setIncognito] = useState(false);
   const incognitoRef = useRef(incognito);
   incognitoRef.current = incognito;
-  const [serendipity, setSerendipity] = useState(0);
-  const changeSerendipity = (v: number) => { setSerendipity(v); saveSettings({ serendipity: v }).catch(() => {}); };
+  const [constraint, setConstraint] = useState('');
 
   const swipe = useSwipeDeck(FALLBACK_CONCEPTS, () => setDetailOpen(true), () => incognitoRef.current);
   const [rawDeck, setRawDeck] = useState<Concept[]>([]);
@@ -786,7 +818,6 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     getSettings().then(s => {
       if (s?.semanticContrastEnabled) setSemanticEnabled(true);
       if (s?.incognito) setIncognito(true);
-      if (typeof s?.serendipity === 'number') setSerendipity(s.serendipity);
     });
     getAllConstraints().then(cs => setSavedThemes(cs.sort((a, b) => b.useCount - a.useCount).map(c => c.text)));
   }, []);
@@ -866,13 +897,13 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   // Fallback silencieux sur le pool aléatoire si rien ne remonte.
   useEffect(() => {
     if (rawDeck.length === 0) return;
-    if (mode === 'random') { swipe.setDeck(rawDeck); return; }
+    if (mode === 'random' && !constraint.trim()) { swipe.setDeck(rawDeck); return; }
     let cancelled = false;
     (async () => {
       setTargetedLoading(true);
       try {
         const excluded = await getExcludedConceptIds();
-        let fresh: Concept[] = [];
+        let fresh: Concept[] = mode === 'random' ? rawDeck : [];
 
         if (mode === 'targeted') {
           const themeTexts = themes.map(t => t.text);
@@ -926,11 +957,13 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           }
         }
 
-        // Sérendipité : injecte une dose de hasard dans la pioche ciblée/contraste
-        if (serendipity > 0 && rawDeck.length > 0 && fresh.length > 0 && fresh !== rawDeck) {
-          const freshIds = new Set(fresh.map(c => c.id));
-          const randomPool = [...rawDeck].filter(c => !freshIds.has(c.id)).sort(() => Math.random() - 0.5);
-          if (randomPool.length > 0) fresh = interleaveWeighted([fresh, randomPool], [Math.max(1, 100 - serendipity), serendipity]);
+        // Contrainte (toutes procédures) : restreint la pioche à une classe Wikidata
+        const ct = constraint.trim();
+        if (ct) {
+          const allowed = await fetchConceptsByConstraintsLive([ct], 80);
+          const ids = new Set(allowed.map(c => c.wikidataId).filter(Boolean));
+          const inter = fresh.filter(c => c.wikidataId && ids.has(c.wikidataId));
+          fresh = inter.length >= 1 ? inter : allowed;
         }
 
         fresh = fresh.filter(c => !excluded.has(c.id));
@@ -949,7 +982,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       }
     })();
     return () => { cancelled = true; };
-  }, [mode, themes, mixThemes, anchors, contrastSub, serendipity, rawDeck.length, adopted.length]);
+  }, [mode, themes, mixThemes, anchors, contrastSub, constraint, rawDeck.length, adopted.length]);
 
   // #13 — Contraste sémantique réel (opt-in) : on classe le pool par distance
   // cosinus croissante au barycentre sémantique des concepts adoptés. Les plus
@@ -1121,19 +1154,21 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         {/* Left panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <ScorePanel counts={todayCounts}/>
-          <CitPanel title="Alerte bulle" accent={contextualAlert?.tone === 'saturation' ? 'brick' : 'butter'}>
-            {contextualAlert ? (
-              <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0, color: contextualAlert.tone === 'saturation' ? 'var(--cit-cream)' : 'var(--cit-navy-dk)' }}>
+          <CitPanel title="La procédure" accent={contextualAlert?.tone === 'saturation' ? 'brick' : 'butter'}>
+            <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.55, margin: 0, color: 'var(--cit-navy-dk)' }}>
+              {mode === 'random' && <><strong>ALÉATOIRE.</strong> Le Bureau tire au hasard dans tout le catalogue, sans tenir compte de votre profil. Pour découvrir large.</>}
+              {mode === 'targeted' && <><strong>CIBLÉ.</strong> Vous composez la pioche : des <strong>thèmes</strong> (familles de concepts) et/ou des <strong>concepts ancrés</strong> dont le Bureau propose le voisinage.</>}
+              {mode === 'contrast' && <><strong>CONTRASTE.</strong> Le Bureau vous confronte à l'inattendu — {CONTRAST_SUBS.find(s => s.id === contrastSub)?.hint?.toLowerCase()}.</>}
+            </p>
+            {contextualAlert && (
+              <p className="cit-typed" style={{
+                fontSize: 11, lineHeight: 1.4, margin: '8px 0 0', padding: '6px 8px',
+                background: contextualAlert.tone === 'saturation' ? 'var(--cit-brick)' : 'var(--cit-butter)',
+                color: contextualAlert.tone === 'saturation' ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
+                border: '1.5px solid var(--cit-navy-dk)',
+              }}>
                 <strong>{contextualAlert.text}</strong>
               </p>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 3, columnGap: 8, fontFamily: "'Special Elite', monospace", fontSize: 11, color: 'var(--cit-navy-dk)' }}>
-                <span style={{ color: 'var(--cit-navy)', fontWeight: 700 }}>→</span><span>Adopter</span>
-                <span style={{ color: 'var(--cit-brick)', fontWeight: 700 }}>←</span><span>Rejeter</span>
-                <span style={{ color: 'var(--cit-rust)', fontWeight: 700 }}>↑</span><span>Favori</span>
-                <span style={{ color: 'var(--cit-navy-lt)', fontWeight: 700 }}>↓</span><span>Neutre (revu plus tard)</span>
-                <span style={{ fontWeight: 700 }}>F</span><span>Fiche complète</span>
-              </div>
             )}
             {mode === 'contrast' && contrastSub === 'far' && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--cit-navy-dk)' }}>
@@ -1155,19 +1190,6 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                 )}
               </div>
             )}
-          </CitPanel>
-          <CitPanel title="Sérendipité">
-            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 6 }}>
-              Dose de hasard injectée dans la pioche.
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="range" min={0} max={100} value={serendipity} onChange={e => changeSerendipity(+e.target.value)} style={{ flex: 1 }}/>
-              <span className="cit-h1" style={{ fontSize: 18, color: 'var(--cit-brick)', textShadow: 'none', minWidth: 40, textAlign: 'right' }}>{serendipity}%</span>
-            </div>
-            <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginTop: 4 }}>
-              {serendipity === 0 ? 'Strictement vos critères.' : serendipity >= 80 ? 'Chaos quasi total.' : 'Quelques surprises hors-cadre.'}
-              {mode === 'random' && ' (sans effet en Aléatoire)'}
-            </div>
           </CitPanel>
         </div>
 
@@ -1257,10 +1279,8 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
         {/* Right panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <ConstraintPanel value={constraint} onSet={setConstraint}/>
           <RegistrePanel history={swipe.history}/>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <StarBurst size={120} rotate={-8}>NOUVELLE<br/>FICHE<br/>EXAMINÉE</StarBurst>
-          </div>
         </div>
       </div>
 
