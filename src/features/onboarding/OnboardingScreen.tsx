@@ -1,24 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Sunburst, FileSeal, Aster, Stamp } from '../../components/ui/atoms';
 import { CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { CATEGORIES } from '../../lib/categories';
-import { fetchOnboardingConcepts } from '../../services/wikidata';
 import { saveProfile, cacheConcept, recordInteraction, toggleFavorite } from '../../stores/db';
 
 const ONBOARDING_SESSION = `onboarding-${Date.now()}`;
-import type { Concept, SwipeVerdict, CategoryKey } from '../../types';
-
-// ---- Static fallback for offline ----
-const FALLBACK_QUIZZ: Concept[] = [
-  { id: 'foucault', name: 'Michel Foucault', kind: 'Auteur', years: '1926–1984', cats: [['philosophie', 0.7], ['histoire', 0.3]], blurb: 'Archéologue des savoirs. Démonte les régimes de vérité et les dispositifs de pouvoir.', refs: [], sourceKind: 'random' },
-  { id: 'daftpunk', name: 'Daft Punk', kind: 'Groupe', years: '1993–2021', cats: [['musique', 0.85], ['arts', 0.15]], blurb: 'House français au casque robotique. Une electronica qui devient mythologie pop.', refs: [], sourceKind: 'random' },
-  { id: 'bioshock', name: 'BioShock', kind: 'Œuvre', years: '2007', cats: [['jeuvideo', 0.5], ['philosophie', 0.3], ['arts', 0.2]], blurb: 'Cité sous-marine Art déco où Ayn Rand rencontre l\'horreur biopunk.', refs: [], sourceKind: 'random' },
-  { id: 'tarkovski', name: 'Andreï Tarkovski', kind: 'Cinéaste', years: '1932–1986', cats: [['cinema', 0.8], ['arts', 0.2]], blurb: 'Maître soviétique du long plan méditatif. Solaris, Stalker, Nostalghia.', refs: [], sourceKind: 'random' },
-  { id: 'borges', name: 'Jorge Luis Borges', kind: 'Auteur', years: '1899–1986', cats: [['litterature', 0.8], ['philosophie', 0.2]], blurb: 'Labyrinthes, miroirs et bibliothèques infinies. La littérature comme métaphysique.', refs: [], sourceKind: 'random' },
-  { id: 'braudel', name: 'Fernand Braudel', kind: 'Historien', years: '1902–1985', cats: [['histoire', 0.6], ['humaines', 0.4]], blurb: 'La longue durée. La Méditerranée comme acteur de l\'histoire.', refs: [], sourceKind: 'random' },
-  { id: 'beethoven', name: 'Ludwig van Beethoven', kind: 'Compositeur', years: '1770–1827', cats: [['musique', 0.9], ['personnages', 0.1]], blurb: 'De l\'école viennoise classique au romantisme. La 9ème, le sourd qui entend.', refs: [], sourceKind: 'random' },
-  { id: 'wittgenstein', name: 'Wittgenstein', kind: 'Philosophe', years: '1889–1951', cats: [['philosophie', 0.8], ['sciences', 0.2]], blurb: 'Les limites du langage sont les limites du monde. Tractatus et Investigations.', refs: [], sourceKind: 'random' },
-];
+import type { Concept, CategoryKey } from '../../types';
 
 // ---- Logo Constellation ----
 function ConstellationLogo({ size = 140 }: { size?: number }) {
@@ -65,11 +52,11 @@ function OnboardingWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: (
             ★ CONSTELLATION · TERMINAL PERSONNEL D'EXPLORATION INTELLECTUELLE
           </div>
           <p className="cit-typed" style={{ margin: '26px 0 0', fontSize: 16, lineHeight: 1.6, color: 'var(--cit-navy-dk)', maxWidth: 540 }}>
-            Le Bureau va vous présenter <strong style={{ color: 'var(--cit-brick)' }}>30 dossiers</strong> de concepts — auteurs, œuvres, théories, jeux vidéo, courants. Vous validez ceux qui vous intéressent. Votre univers personnel commence à prendre forme.
+            Choisissez quelques <strong style={{ color: 'var(--cit-brick)' }}>concepts de départ</strong> — auteurs, œuvres, théories, courants — pour amorcer votre univers. Ensuite, vous explorez librement en swipant : chaque choix l'affine.
           </p>
           <ul className="cit-typed" style={{ margin: '20px 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8, color: 'var(--cit-navy-dk)', fontSize: 14 }}>
             {[
-              '5 minutes · 30 dossiers express',
+              'Quelques clics · ou passez directement',
               'Le Bureau s\'occupe de tout · aucune création de compte',
               'Tout reste sur votre terminal · le Bureau ne vous espionne pas',
             ].map((t, i) => (
@@ -85,14 +72,14 @@ function OnboardingWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: (
               fontFamily: "'Alfa Slab One', serif", fontSize: 28, letterSpacing: '.04em',
               cursor: 'pointer', textTransform: 'uppercase', textShadow: '2px 2px 0 var(--cit-navy-dk)',
               boxShadow: 'inset 0 -5px 0 oklch(0% 0 0 / 0.3), 5px 5px 0 var(--cit-navy-dk), 0 10px 18px oklch(0% 0 0 / 0.4)',
-            }}>★ COMMENCER LE QUIZZ</button>
+            }}>★ COMMENCER</button>
             <button onClick={onSkip} style={{
               background: 'transparent', color: 'var(--cit-navy-dk)',
               border: '2.5px solid var(--cit-navy-dk)', padding: '10px 18px',
               fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700,
               letterSpacing: '.16em', textTransform: 'uppercase', cursor: 'pointer',
               boxShadow: '3px 3px 0 var(--cit-navy-dk)',
-            }}>Passer le quizz</button>
+            }}>Passer</button>
           </div>
           <div className="cit-script" style={{ fontSize: 22, color: 'var(--cit-navy)', marginTop: 24, transform: 'rotate(-1deg)', display: 'inline-block' }}>
             « C'est gratuit et c'est joyeux. »
@@ -100,154 +87,6 @@ function OnboardingWelcome({ onStart, onSkip }: { onStart: () => void; onSkip: (
         </div>
       </div>
       <CitizenFooter left="★ CONSTELLATION · v0.1.0-φ · PREMIÈRE VISITE · ÉDITION DU SOIR ★" right="APPUYEZ SUR ENTRÉE POUR COMMENCER" />
-    </div>
-  );
-}
-
-// ---- Jauge quizz ----
-function QuizzGauge({ current, total }: { current: number; total: number }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: 'var(--cit-cream)', border: '3px solid var(--cit-navy-dk)', boxShadow: '4px 4px 0 var(--cit-navy-dk)' }}>
-      <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', whiteSpace: 'nowrap' }}>★ DOSSIER</div>
-      <div className="cit-h1" style={{ fontSize: 32, lineHeight: 0.9, color: 'var(--cit-brick)', textShadow: 'none' }}>
-        {String(current).padStart(2, '0')}<span style={{ color: 'var(--cit-navy-lt)', fontSize: 22 }}>/{total}</span>
-      </div>
-      <div style={{ flex: 1, height: 16, border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-paper)', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ width: `${(current / total) * 100}%`, height: '100%', background: 'linear-gradient(90deg, var(--cit-brick), var(--cit-mustard))', borderRight: '2px solid var(--cit-navy-dk)', transition: 'width .3s ease' }} />
-        {Array.from({ length: 5 }).map((_, i) => (
-          <span key={i} style={{ position: 'absolute', left: `${((i + 1) / 6) * 100}%`, top: 0, bottom: 0, width: 1, background: 'var(--cit-navy-dk)', opacity: 0.4 }} />
-        ))}
-      </div>
-      <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>ENCORE {total - current}</span>
-    </div>
-  );
-}
-
-// ---- 7.2 Quizz ----
-function OnboardingQuizz({ onComplete }: { onComplete: (verdicts: Array<{ conceptId: string; verdict: SwipeVerdict }>) => void }) {
-  const [concepts, setConcepts] = useState<Concept[]>(FALLBACK_QUIZZ);
-  const [idx, setIdx] = useState(0);
-  const [verdicts, setVerdicts] = useState<Array<{ conceptId: string; verdict: SwipeVerdict }>>([]);
-  const [loading, setLoading] = useState(true);
-
-  const total = 30;
-
-  useEffect(() => {
-    fetchOnboardingConcepts()
-      .then(fetched => {
-        if (fetched.length >= 20) {
-          const padded = fetched.length >= 30 ? fetched.slice(0, 30) : [
-            ...fetched,
-            ...FALLBACK_QUIZZ.slice(0, 30 - fetched.length),
-          ];
-          setConcepts(padded);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const concept = concepts[idx % concepts.length];
-
-  const answer = (verdict: SwipeVerdict) => {
-    const newVerdicts = [...verdicts, { conceptId: concept.id, verdict }];
-    setVerdicts(newVerdicts);
-    // Persist concept + interaction so Stats/Map/Favs reflect the quiz answers
-    cacheConcept(concept).then(() => recordInteraction(concept.id, verdict, ONBOARDING_SESSION)).catch(() => {});
-    if (idx >= total - 1) {
-      onComplete(newVerdicts);
-    } else {
-      setIdx(i => i + 1);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3, position: 'relative' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="cit-h1" style={{ fontSize: 32 }}>CHARGEMENT<span style={{ color: 'var(--cit-brick)' }}>!</span></div>
-          <div className="cit-typed" style={{ marginTop: 8, color: 'var(--cit-navy-lt)' }}>Le Bureau récupère 30 dossiers depuis Wikidata…</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '16px 32px 12px', zIndex: 3, position: 'relative' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <FileSeal size={42} />
-            <div>
-              <div className="cit-h1" style={{ fontSize: 22, lineHeight: 0.9 }}>AMORÇAGE<span style={{ color: 'var(--cit-brick)' }}>!</span></div>
-              <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>★ INITIALISATION DU TERMINAL · ÉTAPE 1/3</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-            <Stamp tone="brick" rotate={-3}>5 MIN · 30 DOSSIERS</Stamp>
-            <button onClick={() => onComplete(verdicts)} style={{
-              background: 'var(--cit-butter)', color: 'var(--cit-navy-dk)',
-              border: '2px solid var(--cit-navy-dk)', padding: '6px 14px',
-              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
-              letterSpacing: '.14em', textTransform: 'uppercase', cursor: 'pointer',
-              boxShadow: '2px 2px 0 var(--cit-navy-dk)',
-            }}>Passer le reste →</button>
-          </div>
-        </div>
-        <QuizzGauge current={idx + 1} total={total} />
-      </div>
-
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 32px', position: 'relative', zIndex: 3 }}>
-        <div style={{ width: '100%', maxWidth: 540 }}>
-          <div className="cit-card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ background: 'var(--cit-navy-dk)', color: 'var(--cit-cream)', padding: '16px 24px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', borderBottom: '3px solid var(--cit-navy-dk)' }}>
-              <div className="cit-halftone" style={{ position: 'absolute', inset: 0 }} />
-              <div style={{ position: 'relative', zIndex: 1 }}>
-                <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)' }}>
-                  ★ DOSSIER {String(idx + 1).padStart(3, '0')} · QUIZZ D'AMORÇAGE ★
-                </div>
-                <h2 className="cit-h1 cit-h1--reverse" style={{ margin: '2px 0', fontSize: 48, lineHeight: 0.9 }}>
-                  {concept?.name}<span style={{ color: 'var(--cit-butter)' }}>!</span>
-                </h2>
-                <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-cream)' }}>
-                  {concept?.kind} · {concept?.years ?? '—'}
-                </div>
-              </div>
-              <Sunburst size={80} color="var(--cit-butter)" behindColor="var(--cit-brick)" />
-            </div>
-
-            <div style={{ padding: '20px 24px' }}>
-              <p className="cit-typed" style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: 'var(--cit-navy-dk)' }}>
-                {concept?.blurb}
-              </p>
-              <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {concept?.cats.map(([k, w]) => {
-                  const c = CATEGORIES[k as CategoryKey];
-                  if (!c) return null;
-                  return (
-                    <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', padding: '3px 9px', border: '2px solid var(--cit-navy-dk)', background: 'var(--cit-cream)', color: 'var(--cit-navy-dk)' }}>
-                      <span style={{ width: 9, height: 9, background: c.oklch, border: '1.5px solid var(--cit-navy-dk)' }} />
-                      {c.label} <span style={{ color: 'var(--cit-brick)' }}>{Math.round(w * 100)}%</span>
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 22, display: 'flex', gap: 14, justifyContent: 'center' }}>
-            <CitButton tone="brick" onClick={() => answer('reject')} kbd="←">Rejeter</CitButton>
-            <CitButton onClick={() => answer('skip')} kbd="↓">Neutre</CitButton>
-            <CitButton tone="butter" onClick={() => answer('valid')} kbd="→">Adopter</CitButton>
-          </div>
-
-          <div className="cit-script" style={{ fontSize: 22, color: 'var(--cit-navy)', marginTop: 16, textAlign: 'center', transform: 'rotate(-1deg)' }}>
-            Plus que {total - idx - 1} dossiers à examiner…
-          </div>
-        </div>
-      </div>
-
-      <CitizenFooter left="★ CHAQUE CHOIX AFFINE VOTRE UNIVERS ★" right="→ ADOPTEZ · ← RECYCLEZ · ↑ PLUS TARD" />
     </div>
   );
 }
@@ -277,7 +116,7 @@ function OnboardingSeed({ onNext, onSkip }: { onNext: (seeds: string[]) => void;
             <FileSeal size={42} />
             <div>
               <div className="cit-h1" style={{ fontSize: 22, lineHeight: 0.9 }}>AMORÇAGE<span style={{ color: 'var(--cit-brick)' }}>!</span></div>
-              <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>★ ÉTAPE 2/3 · CONCEPTS DÉJÀ APPRIVOISÉS ★</div>
+              <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)' }}>★ ÉTAPE 1/2 · CONCEPTS DÉJÀ APPRIVOISÉS ★</div>
             </div>
           </div>
         </div>
@@ -354,14 +193,11 @@ function OnboardingSeed({ onNext, onSkip }: { onNext: (seeds: string[]) => void;
 }
 
 // ---- 7.4 Complet ----
-function OnboardingComplete({ verdicts, seedConcepts, onContinue }: {
-  verdicts: Array<{ conceptId: string; verdict: SwipeVerdict }>;
+function OnboardingComplete({ seedConcepts, onContinue }: {
   seedConcepts: string[];
   onContinue: () => void;
 }) {
-  const adopted = verdicts.filter(v => v.verdict === 'valid').length;
-  const recycled = verdicts.filter(v => v.verdict === 'reject').length;
-  const later = verdicts.filter(v => v.verdict === 'skip').length;
+  const seedCount = seedConcepts.length;
 
   const nodes = [
     { x: 50, y: 40, c: 'oklch(35% 0.13 250)', s: 22, glow: true, label: 'PHILOSOPHIE' },
@@ -381,24 +217,15 @@ function OnboardingComplete({ verdicts, seedConcepts, onContinue }: {
           <h1 className="cit-h1" style={{ fontSize: 72, lineHeight: 0.85, margin: '4px 0' }}>
             VOTRE UNIVERS<br />PREND FORME<span style={{ color: 'var(--cit-brick)' }}>!</span>
           </h1>
-          <div className="cit-condensed" style={{ fontSize: 13, color: 'var(--cit-navy-lt)', marginTop: 8 }}>★ AMORÇAGE TERMINÉ · ÉTAPE 3/3 ★</div>
+          <div className="cit-condensed" style={{ fontSize: 13, color: 'var(--cit-navy-lt)', marginTop: 8 }}>★ AMORÇAGE TERMINÉ · ÉTAPE 2/2 ★</div>
 
-          <div style={{ marginTop: 26, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-            {[
-              { label: 'ADOPTÉS', value: adopted, tone: 'navy' as const },
-              { label: 'RECYCLÉS', value: recycled, tone: 'brick' as const },
-              { label: 'SURSIS', value: later, tone: 'mustard' as const },
-            ].map(stat => {
-              const color = stat.tone === 'brick' ? 'var(--cit-brick)' : stat.tone === 'mustard' ? 'var(--cit-mustard)' : 'var(--cit-navy)';
-              return (
-                <div key={stat.label} style={{ background: 'var(--cit-cream)', border: '2.5px solid var(--cit-navy-dk)', padding: 10, boxShadow: '3px 3px 0 var(--cit-navy-dk)', textAlign: 'center' }}>
-                  <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>{stat.label}</div>
-                  <div className="cit-h1" style={{ fontSize: 38, lineHeight: 0.9, color, textShadow: 'none' }}>
-                    {String(stat.value).padStart(2, '0')}
-                  </div>
-                </div>
-              );
-            })}
+          <div style={{ marginTop: 26 }}>
+            <div style={{ display: 'inline-block', background: 'var(--cit-cream)', border: '2.5px solid var(--cit-navy-dk)', padding: '10px 22px', boxShadow: '3px 3px 0 var(--cit-navy-dk)', textAlign: 'center' }}>
+              <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)' }}>CONCEPTS DE DÉPART</div>
+              <div className="cit-h1" style={{ fontSize: 38, lineHeight: 0.9, color: 'var(--cit-navy)', textShadow: 'none' }}>
+                {String(seedCount).padStart(2, '0')}
+              </div>
+            </div>
           </div>
 
           <p className="cit-typed" style={{ marginTop: 22, fontSize: 15, lineHeight: 1.6, color: 'var(--cit-navy-dk)' }}>
@@ -417,7 +244,7 @@ function OnboardingComplete({ verdicts, seedConcepts, onContinue }: {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <CitPanel title={`Votre univers naissant · ${adopted} nœuds`}>
+          <CitPanel title={`Votre univers naissant · ${seedCount} nœuds`}>
             <div style={{ position: 'relative', height: 280, background: 'var(--cit-paper)', border: '2.5px solid var(--cit-navy-dk)' }}>
               <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0 }}>
                 {nodes.flatMap((n, i) => nodes.slice(i + 1).map((n2, j) => (
@@ -440,7 +267,7 @@ function OnboardingComplete({ verdicts, seedConcepts, onContinue }: {
 }
 
 // ---- Wrapper principal ----
-type Step = 'welcome' | 'quizz' | 'seed' | 'complete';
+type Step = 'welcome' | 'seed' | 'complete';
 
 interface Props {
   onComplete: () => void;
@@ -448,13 +275,7 @@ interface Props {
 
 export function OnboardingScreen({ onComplete }: Props) {
   const [step, setStep] = useState<Step>('welcome');
-  const [verdicts, setVerdicts] = useState<Array<{ conceptId: string; verdict: SwipeVerdict }>>([]);
   const [seeds, setSeeds] = useState<string[]>([]);
-
-  const handleQuizzComplete = (v: typeof verdicts) => {
-    setVerdicts(v);
-    setStep('seed');
-  };
 
   const handleSeedNext = (picked: string[]) => {
     setSeeds(picked);
@@ -484,23 +305,16 @@ export function OnboardingScreen({ onComplete }: Props) {
       await toggleFavorite(id);
     }
 
-    // Calcul des poids de catégories depuis les verdicts adoptés
-    const catScores: Partial<Record<CategoryKey, number>> = {};
-    // Pas encore d'accès aux concepts ici pour faire le calcul complet ;
-    // le score réel est calculable à la volée depuis getAdoptedConcepts.
-
     await saveProfile({
       onboardingDone: true,
-      onboardingVerdicts: verdicts,
+      onboardingVerdicts: [],
       seedConcepts: seeds,
-      categoryWeights: catScores,
     });
     onComplete();
   };
 
-  if (step === 'welcome') return <OnboardingWelcome onStart={() => setStep('quizz')} onSkip={handleContinue} />;
-  if (step === 'quizz')   return <OnboardingQuizz onComplete={handleQuizzComplete} />;
-  if (step === 'seed')    return <OnboardingSeed onNext={handleSeedNext} onSkip={() => setStep('complete')} />;
-  if (step === 'complete') return <OnboardingComplete verdicts={verdicts} seedConcepts={seeds} onContinue={handleContinue} />;
+  if (step === 'welcome')  return <OnboardingWelcome onStart={() => setStep('seed')} onSkip={handleContinue} />;
+  if (step === 'seed')     return <OnboardingSeed onNext={handleSeedNext} onSkip={() => setStep('complete')} />;
+  if (step === 'complete') return <OnboardingComplete seedConcepts={seeds} onContinue={handleContinue} />;
   return null;
 }
