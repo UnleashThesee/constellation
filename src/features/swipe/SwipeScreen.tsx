@@ -996,21 +996,38 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     return () => { cancelled = true; };
   }, [mode, entries, mixThemes, contrastSub, constraint, rawDeck.length, adopted.length]);
 
-  // Variété : en Aléatoire, recharge un lot frais à mesure qu'on swipe (évite le bouclage)
+  // Variété dans TOUS les modes : à mesure qu'on swipe, recharge un lot frais
+  // (avec pagination/décalage) et l'ajoute à la pioche — évite le bouclage partout.
   const lastRefillRef = useRef(0);
+  const refillPageRef = useRef(0);
+  useEffect(() => { refillPageRef.current = 0; }, [mode, entries, constraint, contrastSub]);
   useEffect(() => {
-    if (mode !== 'random' || constraint.trim()) return;
     const total = swipe.counts.valid + swipe.counts.reject + swipe.counts.skip;
-    if (total === 0 || total % 18 !== 0 || total === lastRefillRef.current) return;
+    if (total === 0 || total % 15 !== 0 || total === lastRefillRef.current) return;
     lastRefillRef.current = total;
+    const page = ++refillPageRef.current;
     (async () => {
       try {
         const excluded = await getExcludedConceptIds();
-        const fresh = (await fetchRandomConcepts(20)).filter(c => !excluded.has(c.id));
-        if (fresh.length) { await Promise.all(fresh.map(c => cacheConcept(c))); swipe.appendDeck(fresh); }
+        const ct = constraint.trim();
+        let batch: Concept[] = [];
+        if (ct) {
+          batch = await fetchConceptsByConstraintsLive([ct], 24, page * 24);
+        } else if (mode === 'targeted' && entries.length > 0) {
+          const per = await Promise.all(entries.map(e => fetchConceptsForEntry(e.text, 16, e.qid, page * 16)));
+          batch = per.flat();
+        } else if (mode === 'contrast' && contrastSub !== 'far') {
+          const src = contrastSub === 'adopted' ? adopted : await getConceptsByVerdict('reject');
+          const qids = src.slice(0, 8).map(c => c.wikidataId).filter((q): q is string => !!q);
+          batch = qids.length ? await fetchNeighborConcepts(qids, 30) : [];
+        } else {
+          batch = await fetchRandomConcepts(20);
+        }
+        batch = batch.filter(c => !excluded.has(c.id));
+        if (batch.length) { await Promise.all(batch.map(c => cacheConcept(c))); swipe.appendDeck(batch); }
       } catch { /* ignore */ }
     })();
-  }, [swipe.counts, mode, constraint]);
+  }, [swipe.counts, mode, entries, contrastSub, constraint, adopted]);
 
   // #13 — Contraste sémantique réel (opt-in) : on classe le pool par distance
   // cosinus croissante au barycentre sémantique des concepts adoptés. Les plus

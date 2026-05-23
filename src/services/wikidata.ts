@@ -615,17 +615,17 @@ export async function resolveConstraintsLive(constraints: string[]): Promise<Con
 }
 
 /** Construit et exécute la requête SPARQL conjonctive pour des contraintes déjà résolues. */
-async function conceptsForResolved(mappable: Array<{ text: string; qid: string }>, limit: number): Promise<Concept[]> {
+async function conceptsForResolved(mappable: Array<{ text: string; qid: string }>, limit: number, offset = 0): Promise<Concept[]> {
   if (mappable.length === 0) return [];
   const clauses = mappable.map(m => `?item wdt:P31/wdt:P279* wd:${m.qid} .`).join('\n  ');
   const query = `
 SELECT DISTINCT ?item ?itemLabel ?itemDescription WHERE {
   ${clauses}
-  ?item wikibase:sitelinks ?sl . FILTER(?sl > 20)
+  ?item wikibase:sitelinks ?sl . FILTER(?sl > 12)
   SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
 }
 ORDER BY DESC(?sl)
-LIMIT ${limit}`;
+LIMIT ${limit}${offset > 0 ? `\nOFFSET ${offset}` : ''}`;
   try {
     const rows = await sparql<RawBinding>(query);
     return rows.map(bindingToConcept).filter(Boolean) as Concept[];
@@ -644,9 +644,9 @@ export async function fetchConceptsByConstraints(constraints: string[], limit = 
 }
 
 /** Variante du précédent qui résout les thèmes via Wikidata live (au-delà de la table figée). */
-export async function fetchConceptsByConstraintsLive(constraints: string[], limit = 12): Promise<Concept[]> {
+export async function fetchConceptsByConstraintsLive(constraints: string[], limit = 12, offset = 0): Promise<Concept[]> {
   const { mappable } = await resolveConstraintsLive(constraints);
-  return conceptsForResolved(mappable, limit);
+  return conceptsForResolved(mappable, limit, offset);
 }
 
 /**
@@ -654,12 +654,12 @@ export async function fetchConceptsByConstraintsLive(constraints: string[], limi
  * « membres » (instances/sous-classes, si c'est une famille) ET son « voisinage »
  * (entités reliées, si c'est un concept précis). Couvre les deux cas d'un coup.
  */
-export async function fetchConceptsForEntry(text: string, limit = 24, knownQid?: string): Promise<Concept[]> {
+export async function fetchConceptsForEntry(text: string, limit = 24, knownQid?: string, offset = 0): Promise<Concept[]> {
   const qid = (knownQid && /^Q\d+$/.test(knownQid)) ? knownQid : await searchEntityId(text);
   if (!qid) return [];
   const [members, neighbors] = await Promise.all([
-    conceptsForResolved([{ text, qid }], limit),
-    fetchNeighborConcepts([qid], limit),
+    conceptsForResolved([{ text, qid }], limit, offset),
+    offset > 0 ? Promise.resolve([] as Concept[]) : fetchNeighborConcepts([qid], limit),
   ]);
   const seen = new Set<string>();
   const out: Concept[] = [];
