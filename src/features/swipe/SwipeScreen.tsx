@@ -4,7 +4,7 @@ import { Sunburst, Stamp, PixelDie, Aster, SkeletonCard } from '../../components
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
-import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, type SemanticRelation } from '../../services/wikidata';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, fetchConceptImage, type SemanticRelation } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
@@ -135,7 +135,7 @@ function CitCat({ catKey, weight, small }: { catKey: CategoryKey; weight?: numbe
   );
 }
 
-function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast, isFavorite, onToggleFavorite, relations, extract }: {
+function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast, isFavorite, onToggleFavorite, relations, extract, imageUrl }: {
   concept: Concept;
   tilt: 'right' | 'left' | 'up' | 'down' | null;
   dragOffset: { x: number; y: number };
@@ -149,15 +149,15 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
   onToggleFavorite?: () => void;
   relations?: SemanticRelation[];
   extract?: string;
+  imageUrl?: string;
 }) {
   const isDragging = dragOffset.x !== 0 || dragOffset.y !== 0;
   const rotate = isDragging ? `rotate(${dragOffset.x * 0.04 - 0.6}deg)` : 'rotate(-0.6deg)';
   const translate = isDragging ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : '';
 
-  const portraitIsUrl = concept.portrait?.startsWith('http');
-  const portraitWords = concept.portrait && !portraitIsUrl
-    ? concept.portrait.split(' ')
-    : concept.name.split(' ');
+  const imageSrc = imageUrl ?? (concept.portrait?.startsWith('http') ? concept.portrait : undefined);
+  const initials = concept.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
+  const domColor = conceptDominant(concept.cats).css;
 
   return (
     <div
@@ -255,27 +255,18 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
               boxShadow: '4px 4px 0 var(--cit-navy-dk)',
               overflow: 'hidden',
             }}>
-              {portraitIsUrl ? (
-                <img src={concept.portrait} alt={concept.name} loading="lazy"
+              {imageSrc ? (
+                <img src={imageSrc} alt={concept.name} loading="lazy"
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
               ) : (
-                <>
-                  <div style={{
-                    position: 'absolute', inset: '10% 10% 26% 10%',
-                    background: 'var(--cit-brick)', borderRadius: '50%',
-                    border: '3px solid var(--cit-navy-dk)',
-                  }}/>
-                  <div style={{
-                    position: 'absolute', inset: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    textAlign: 'center', fontFamily: "'Alfa Slab One', serif",
-                    fontSize: 16, lineHeight: 1, color: 'var(--cit-cream)',
-                    letterSpacing: '.02em', textShadow: '2px 2px 0 var(--cit-navy-dk)',
-                    padding: 10, zIndex: 1,
-                  }}>
-                    {portraitWords.map((w, i) => <div key={i}>{w}</div>)}
-                  </div>
-                </>
+                <div style={{ position: 'absolute', inset: 0, background: domColor, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+                  <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.25 }}/>
+                  <span style={{
+                    position: 'relative', fontFamily: "'Alfa Slab One', serif",
+                    fontSize: 54, lineHeight: 1, color: 'var(--cit-cream)',
+                    textShadow: '3px 3px 0 oklch(0% 0 0 / 0.4)', letterSpacing: '.02em',
+                  }}>{initials || '★'}</span>
+                </div>
               )}
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -302,36 +293,54 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
             </div>
           </div>
 
-          {/* Text */}
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <p className="cit-typed" style={{ margin: '0 0 14px', fontSize: 15, lineHeight: 1.62, color: 'var(--cit-navy-dk)' }}>
-              {extract || concept.blurb}
-            </p>
+          {/* Text → mini-encadrés */}
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: 10 }}>
+            {/* Description */}
+            <div style={{
+              background: 'var(--cit-paper)', borderLeft: '4px solid var(--cit-mustard)',
+              padding: '8px 12px',
+            }}>
+              <p className="cit-typed" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--cit-navy-dk)' }}>
+                {extract || concept.blurb}
+              </p>
+            </div>
 
+            {/* Relations Wikidata */}
             {relations && relations.length > 0 && (
-              <>
-                <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', margin: '0 0 4px' }}>
-                  ★ Relations Wikidata
+              <div style={{
+                background: 'var(--cit-paper-dk)', border: '1.5px solid var(--cit-navy-dk)',
+                borderLeft: '4px solid var(--cit-navy)', padding: '8px 12px',
+              }}>
+                <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 5, letterSpacing: '.1em' }}>
+                  ★ RELATIONS WIKIDATA
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {relations.slice(0, 12).map((r, i) => (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {relations.slice(0, 14).map((r, i) => (
                     <span key={i} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px',
+                      display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px',
                       background: 'var(--cit-cream)', border: '2px solid var(--cit-navy-dk)',
-                      borderLeft: '5px solid var(--cit-navy)',
-                      fontFamily: "'Oswald', sans-serif", fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
+                      fontFamily: "'Oswald', sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: '.04em',
                       color: 'var(--cit-navy-dk)',
                     }}>
-                      <span style={{ color: 'var(--cit-brick)', fontSize: 9, textTransform: 'uppercase' }}>{r.propertyLabel}</span>
+                      <span style={{ color: 'var(--cit-brick)', fontSize: 8.5, textTransform: 'uppercase' }}>{r.propertyLabel}</span>
                       <span style={{ textTransform: 'uppercase' }}>{r.targetLabel}</span>
                     </span>
                   ))}
                 </div>
-              </>
+              </div>
             )}
 
-            {/* Bas de fiche : références + catégories, discrets */}
-            <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1.5px dashed var(--cit-navy-dk)', display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>
+            {/* Catégories + Voir aussi */}
+            <div style={{
+              marginTop: 'auto', background: 'var(--cit-paper)', border: '1.5px dashed var(--cit-navy-dk)',
+              padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start',
+            }}>
+              <div>
+                <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ Catégories</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {concept.cats.map(([k]) => <CitCat key={k} catKey={k} small/>)}
+                </div>
+              </div>
               {concept.refs.length > 0 && (
                 <div>
                   <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ Voir aussi</div>
@@ -345,12 +354,6 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
                   </div>
                 </div>
               )}
-              <div>
-                <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ Catégories</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {concept.cats.map(([k]) => <CitCat key={k} catKey={k} small/>)}
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -581,7 +584,7 @@ function ContrasteBanner({ sub, onSet }: { sub: ContrastSub; onSet: (s: Contrast
 }
 
 /** Recherche de concept Wikidata (autocomplétion) → onPick. Réutilisé pour l'ajout direct et les ancrages. */
-function InlineAddConcept({ onPick, placeholder = '✚ Ajouter votre propre concept (ex. Spinoza, le jazz modal…)' }: { onPick: (c: Concept) => void; placeholder?: string }) {
+function InlineAddConcept({ onPick, placeholder = 'Cherchez un concept : Spinoza, le jazz modal…', label }: { onPick: (c: Concept) => void; placeholder?: string; label?: string }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<Concept[]>([]);
   const [busy, setBusy] = useState(false);
@@ -601,19 +604,35 @@ function InlineAddConcept({ onPick, placeholder = '✚ Ajouter votre propre conc
   const pick = (c: Concept) => { onPick(c); setQ(''); setResults([]); setOpen(false); };
   return (
     <div style={{ position: 'relative', marginBottom: 16 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input
-          value={q}
-          onChange={e => { setQ(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          placeholder={placeholder}
-          style={{
-            flex: 1, padding: '7px 12px', border: '2.5px solid var(--cit-navy-dk)',
-            background: 'var(--cit-cream)', fontFamily: "'Special Elite', monospace",
-            fontSize: 13, color: 'var(--cit-navy-dk)',
-          }}/>
-        {busy && <span className="cit-condensed cit-pulse-brick" style={{ fontSize: 10, color: 'var(--cit-brick)', whiteSpace: 'nowrap' }}>★ RECHERCHE…</span>}
-      </div>
+      {label ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', border: '2.5px dashed var(--cit-navy-dk)', background: 'var(--cit-cream)', boxShadow: '3px 3px 0 var(--cit-navy-dk)' }}>
+          <span style={{ display: 'grid', placeItems: 'center', width: 34, height: 34, flexShrink: 0, background: 'var(--cit-brick)', color: 'var(--cit-cream)', border: '2px solid var(--cit-navy-dk)', fontFamily: "'Alfa Slab One', serif", fontSize: 22, lineHeight: 1, boxShadow: '2px 2px 0 var(--cit-navy-dk)' }}>+</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', letterSpacing: '.12em', textTransform: 'uppercase' }}>{label}</div>
+            <input
+              value={q}
+              onChange={e => { setQ(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              placeholder={placeholder}
+              style={{ width: '100%', boxSizing: 'border-box', background: 'transparent', border: 'none', outline: 'none', fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)', padding: '2px 0' }}/>
+          </div>
+          {busy && <span className="cit-condensed cit-pulse-brick" style={{ fontSize: 10, color: 'var(--cit-brick)', whiteSpace: 'nowrap' }}>★ …</span>}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            value={q}
+            onChange={e => { setQ(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            placeholder={placeholder}
+            style={{
+              flex: 1, padding: '7px 12px', border: '2.5px solid var(--cit-navy-dk)',
+              background: 'var(--cit-cream)', fontFamily: "'Special Elite', monospace",
+              fontSize: 13, color: 'var(--cit-navy-dk)',
+            }}/>
+          {busy && <span className="cit-condensed cit-pulse-brick" style={{ fontSize: 10, color: 'var(--cit-brick)', whiteSpace: 'nowrap' }}>★ RECHERCHE…</span>}
+        </div>
+      )}
       {open && results.length > 0 && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
@@ -760,6 +779,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [semanticBusy, setSemanticBusy] = useState(false);
   const [currentRelations, setCurrentRelations] = useState<SemanticRelation[]>([]);
   const [currentExtract, setCurrentExtract] = useState<string | null>(null);
+  const [currentImage, setCurrentImage] = useState<string | null>(null);
   const toast = useToast();
 
   // Bilan du jour : compteurs depuis minuit local (refresh à chaque verdict)
@@ -1031,16 +1051,20 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     getCachedConcept(current.id).then(c => setCurrentFavorite(!!c?.isFavorite));
   }, [current?.id]);
 
-  // Relations Wikidata + description longue (Wikipédia) de la carte courante (cache 30j)
+  // Relations Wikidata + description longue + meilleure image de la carte courante (cache 30j)
   useEffect(() => {
     setCurrentRelations([]);
     setCurrentExtract(null);
+    setCurrentImage(null);
     if (!current) return;
     let cancelled = false;
     if (current.wikidataId) {
       fetchSemanticRelations(current.wikidataId).then(r => { if (!cancelled) setCurrentRelations(r); }).catch(() => {});
     }
     fetchWikipediaExtract(current.name).then(ext => { if (!cancelled && ext) setCurrentExtract(ext); }).catch(() => {});
+    if (!current.portrait?.startsWith('http')) {
+      fetchConceptImage(current.wikidataId, current.name).then(u => { if (!cancelled && u) setCurrentImage(u); }).catch(() => {});
+    }
     return () => { cancelled = true; };
   }, [current?.id]);
 
@@ -1195,7 +1219,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
         {/* Card column */}
         <div>
-          <InlineAddConcept onPick={addOwnConcept}/>
+          <InlineAddConcept onPick={addOwnConcept} label="Ajouter votre propre concept"/>
           <div style={{ position: 'relative', padding: mode === 'contrast' ? '24px 18px 0' : 0 }}>
             {loading && !current ? (
               <SkeletonCard />
@@ -1209,6 +1233,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                 isFavorite={currentFavorite}
                 relations={currentRelations}
                 extract={currentExtract ?? undefined}
+                imageUrl={currentImage ?? undefined}
                 onToggleFavorite={async () => {
                   await cacheConcept(current);
                   const next = await toggleFavorite(current.id);

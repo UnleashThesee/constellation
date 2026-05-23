@@ -174,6 +174,49 @@ async function fetchWikipediaThumbnail(frTitle: string): Promise<string | undefi
   }
 }
 
+/**
+ * Meilleure image pour un concept : image Wikidata (P18) → vignette Wikipédia
+ * FR → EN. Couvre beaucoup plus de cas que la seule vignette FR. Cache 30j.
+ */
+export async function fetchConceptImage(qid: string | undefined, name: string): Promise<string | undefined> {
+  const cacheKey = `img:${qid || name}`;
+  const cached = await cacheWikiGet<string>(cacheKey);
+  if (cached) return cached || undefined;
+
+  let url: string | undefined;
+  // 1. Image Wikidata (P18) → Commons FilePath
+  if (qid && /^Q\d+$/.test(qid)) {
+    try {
+      const api = new URL(WIKIDATA_API);
+      api.searchParams.set('action', 'wbgetentities');
+      api.searchParams.set('ids', qid);
+      api.searchParams.set('props', 'claims');
+      api.searchParams.set('format', 'json');
+      api.searchParams.set('origin', '*');
+      const res = await fetch(api.toString());
+      if (res.ok) {
+        const data = await res.json();
+        const file = data.entities?.[qid]?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+        if (typeof file === 'string') {
+          url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file.replace(/ /g, '_'))}?width=400`;
+        }
+      }
+    } catch { /* fallthrough */ }
+  }
+  // 2. Vignette Wikipédia FR
+  if (!url) url = await fetchWikipediaThumbnail(name);
+  // 3. Vignette Wikipédia EN
+  if (!url) {
+    try {
+      const encoded = encodeURIComponent(name.replace(/ /g, '_'));
+      const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`);
+      if (res.ok) { const data = await res.json(); url = data.thumbnail?.source; }
+    } catch { /* ignore */ }
+  }
+  if (url) cacheWikiSet(cacheKey, url).catch(() => {});
+  return url;
+}
+
 // ---- Wikidata semantic relations ----
 
 export interface SemanticRelation {
@@ -259,23 +302,23 @@ export async function fetchWikipediaExtract(title: string): Promise<string | und
   if (cached) return cached;
 
   const encoded = encodeURIComponent(title.replace(/ /g, '_'));
-  let extract: string | undefined;
-  try {
-    const res = await fetch(`${WIKIPEDIA_API_FR}/page/summary/${encoded}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.extract) extract = data.extract as string;
-    }
-  } catch { /* fallthrough */ }
-  if (!extract) {
+  // Intro complète (plusieurs phrases) via l'API action, FR puis EN.
+  const fromApi = async (host: string): Promise<string | undefined> => {
     try {
-      const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.extract) extract = data.extract as string;
-      }
-    } catch { /* ignore */ }
-  }
+      const url = `https://${host}/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&redirects=1&format=json&origin=*&titles=${encoded}`;
+      const res = await fetch(url);
+      if (!res.ok) return undefined;
+      const data = await res.json();
+      const pages = (data.query?.pages ?? {}) as Record<string, { extract?: string }>;
+      const first = Object.values(pages)[0];
+      const ex = first?.extract?.trim();
+      return ex && ex.length > 0 ? ex : undefined;
+    } catch { return undefined; }
+  };
+  let extract = await fromApi('fr.wikipedia.org');
+  if (!extract) extract = await fromApi('en.wikipedia.org');
+  // Cap raisonnable (quelques paragraphes) pour ne pas noyer la carte.
+  if (extract && extract.length > 1100) extract = extract.slice(0, 1100).replace(/\s+\S*$/, '') + '…';
   if (extract) cacheWikiSet(cacheKey, extract).catch(() => {});
   return extract;
 }
