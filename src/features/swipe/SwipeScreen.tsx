@@ -4,7 +4,7 @@ import { Sunburst, Stamp, StarBurst, PixelDie, Aster, SkeletonCard } from '../..
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
-import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, searchConcepts, fetchSemanticRelations, type SemanticRelation } from '../../services/wikidata';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, type SemanticRelation } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
@@ -116,26 +116,26 @@ function CitIconNeutral() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square"><path d="M5 12H19"/></svg>;
 }
 
-function CitCat({ catKey, weight }: { catKey: CategoryKey; weight?: number }) {
+function CitCat({ catKey, weight, small }: { catKey: CategoryKey; weight?: number; small?: boolean }) {
   const c = CATEGORIES[catKey];
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
+      display: 'inline-flex', alignItems: 'center', gap: small ? 4 : 6,
       fontFamily: "'Oswald', sans-serif",
-      fontSize: 11, letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 600,
-      padding: '3px 9px',
+      fontSize: small ? 9.5 : 11, letterSpacing: '.12em', textTransform: 'uppercase', fontWeight: 600,
+      padding: small ? '2px 6px' : '3px 9px',
       background: 'var(--cit-cream)',
       border: '2px solid var(--cit-navy-dk)',
       color: 'var(--cit-navy-dk)',
     }}>
-      <span style={{ width: 9, height: 9, background: c.oklch, border: '1.5px solid var(--cit-navy-dk)', display: 'inline-block' }}/>
+      <span style={{ width: small ? 7 : 9, height: small ? 7 : 9, background: c.oklch, border: '1.5px solid var(--cit-navy-dk)', display: 'inline-block' }}/>
       {c.label}
       {weight !== undefined && <span style={{ color: 'var(--cit-brick)' }}>{Math.round(weight * 100)}%</span>}
     </span>
   );
 }
 
-function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast, isFavorite, onToggleFavorite, relations }: {
+function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast, isFavorite, onToggleFavorite, relations, extract }: {
   concept: Concept;
   tilt: 'right' | 'left' | 'up' | 'down' | null;
   dragOffset: { x: number; y: number };
@@ -148,6 +148,7 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
   isFavorite?: boolean;
   onToggleFavorite?: () => void;
   relations?: SemanticRelation[];
+  extract?: string;
 }) {
   const isDragging = dragOffset.x !== 0 || dragOffset.y !== 0;
   const rotate = isDragging ? `rotate(${dragOffset.x * 0.04 - 0.6}deg)` : 'rotate(-0.6deg)';
@@ -302,41 +303,18 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
           </div>
 
           {/* Text */}
-          <div>
-            <p className="cit-typed" style={{ margin: '0 0 14px', fontSize: 15, lineHeight: 1.65, color: 'var(--cit-navy-dk)' }}>
-              {concept.blurb}
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <p className="cit-typed" style={{ margin: '0 0 14px', fontSize: 15, lineHeight: 1.62, color: 'var(--cit-navy-dk)' }}>
+              {extract || concept.blurb}
             </p>
-
-            {concept.refs.length > 0 && (
-              <>
-                <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>
-                  ★ Voir aussi
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {concept.refs.map((r, i) => (
-                    <span key={i} className="cit-condensed" style={{
-                      fontSize: 11, padding: '3px 9px',
-                      background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', fontWeight: 600,
-                    }}>{r}</span>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>
-              ★ Catégories
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {concept.cats.map(([k]) => <CitCat key={k} catKey={k}/>)}
-            </div>
 
             {relations && relations.length > 0 && (
               <>
-                <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', margin: '12px 0 4px' }}>
+                <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', margin: '0 0 4px' }}>
                   ★ Relations Wikidata
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {relations.slice(0, 10).map((r, i) => (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                  {relations.slice(0, 12).map((r, i) => (
                     <span key={i} style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px',
                       background: 'var(--cit-cream)', border: '2px solid var(--cit-navy-dk)',
@@ -351,6 +329,29 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
                 </div>
               </>
             )}
+
+            {/* Bas de fiche : références + catégories, discrets */}
+            <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1.5px dashed var(--cit-navy-dk)', display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>
+              {concept.refs.length > 0 && (
+                <div>
+                  <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ Voir aussi</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {concept.refs.map((r, i) => (
+                      <span key={i} className="cit-condensed" style={{
+                        fontSize: 9.5, padding: '2px 7px',
+                        background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', fontWeight: 600,
+                      }}>{r}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div>
+                <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ Catégories</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {concept.cats.map(([k]) => <CitCat key={k} catKey={k} small/>)}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -703,6 +704,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [semanticEnabled, setSemanticEnabled] = useState(false);
   const [semanticBusy, setSemanticBusy] = useState(false);
   const [currentRelations, setCurrentRelations] = useState<SemanticRelation[]>([]);
+  const [currentExtract, setCurrentExtract] = useState<string | null>(null);
   const toast = useToast();
 
   // Bilan du jour : compteurs depuis minuit local (refresh à chaque verdict)
@@ -960,13 +962,16 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     getCachedConcept(current.id).then(c => setCurrentFavorite(!!c?.isFavorite));
   }, [current?.id]);
 
-  // Relations Wikidata de la carte courante (chargées à la volée, cache 30j)
+  // Relations Wikidata + description longue (Wikipédia) de la carte courante (cache 30j)
   useEffect(() => {
     setCurrentRelations([]);
-    const qid = current?.wikidataId;
-    if (!qid) return;
+    setCurrentExtract(null);
+    if (!current) return;
     let cancelled = false;
-    fetchSemanticRelations(qid).then(r => { if (!cancelled) setCurrentRelations(r); }).catch(() => {});
+    if (current.wikidataId) {
+      fetchSemanticRelations(current.wikidataId).then(r => { if (!cancelled) setCurrentRelations(r); }).catch(() => {});
+    }
+    fetchWikipediaExtract(current.name).then(ext => { if (!cancelled && ext) setCurrentExtract(ext); }).catch(() => {});
     return () => { cancelled = true; };
   }, [current?.id]);
 
@@ -1144,6 +1149,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                 onPointerDown={swipe.onPointerDown}
                 isFavorite={currentFavorite}
                 relations={currentRelations}
+                extract={currentExtract ?? undefined}
                 onToggleFavorite={async () => {
                   await cacheConcept(current);
                   const next = await toggleFavorite(current.id);
