@@ -9,11 +9,11 @@ interface Props {
 const MAIN_TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'swipe',   label: 'Swipe',  icon: '✦' },
   { id: 'map',     label: 'Map',    icon: '◉' },
-  { id: 'combine', label: 'Croiser', icon: '⊕' },
   { id: 'ideas',   label: 'Idées',  icon: '★' },
 ];
 
 const PLUS_TABS: Array<{ id: TabId; label: string }> = [
+  { id: 'combine',     label: 'Générer des idées' },
   { id: 'favs',        label: 'Favoris' },
   { id: 'perso',       label: 'Étiquettes & Tags' },
   { id: 'combos',      label: 'Bibliothèque combinaisons' },

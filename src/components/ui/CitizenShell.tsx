@@ -4,7 +4,6 @@ import { FileSeal } from './atoms';
 const CITIZEN_TABS = [
   { id: 'swipe',    label: '★ Le Swipe' },
   { id: 'map',      label: 'Cartographie' },
-  { id: 'combine',  label: 'Croiser' },
   { id: 'ideas',    label: 'Idées' },
   { id: 'favs',     label: 'Favoris' },
   { id: 'settings', label: 'Réglages' },

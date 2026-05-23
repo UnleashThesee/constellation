@@ -280,12 +280,13 @@ export function CombinatorScreen({ onTabChange }: Props) {
   return (
     <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <CitizenMasthead
-        kicker="Croisez vos"
-        title="CONCEPTS"
-        active="combine"
+        kicker="Générer des"
+        title="IDÉES"
+        active="ideas"
         onTabChange={onTabChange}
         right={<>
-          <CitButton size="sm" onClick={() => onTabChange?.('combos')}>Bibliothèque ↗</CitButton>
+          <CitButton size="sm" onClick={() => onTabChange?.('ideas')}>← Mes idées</CitButton>
+          <CitButton size="sm" onClick={() => onTabChange?.('combos')}>Combinaisons ↗</CitButton>
           <CitButton size="sm" onClick={() => onTabChange?.('constraints')}>Contraintes ↗</CitButton>
           <Stamp tone="brick" rotate={-4}>★ {selection.length} CONCEPTS EN COURS</Stamp>
           <Sunburst size={68} color="var(--cit-mustard)"/>

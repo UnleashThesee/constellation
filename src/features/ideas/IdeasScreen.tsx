@@ -49,11 +49,11 @@ function GenerateBanner({ onCombine }: { onCombine: () => void }) {
           UNE NOUVELLE IDÉE ?
         </div>
         <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)', marginTop: 4 }}>
-          Sélectionnez 2 à 5 concepts adoptés, le Bureau s'occupe du reste.
+          Croisez 2 à 5 concepts (les vôtres ou n'importe lesquels), le Bureau invente.
         </div>
       </div>
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <CitButton tone="butter" onClick={onCombine}>★ CROISER MES CONCEPTS</CitButton>
+        <CitButton tone="butter" onClick={onCombine}>✚ GÉNÉRER DES IDÉES</CitButton>
       </div>
     </div>
   );
@@ -346,11 +346,11 @@ export function IdeasScreen({ onTabChange }: Props) {
             </h2>
             <p className="cit-typed" style={{ fontSize: 13, color: 'var(--cit-navy-lt)', marginTop: 8, maxWidth: 460, margin: '8px auto 0' }}>
               {ideas.length === 0
-                ? 'Configurez votre clé API LLM dans les Réglages, puis croisez vos concepts pour générer des idées.'
+                ? 'Configurez votre clé API LLM dans les Réglages, puis générez des idées à partir de concepts croisés.'
                 : 'Essayez un autre filtre.'}
             </p>
             <div style={{ marginTop: 18, display: 'flex', justifyContent: 'center', gap: 10 }}>
-              <CitButton tone="brick" onClick={() => onTabChange?.('combine')}>★ CROISER DES CONCEPTS</CitButton>
+              <CitButton tone="brick" onClick={() => onTabChange?.('combine')}>✚ GÉNÉRER DES IDÉES</CitButton>
               {ideas.length === 0 && (
                 <CitButton onClick={() => onTabChange?.('settings')}>Configurer la clé LLM</CitButton>
               )}
@@ -369,7 +369,7 @@ export function IdeasScreen({ onTabChange }: Props) {
         )}
       </div>
 
-      <CitizenFooter right={ideas.length === 0 ? "★ COMMENCEZ PAR CROISER VOS CONCEPTS" : "CLIQUEZ UNE IDÉE POUR LA DÉTAILLER"}/>
+      <CitizenFooter right={ideas.length === 0 ? "★ COMMENCEZ PAR GÉNÉRER DES IDÉES" : "CLIQUEZ UNE IDÉE POUR LA DÉTAILLER"}/>
 
       <IdeaModal
         idea={openIdea}
