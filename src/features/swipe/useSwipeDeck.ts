@@ -19,6 +19,7 @@ interface SwipeDeckState {
   back: () => void;
   onPointerDown: (e: React.PointerEvent) => void;
   setDeck: (concepts: Concept[]) => void;
+  appendDeck: (concepts: Concept[]) => void;
   canBack: boolean;
 }
 
@@ -44,6 +45,15 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
 
   const setDeck = useCallback((concepts: Concept[]) => {
     setDeckState(concepts);
+  }, []);
+
+  // Ajoute des concepts inédits à la fin (sans perturber la carte courante)
+  const appendDeck = useCallback((concepts: Concept[]) => {
+    setDeckState(d => {
+      const have = new Set(d.map(c => c.id));
+      const add = concepts.filter(c => !have.has(c.id));
+      return add.length ? [...d, ...add] : d;
+    });
   }, []);
 
   const cycle = useCallback((verdict: SwipeVerdict) => {
@@ -206,6 +216,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
     back,
     onPointerDown,
     setDeck,
+    appendDeck,
     canBack: history.length > 0 && history.length <= 10,
   };
 }

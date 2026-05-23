@@ -365,25 +365,27 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
               </div>
             )}
 
-            {/* Catégories + Voir aussi */}
-            <div style={{
-              marginTop: 'auto', background: 'var(--cit-paper)', border: '1.5px dashed var(--cit-navy-dk)',
-              padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start',
-            }}>
-              <div>
-                <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ Catégories</div>
+            {/* Catégories & Voir aussi : deux zones distinctes */}
+            <div style={{ marginTop: 'auto', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {/* Catégories — fond crème, liseré couleur dominante */}
+              <div style={{
+                flex: '1 1 140px', minWidth: 0, background: 'var(--cit-cream)',
+                border: '1.5px solid var(--cit-navy-dk)', borderLeft: `5px solid ${domColor}`, padding: '6px 10px',
+              }}>
+                <div className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)', letterSpacing: '.12em', marginBottom: 4 }}>CATÉGORIES</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                   {concept.cats.map(([k]) => <CitCat key={k} catKey={k} small/>)}
                 </div>
               </div>
+              {/* Voir aussi — bloc navy, forme distincte */}
               {concept.refs.length > 0 && (
-                <div>
-                  <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ Voir aussi</div>
+                <div style={{ flex: '1 1 140px', minWidth: 0, background: 'var(--cit-navy-dk)', padding: '6px 10px' }}>
+                  <div className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-butter)', letterSpacing: '.12em', marginBottom: 4 }}>↗ VOIR AUSSI</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                     {concept.refs.map((r, i) => (
                       <span key={i} className="cit-condensed" style={{
-                        fontSize: 9.5, padding: '2px 7px',
-                        background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', fontWeight: 600,
+                        fontSize: 9.5, padding: '2px 8px',
+                        background: 'var(--cit-cream)', color: 'var(--cit-navy-dk)', border: '1.5px solid var(--cit-butter)', fontWeight: 600,
                       }}>{r}</span>
                     ))}
                   </div>
@@ -468,8 +470,8 @@ function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: S
 // ---- Mode-specific secondary banners ----
 
 function CibleBanner({ entries, onAdd, onRemove, onWeight, mixThemes, onToggleMix, suggestions, loading }: {
-  entries: Array<{ text: string; weight: number }>;
-  onAdd: (t: string) => void;
+  entries: Array<{ text: string; qid?: string; weight: number }>;
+  onAdd: (t: string, qid?: string) => void;
   onRemove: (t: string) => void;
   onWeight: (t: string, w: number) => void;
   mixThemes: boolean;
@@ -477,8 +479,6 @@ function CibleBanner({ entries, onAdd, onRemove, onWeight, mixThemes, onToggleMi
   suggestions: string[];
   loading: boolean;
 }) {
-  const [input, setInput] = useState('');
-  const submit = () => { const v = input.trim(); if (v) { onAdd(v); setInput(''); } };
   const free = suggestions.filter(s => !entries.some(e => e.text.toLowerCase() === s.toLowerCase())).slice(0, 6);
   return (
     <div style={{
@@ -516,21 +516,12 @@ function CibleBanner({ entries, onAdd, onRemove, onWeight, mixThemes, onToggleMi
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
         <SchemaAnchor/>
-        <span className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)' }}>★ CE QUI VOUS INTÉRESSE — famille (ses membres) ou concept précis (son voisinage)</span>
+        <span className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)' }}>★ CE QUI VOUS INTÉRESSE — famille (ses membres) ou concept précis (son voisinage) · choisissez dans la liste ou Entrée</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
-          placeholder="guerre, instruments, Kant, Daft Punk…"
-          style={{
-            flex: 1, minWidth: 160, padding: '7px 12px',
-            border: '2.5px solid var(--cit-navy-dk)', background: 'var(--cit-cream)',
-            fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)',
-          }}/>
-        <CitButton size="sm" tone="navy" onClick={submit}>+ Ajouter</CitButton>
-      </div>
+      <InlineAddConcept
+        onPick={c => onAdd(c.name, c.wikidataId)}
+        onSubmitText={t => onAdd(t)}
+        placeholder="guerre, instruments, Kant, Daft Punk…"/>
 
       {entries.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
@@ -601,7 +592,7 @@ function ContrasteBanner({ sub, onSet }: { sub: ContrastSub; onSet: (s: Contrast
 }
 
 /** Recherche de concept Wikidata (autocomplétion) → onPick. Réutilisé pour l'ajout direct et les ancrages. */
-function InlineAddConcept({ onPick, placeholder = 'Cherchez un concept : Spinoza, le jazz modal…', label }: { onPick: (c: Concept) => void; placeholder?: string; label?: string }) {
+function InlineAddConcept({ onPick, onSubmitText, placeholder = 'Cherchez un concept : Spinoza, le jazz modal…', label }: { onPick: (c: Concept) => void; onSubmitText?: (t: string) => void; placeholder?: string; label?: string }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<Concept[]>([]);
   const [busy, setBusy] = useState(false);
@@ -619,6 +610,9 @@ function InlineAddConcept({ onPick, placeholder = 'Cherchez un concept : Spinoza
     return () => { cancelled = true; clearTimeout(t); };
   }, [q]);
   const pick = (c: Concept) => { onPick(c); setQ(''); setResults([]); setOpen(false); };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && q.trim() && onSubmitText) { onSubmitText(q.trim()); setQ(''); setResults([]); setOpen(false); }
+  };
   return (
     <div style={{ position: 'relative', marginBottom: 16 }}>
       {label ? (
@@ -630,6 +624,7 @@ function InlineAddConcept({ onPick, placeholder = 'Cherchez un concept : Spinoza
               value={q}
               onChange={e => { setQ(e.target.value); setOpen(true); }}
               onFocus={() => setOpen(true)}
+              onKeyDown={onKey}
               placeholder={placeholder}
               style={{ width: '100%', boxSizing: 'border-box', background: 'transparent', border: 'none', outline: 'none', fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)', padding: '2px 0' }}/>
           </div>
@@ -641,6 +636,7 @@ function InlineAddConcept({ onPick, placeholder = 'Cherchez un concept : Spinoza
             value={q}
             onChange={e => { setQ(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
+            onKeyDown={onKey}
             placeholder={placeholder}
             style={{
               flex: 1, padding: '7px 12px', border: '2.5px solid var(--cit-navy-dk)',
@@ -778,7 +774,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [adopted, setAdopted] = useState<Concept[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   // Mode Ciblé : thèmes (texte libre, résolus via Wikidata) + ancrage + intersection/mélange
-  const [entries, setEntries] = useState<Array<{ text: string; weight: number }>>([]);
+  const [entries, setEntries] = useState<Array<{ text: string; qid?: string; weight: number }>>([]);
   const [mixThemes, setMixThemes] = useState(false);
   const [contrastSub, setContrastSub] = useState<ContrastSub>('far');
   const [savedThemes, setSavedThemes] = useState<string[]>([]);
@@ -869,10 +865,10 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
   // Mode Ciblé — entrées libres (un thème OU un concept précis) ; chaque ajout
   // est mémorisé dans la bibliothèque de contraintes pour les suggestions.
-  const addEntry = (text: string) => {
+  const addEntry = (text: string, qid?: string) => {
     const t = text.trim();
     if (!t || entries.some(x => x.text.toLowerCase() === t.toLowerCase())) return;
-    setEntries(prev => [...prev, { text: t, weight: 50 }]);
+    setEntries(prev => [...prev, { text: t, qid, weight: 50 }]);
     recordConstraintUsage(t).then(() => getAllConstraints().then(cs => setSavedThemes(cs.sort((a, b) => b.useCount - a.useCount).map(c => c.text))));
   };
   const removeEntry = (text: string) => setEntries(prev => prev.filter(x => x.text !== text));
@@ -942,7 +938,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
             fresh = rawDeck;
           } else {
             // Chaque entrée = membres (si famille) + voisinage (si concept précis), fusionnés.
-            const per = await Promise.all(entries.map(e => fetchConceptsForEntry(e.text, mixThemes ? 18 : 30)));
+            const per = await Promise.all(entries.map(e => fetchConceptsForEntry(e.text, mixThemes ? 18 : 30, e.qid)));
             if (entries.length === 1) {
               fresh = per[0];
             } else if (mixThemes) {
@@ -999,6 +995,22 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     })();
     return () => { cancelled = true; };
   }, [mode, entries, mixThemes, contrastSub, constraint, rawDeck.length, adopted.length]);
+
+  // Variété : en Aléatoire, recharge un lot frais à mesure qu'on swipe (évite le bouclage)
+  const lastRefillRef = useRef(0);
+  useEffect(() => {
+    if (mode !== 'random' || constraint.trim()) return;
+    const total = swipe.counts.valid + swipe.counts.reject + swipe.counts.skip;
+    if (total === 0 || total % 18 !== 0 || total === lastRefillRef.current) return;
+    lastRefillRef.current = total;
+    (async () => {
+      try {
+        const excluded = await getExcludedConceptIds();
+        const fresh = (await fetchRandomConcepts(20)).filter(c => !excluded.has(c.id));
+        if (fresh.length) { await Promise.all(fresh.map(c => cacheConcept(c))); swipe.appendDeck(fresh); }
+      } catch { /* ignore */ }
+    })();
+  }, [swipe.counts, mode, constraint]);
 
   // #13 — Contraste sémantique réel (opt-in) : on classe le pool par distance
   // cosinus croissante au barycentre sémantique des concepts adoptés. Les plus

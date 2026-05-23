@@ -318,7 +318,7 @@ export async function fetchWikipediaExtract(title: string): Promise<string | und
   let extract = await fromApi('fr.wikipedia.org');
   if (!extract) extract = await fromApi('en.wikipedia.org');
   // Cap raisonnable (quelques paragraphes) pour ne pas noyer la carte.
-  if (extract && extract.length > 1100) extract = extract.slice(0, 1100).replace(/\s+\S*$/, '') + '…';
+  if (extract && extract.length > 2000) extract = extract.slice(0, 2000).replace(/\s+\S*$/, '') + '…';
   if (extract) cacheWikiSet(cacheKey, extract).catch(() => {});
   return extract;
 }
@@ -636,8 +636,8 @@ export async function fetchConceptsByConstraintsLive(constraints: string[], limi
  * « membres » (instances/sous-classes, si c'est une famille) ET son « voisinage »
  * (entités reliées, si c'est un concept précis). Couvre les deux cas d'un coup.
  */
-export async function fetchConceptsForEntry(text: string, limit = 24): Promise<Concept[]> {
-  const qid = await searchEntityId(text);
+export async function fetchConceptsForEntry(text: string, limit = 24, knownQid?: string): Promise<Concept[]> {
+  const qid = (knownQid && /^Q\d+$/.test(knownQid)) ? knownQid : await searchEntityId(text);
   if (!qid) return [];
   const [members, neighbors] = await Promise.all([
     conceptsForResolved([{ text, qid }], limit),
