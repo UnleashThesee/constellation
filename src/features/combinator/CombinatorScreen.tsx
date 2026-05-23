@@ -6,7 +6,7 @@ import { getAdoptedConcepts, saveCombination, saveIdea, getSettings, incrementCo
 import type { SavedConstraint } from '../../types';
 import { useToast } from '../../lib/toast';
 import { generateIdeas, suggestSimilarConcepts, LlmError, type SimilarConceptSuggestion } from '../../services/llm';
-import { fetchCommonNeighborConcepts, fetchConceptsByConstraints, resolveConstraints } from '../../services/wikidata';
+import { fetchCommonNeighborConcepts, fetchConceptsByConstraintsLive, resolveConstraintsLive, searchConcepts } from '../../services/wikidata';
 import { consumePendingCombo, consumePendingConcepts } from '../../lib/pending';
 import { cacheConcept, recordInteraction } from '../../stores/db';
 import type { Concept as ConceptType } from '../../types';
@@ -137,9 +137,9 @@ function ChromaticMixer({ items, byId, mix }: {
   }).filter(Boolean).join(', ');
 
   return (
-    <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', maxWidth: 360, margin: '0 auto' }}>
-      <div style={{ position: 'absolute', inset: -20 }}>
-        <Sunburst size={400} color="var(--cit-butter)" rays={48}/>
+    <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', maxWidth: 190, margin: '0 auto' }}>
+      <div style={{ position: 'absolute', inset: -10 }}>
+        <Sunburst size={210} color="var(--cit-butter)" rays={48}/>
       </div>
       <div style={{
         position: 'absolute', inset: 14, borderRadius: '50%',
@@ -191,7 +191,24 @@ export function CombinatorScreen({ onTabChange }: Props) {
   const [loadedComboId, setLoadedComboId] = useState<string | null>(null);
   const [recentConstraints, setRecentConstraints] = useState<SavedConstraint[]>([]);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  const [extra, setExtra] = useState<Concept[]>([]);
+  const [wikiResults, setWikiResults] = useState<Concept[]>([]);
+  const [searching, setSearching] = useState(false);
   const toast = useToast();
+
+  // Recherche Wikidata live : on peut croiser n'importe quel concept, pas seulement les adoptés
+  useEffect(() => {
+    const v = search.trim();
+    if (v.length < 2) { setWikiResults([]); setSearching(false); return; }
+    let cancelled = false;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try { const r = await searchConcepts(v, 8); if (!cancelled) setWikiResults(r); }
+      catch { if (!cancelled) setWikiResults([]); }
+      finally { if (!cancelled) setSearching(false); }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [search]);
 
   // Placeholder rotatif (3-4 exemples cycliques toutes les 4s)
   const PLACEHOLDERS = [
@@ -231,7 +248,8 @@ export function CombinatorScreen({ onTabChange }: Props) {
     });
   }, []);
 
-  const byId = Object.fromEntries(universe.map(c => [c.id, c]));
+  const allConcepts = [...universe, ...extra];
+  const byId = Object.fromEntries(allConcepts.map(c => [c.id, c]));
   const mix = combinationMix(selection
     .map(s => ({ cats: byId[s.id]?.cats ?? [], weight: s.weight }))
     .filter(s => s.cats.length > 0));
@@ -247,50 +265,17 @@ export function CombinatorScreen({ onTabChange }: Props) {
     if (!n) return;
     setSelection(selection.map(s => ({ ...s, weight: Math.round(100 / n) })));
   };
+  // Ajoute un concept venu de Wikidata (hors univers adopté) à la sélection
+  const addFetched = (c: Concept) => {
+    setExtra(prev => prev.find(x => x.id === c.id) ? prev : [...prev, c]);
+    cacheConcept(c).catch(() => {});
+    add(c.id);
+  };
 
   const available = universe.filter(c =>
     !selection.find(s => s.id === c.id) &&
     (!search || c.name.toLowerCase().includes(search.toLowerCase()))
   );
-
-  // ---- Empty state: not enough concepts ----
-  if (universe.length < 2) {
-    return (
-      <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <CitizenMasthead
-          kicker="Croisez vos"
-          title="CONCEPTS"
-          active="combine"
-          onTabChange={onTabChange}
-          right={<>
-            <Stamp tone="brick" rotate={-4}>0 CONCEPTS EN COURS</Stamp>
-            <Sunburst size={68} color="var(--cit-mustard)"/>
-          </>}
-        />
-        <div style={{ flex: 1, padding: '40px 32px', background: 'var(--cit-paper-2)', display: 'grid', placeItems: 'center' }}>
-          <div style={{
-            padding: '60px 40px', textAlign: 'center', maxWidth: 540,
-            background: 'var(--cit-cream)',
-            border: '3px dashed var(--cit-navy-dk)',
-            boxShadow: '5px 5px 0 var(--cit-navy-dk)',
-          }}>
-            <Sunburst size={80} color="var(--cit-mustard)"/>
-            <h2 className="cit-h1" style={{ fontSize: 32, marginTop: 16, lineHeight: 0.95 }}>
-              Pas assez de concepts<br/>adoptés
-            </h2>
-            <p className="cit-typed" style={{ fontSize: 13, color: 'var(--cit-navy-lt)', marginTop: 12, lineHeight: 1.5 }}>
-              Pour croiser, il faut au moins <strong>2 concepts adoptés</strong> dans votre univers.
-              Allez en adopter quelques-uns avant de revenir ici.
-            </p>
-            <div style={{ marginTop: 18 }}>
-              <CitButton tone="brick" onClick={() => onTabChange?.('swipe')}>★ ALLER AU SWIPE</CitButton>
-            </div>
-          </div>
-        </div>
-        <CitizenFooter right="★ AJOUTEZ 2–5 CONCEPTS · GLISSEZ LES CURSEURS · ADMIREZ L'AMALGAME"/>
-      </div>
-    );
-  }
 
   return (
     <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -310,7 +295,7 @@ export function CombinatorScreen({ onTabChange }: Props) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px 280px', gap: 22, padding: '18px 32px', flex: 1, overflow: 'auto' }}>
         {/* LEFT — selection */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <CitPanel title="Ajouter un concept de votre univers">
+          <CitPanel title="Ajouter un concept (n'importe lequel)">
             <div style={{ position: 'relative', marginBottom: 8 }}>
               <input value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Foucault, BioShock, Kant…"
@@ -328,14 +313,36 @@ export function CombinatorScreen({ onTabChange }: Props) {
                 fontFamily: "'Alfa Slab One', serif", fontSize: 16, color: 'var(--cit-brick)',
               }}>⌕</span>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {available.slice(0, 12).map(c => <ConceptPill key={c.id} concept={c} onClick={() => add(c.id)}/>)}
-              {available.length === 0 && (
-                <div className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', fontStyle: 'italic' }}>
-                  Aucun concept disponible. Adoptez-en d'autres dans le Swipe.
+            {available.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {available.slice(0, 12).map(c => <ConceptPill key={c.id} concept={c} onClick={() => add(c.id)}/>)}
+              </div>
+            )}
+            {(() => {
+              const fresh = wikiResults.filter(r => !selection.find(s => s.id === r.id) && !universe.find(u => u.id === r.id));
+              if (fresh.length === 0 && !searching) return null;
+              return (
+                <div style={{ marginTop: available.length > 0 ? 10 : 0 }}>
+                  <div className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>
+                    ★ WIKIDATA › {searching && <span className="cit-pulse-brick" style={{ color: 'var(--cit-brick)' }}>recherche…</span>}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {fresh.slice(0, 8).map(c => (
+                      <button key={c.id} onClick={() => addFetched(c)} title={c.blurb} style={{
+                        background: 'transparent', border: '1.5px dashed var(--cit-navy-dk)', cursor: 'pointer',
+                        padding: '3px 9px', fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 600,
+                        color: 'var(--cit-navy-dk)',
+                      }}>+ {c.name}</button>
+                    ))}
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })()}
+            {available.length === 0 && wikiResults.length === 0 && !searching && (
+              <div className="cit-typed" style={{ fontSize: 11, color: 'var(--cit-navy-lt)', fontStyle: 'italic', marginTop: 6 }}>
+                Tapez un nom pour croiser n'importe quel concept (Wikidata), ou adoptez-en dans le Swipe.
+              </div>
+            )}
           </CitPanel>
 
           <CitPanel title={
@@ -441,15 +448,15 @@ export function CombinatorScreen({ onTabChange }: Props) {
                 const items = selection
                   .map(s => ({ concept: byId[s.id], weight: s.weight }))
                   .filter(it => it.concept !== undefined) as Array<{ concept: Concept; weight: number }>;
-                const { mappable, unmappable } = resolveConstraints(constraints);
+                const { mappable, unmappable } = await resolveConstraintsLive(constraints);
 
                 // 1. Voisins Wikidata communs aux concepts sélectionnés
                 const qids = selection.map(s => byId[s.id]?.wikidataId).filter((q): q is string => !!q);
                 let wd = qids.length >= 2 ? await fetchCommonNeighborConcepts(qids, 18) : [];
 
-                // 2. Filtre par contraintes mappables Wikidata (SPARQL conjonctif)
+                // 2. Filtre par contraintes mappables Wikidata (SPARQL conjonctif, résolues en direct)
                 if (mappable.length > 0 && wd.length > 0) {
-                  const allowed = await fetchConceptsByConstraints(constraints, 60);
+                  const allowed = await fetchConceptsByConstraintsLive(constraints, 60);
                   const allowedQids = new Set(allowed.map(c => c.wikidataId));
                   wd = wd.filter(c => c.wikidataId && allowedQids.has(c.wikidataId));
                 }
