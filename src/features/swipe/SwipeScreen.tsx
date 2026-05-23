@@ -116,6 +116,41 @@ function CitIconNeutral() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square"><path d="M5 12H19"/></svg>;
 }
 
+// ---- Mini-schémas explicatifs ----
+function SchemaAnchor() {
+  return (
+    <svg width="46" height="30" viewBox="0 0 46 30" fill="none" stroke="var(--cit-navy)" strokeWidth="1.3" style={{ flexShrink: 0 }}>
+      <line x1="23" y1="15" x2="8" y2="6"/><line x1="23" y1="15" x2="39" y2="6"/>
+      <line x1="23" y1="15" x2="8" y2="24"/><line x1="23" y1="15" x2="39" y2="24"/>
+      <circle cx="8" cy="6" r="2.4" fill="var(--cit-navy)" stroke="none"/><circle cx="39" cy="6" r="2.4" fill="var(--cit-navy)" stroke="none"/>
+      <circle cx="8" cy="24" r="2.4" fill="var(--cit-navy)" stroke="none"/><circle cx="39" cy="24" r="2.4" fill="var(--cit-navy)" stroke="none"/>
+      <circle cx="23" cy="15" r="5" fill="var(--cit-brick)" stroke="var(--cit-navy-dk)" strokeWidth="1.5"/>
+    </svg>
+  );
+}
+function SchemaConstraint() {
+  return (
+    <svg width="46" height="30" viewBox="0 0 46 30" fill="none" stroke="var(--cit-navy)" strokeWidth="1.3" style={{ flexShrink: 0 }}>
+      <circle cx="7" cy="6" r="2.3"/><rect x="19" y="3.5" width="5" height="5"/><polygon points="36,3.5 39,9 33,9"/>
+      <path d="M5 13 H41 L27 21 V27 H19 V21 Z" fill="var(--cit-brick)" fillOpacity="0.15" stroke="var(--cit-navy-dk)" strokeWidth="1.4"/>
+    </svg>
+  );
+}
+function SchemaMix({ kind }: { kind: 'inter' | 'mix' }) {
+  return kind === 'inter' ? (
+    <svg width="40" height="26" viewBox="0 0 40 26" fill="none" stroke="var(--cit-navy-dk)" strokeWidth="1.4" style={{ flexShrink: 0 }}>
+      <circle cx="16" cy="13" r="9"/><circle cx="24" cy="13" r="9"/>
+      <ellipse cx="20" cy="13" rx="3" ry="7" fill="var(--cit-brick)" fillOpacity="0.55" stroke="none"/>
+    </svg>
+  ) : (
+    <svg width="40" height="26" viewBox="0 0 40 26" fill="none" stroke="var(--cit-navy-dk)" strokeWidth="1.2" style={{ flexShrink: 0 }}>
+      <rect x="6" y="14" width="6" height="8" fill="var(--cit-navy)" stroke="none"/>
+      <rect x="16" y="7" width="6" height="15" fill="var(--cit-brick)" stroke="none"/>
+      <rect x="26" y="11" width="6" height="11" fill="var(--cit-mustard)" stroke="none"/>
+    </svg>
+  );
+}
+
 function CitCat({ catKey, weight, small }: { catKey: CategoryKey; weight?: number; small?: boolean }) {
   const c = CATEGORIES[catKey];
   return (
@@ -459,22 +494,33 @@ function CibleBanner({ themes, onAdd, onRemove, onWeight, mixThemes, onToggleMix
         <span className="cit-h1" style={{ fontSize: 18, lineHeight: 0.9 }}>CIBLAGE DE LA PIOCHE</span>
         <div style={{ flex: 1 }}/>
         {loading && <span className="cit-condensed cit-pulse-brick" style={{ fontSize: 10, color: 'var(--cit-brick)' }}>★ INTERROGATION WIKIDATA…</span>}
-        <button onClick={onToggleMix} title={mixThemes ? 'Mélange pondéré : tirage proportionnel' : 'Intersection stricte : concepts respectant TOUS les thèmes'} style={{
-          background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', border: '2px solid var(--cit-navy-dk)',
-          padding: '4px 12px', cursor: 'pointer', fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
-          letterSpacing: '.1em', textTransform: 'uppercase',
-        }}>{mixThemes ? '⇆ Mélange pondéré' : '∩ Intersection'}</button>
       </div>
 
-      <p className="cit-typed" style={{ fontSize: 10.5, color: 'var(--cit-navy-lt)', margin: '0 0 8px', fontStyle: 'italic' }}>
-        {mixThemes
-          ? 'Mélange : chaque entrée contribue à la pioche selon son poids (curseurs).'
-          : 'Intersection : on ne garde que les concepts qui respectent toutes les entrées à la fois.'}
-      </p>
+      <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ COMMENT COMBINER VOS ENTRÉES ?</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        {([['inter', '∩ Intersection', 'Concepts respectant TOUTES les entrées à la fois'], ['mix', '⇆ Mélange pondéré', 'Chaque entrée contribue selon son poids (curseurs)']] as const).map(([k, label, sub]) => {
+          const on = (k === 'mix') === mixThemes;
+          return (
+            <button key={k} onClick={() => { if ((k === 'mix') !== mixThemes) onToggleMix(); }} style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
+              background: on ? 'var(--cit-cream)' : 'transparent',
+              border: '2.5px solid var(--cit-navy-dk)',
+              boxShadow: on ? '3px 3px 0 var(--cit-brick)' : 'none',
+              opacity: on ? 1 : 0.55, cursor: 'pointer', padding: '5px 10px',
+            }}>
+              <SchemaMix kind={k}/>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '.06em', color: 'var(--cit-navy-dk)' }}>{label}</span>
+                <span style={{ display: 'block', fontFamily: "'Special Elite', monospace", fontSize: 9.5, color: 'var(--cit-navy-lt)', lineHeight: 1.2 }}>{sub}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div>
-          <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ THÈMES (familles)</div>
+          <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ THÈMES — une famille → ses membres</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               value={input}
@@ -490,7 +536,10 @@ function CibleBanner({ themes, onAdd, onRemove, onWeight, mixThemes, onToggleMix
           </div>
         </div>
         <div>
-          <div className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>⚓ CONCEPTS ANCRÉS (voisinage)</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+            <SchemaAnchor/>
+            <span className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)' }}>⚓ ANCRÉS — un concept précis → son voisinage</span>
+          </div>
           <InlineAddConcept onPick={onAddAnchor} placeholder="⚓ Ancrer un concept : Kant, Daft Punk…"/>
         </div>
       </div>
@@ -717,8 +766,12 @@ function ConstraintPanel({ value, onSet }: { value: string; onSet: (v: string) =
   const [input, setInput] = useState('');
   return (
     <CitPanel title="Contrainte de la pioche">
-      <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 6, letterSpacing: '.04em' }}>
-        Ne montrer qu'un type, quel que soit le mode (ex. personnages, objets, films).
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+        <SchemaConstraint/>
+        <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', lineHeight: 1.35 }}>
+          Ne garde qu'un <strong>type</strong> de chose, quel que soit le mode (ex. personnages, objets, films).
+          <br/><span style={{ color: 'var(--cit-brick)' }}>≠ ancrage</span> (qui part d'un concept précis vers son voisinage).
+        </div>
       </div>
       {value ? (
         <span style={{
