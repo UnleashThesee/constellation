@@ -159,7 +159,20 @@ function CheckBox({ checked, color, label, count, onClick }: {
   );
 }
 
-function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
+function IcoEdges() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="5" cy="6" r="2.4"/><circle cx="19" cy="9" r="2.4"/><circle cx="10" cy="19" r="2.4"/><path d="M7 7L17 8.5M8.5 17L6 8.5M12 18L17.5 11"/></svg>;
+}
+function IcoStar() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1"><path d="M12 3l2.6 5.7 6.2.7-4.6 4.2 1.3 6.1L12 16.9 6.5 19.9l1.3-6.1L3.2 9.4l6.2-.7z"/></svg>;
+}
+function IcoSkip() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 5v14M11 5l8 7-8 7z"/></svg>;
+}
+function IcoReject() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M6 6L18 18M18 6L6 18"/></svg>;
+}
+
+function Toggle({ label, on, onClick, icon }: { label: string; on: boolean; onClick: () => void; icon?: React.ReactNode }) {
   return (
     <button onClick={onClick} style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -170,7 +183,10 @@ function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: (
       letterSpacing: '.08em', color: 'var(--cit-navy-dk)',
       boxShadow: on ? '2px 2px 0 var(--cit-navy-dk)' : 'none',
     }}>
-      <span>{label}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+        {icon && <span style={{ display: 'inline-flex', width: 15, height: 15 }}>{icon}</span>}
+        {label}
+      </span>
       <span style={{
         width: 32, height: 16, border: '2px solid var(--cit-navy-dk)',
         background: on ? 'var(--cit-navy-dk)' : 'var(--cit-paper-dk)',
@@ -247,10 +263,10 @@ function MapFilters({ filters, setFilters, search, setSearch, nodes, personalCat
 
         <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ Affichage</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
-          <Toggle label="Favoris uniquement"  on={filters.favsOnly}     onClick={() => setFilters(f => ({ ...f, favsOnly: !f.favsOnly }))}/>
-          <Toggle label="Inclure les rejetés" on={filters.showRejected} onClick={() => setFilters(f => ({ ...f, showRejected: !f.showRejected }))}/>
-          <Toggle label="Inclure les passés"  on={filters.showSkipped}  onClick={() => setFilters(f => ({ ...f, showSkipped: !f.showSkipped }))}/>
-          <Toggle label="Voir les liaisons"   on={filters.showEdges}    onClick={() => setFilters(f => ({ ...f, showEdges: !f.showEdges }))}/>
+          <Toggle icon={<IcoEdges/>}  label="Voir les liaisons"   on={filters.showEdges}    onClick={() => setFilters(f => ({ ...f, showEdges: !f.showEdges }))}/>
+          <Toggle icon={<IcoStar/>}   label="Favoris uniquement"  on={filters.favsOnly}     onClick={() => setFilters(f => ({ ...f, favsOnly: !f.favsOnly }))}/>
+          <Toggle icon={<IcoSkip/>}   label="Inclure les passés"  on={filters.showSkipped}  onClick={() => setFilters(f => ({ ...f, showSkipped: !f.showSkipped }))}/>
+          <Toggle icon={<IcoReject/>} label="Inclure les rejetés" on={filters.showRejected} onClick={() => setFilters(f => ({ ...f, showRejected: !f.showRejected }))}/>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>

@@ -270,7 +270,6 @@ export function SettingsScreen({ onTabChange }: Props) {
   const [llmProvider, setLlmProvider] = useState('claude');
   const [llmKey, setLlmKey] = useState('');
   const [defaultMode, setDefaultMode] = useState('explore');
-  const [serendipity, setSerendipity] = useState(42);
   const [autoLink, setAutoLink] = useState(true);
   const [theme, setTheme] = useState('citizen');
   const [notifs, setNotifs] = useState({ daily: true, weekly: false, contrast: true, idea: true });
@@ -446,12 +445,6 @@ export function SettingsScreen({ onTabChange }: Props) {
                 { value: 'cross', label: 'CROISEMENT' },
               ]}/>
             </FormRow>
-            <div style={{ marginTop: 12 }}>
-              <FormRow label="Coefficient de sérendipité" hint="0% = strictement votre univers · 100% = chaos total.">
-                <Slider value={serendipity} onChange={setSerendipity}/>
-              </FormRow>
-            </div>
-
             <div style={{ marginTop: 12 }}>
               <FormRow label={`Délai avant ré-apparition d'un « passé » · ${skipDelay} jours`} hint="Plus court = vous reverrez vite les concepts mis de côté.">
                 <Slider value={skipDelay} onChange={setSkipDelay} min={1} max={90} unit=" j"/>

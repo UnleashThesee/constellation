@@ -187,15 +187,8 @@ export function ConceptDetailModal({ concept, open, onClose }: Props) {
             <CitButton tone={favorite ? 'brick' : 'butter'} onClick={onFavoriteToggle} style={{ width: '100%', justifyContent: 'center' }}>
               {favorite ? '★ Favori activé' : '☆ Marquer favori'}
             </CitButton>
-            {concept.wikidataId && (
-              <a href={`https://www.wikidata.org/wiki/${concept.wikidataId}`} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
-                <CitButton tone="navy" size="sm" style={{ width: '100%', justifyContent: 'center' }}>
-                  Ouvrir sur Wikidata ↗
-                </CitButton>
-              </a>
-            )}
             <a href={`https://fr.wikipedia.org/wiki/${encodeURIComponent(concept.name.replace(/ /g, '_'))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
-              <CitButton size="sm" style={{ width: '100%', justifyContent: 'center' }}>
+              <CitButton tone="navy" size="sm" style={{ width: '100%', justifyContent: 'center' }}>
                 Wikipédia ↗
               </CitButton>
             </a>

@@ -4,7 +4,7 @@ import { Sunburst, Stamp, StarBurst, PixelDie, Aster, SkeletonCard } from '../..
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
-import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive } from '../../services/wikidata';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsByConstraintsLive, searchConcepts } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
@@ -45,10 +45,10 @@ const FALLBACK_CONCEPTS: Concept[] = [
   },
 ];
 
-const MODES: Array<{ id: SwipeMode; label: string }> = [
-  { id: 'random',   label: 'Aléatoire' },
-  { id: 'targeted', label: 'Ciblé' },
-  { id: 'contrast', label: 'Contraste' },
+const MODES: Array<{ id: SwipeMode; label: string; hint: string }> = [
+  { id: 'random',   label: 'Aléatoire', hint: 'Tirage au hasard, sans tenir compte de votre profil. Pour découvrir large.' },
+  { id: 'targeted', label: 'Ciblé',     hint: 'Vos thèmes (résolus en direct sur Wikidata) et/ou un concept ancré pilotent la pioche.' },
+  { id: 'contrast', label: 'Contraste', hint: 'Le Bureau cherche ce qui vous dérange : loin de tout, ou dans le voisinage de vos adoptés / rejetés.' },
 ];
 
 /** Entrelace plusieurs listes proportionnellement à des poids (mode « mélange »). */
@@ -358,13 +358,14 @@ function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: S
   const isContrast = mode === 'contrast';
   const bg = isContrast ? 'var(--cit-brick)' : 'var(--cit-paper-dk)';
   const labelColor = isContrast ? 'var(--cit-cream)' : 'var(--cit-navy-dk)';
+  const activeHint = MODES.find(m => m.id === mode)?.hint ?? '';
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 10,
       padding: '10px 32px',
       background: bg,
       borderBottom: isContrast ? '3px solid var(--cit-navy-dk)' : '2px solid var(--cit-navy-dk)',
     }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <span className="cit-condensed" style={{ fontSize: 11, color: labelColor, whiteSpace: 'nowrap' }}>
         ★ Procédure ›
       </span>
@@ -399,6 +400,11 @@ function ModeBar({ mode, setMode, queueSize }: { mode: SwipeMode; setMode: (m: S
           FILE : <span style={{ color: 'var(--cit-brick)', fontWeight: 700 }}>{queueSize}</span>
         </span>
       )}
+    </div>
+    <p className="cit-typed" style={{
+      margin: '7px 0 0', fontSize: 11.5, lineHeight: 1.4,
+      color: isContrast ? 'var(--cit-butter)' : 'var(--cit-navy-lt)',
+    }}>{activeHint}</p>
     </div>
   );
 }
@@ -527,6 +533,62 @@ function ContrasteBanner({ sub, onSet }: { sub: ContrastSub; onSet: (s: Contrast
   );
 }
 
+/** Ajout inline d'un concept (toute procédure) : recherche Wikidata + insertion en tête de pioche. */
+function InlineAddConcept({ onPick }: { onPick: (c: Concept) => void }) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<Concept[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const v = q.trim();
+    if (v.length < 2) { setResults([]); setBusy(false); return; }
+    let cancelled = false;
+    setBusy(true);
+    const t = setTimeout(async () => {
+      try { const r = await searchConcepts(v, 6); if (!cancelled) setResults(r); }
+      catch { if (!cancelled) setResults([]); }
+      finally { if (!cancelled) setBusy(false); }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [q]);
+  const pick = (c: Concept) => { onPick(c); setQ(''); setResults([]); setOpen(false); };
+  return (
+    <div style={{ position: 'relative', marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          value={q}
+          onChange={e => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="✚ Ajouter votre propre concept (ex. Spinoza, le jazz modal…)"
+          style={{
+            flex: 1, padding: '7px 12px', border: '2.5px solid var(--cit-navy-dk)',
+            background: 'var(--cit-cream)', fontFamily: "'Special Elite', monospace",
+            fontSize: 13, color: 'var(--cit-navy-dk)',
+          }}/>
+        {busy && <span className="cit-condensed cit-pulse-brick" style={{ fontSize: 10, color: 'var(--cit-brick)', whiteSpace: 'nowrap' }}>★ RECHERCHE…</span>}
+      </div>
+      {open && results.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+          background: 'var(--cit-cream)', border: '2.5px solid var(--cit-navy-dk)',
+          boxShadow: '4px 4px 0 var(--cit-navy-dk)', maxHeight: 260, overflow: 'auto',
+        }}>
+          {results.map(c => (
+            <button key={c.id} onClick={() => pick(c)} style={{
+              display: 'block', width: '100%', textAlign: 'left', background: 'transparent',
+              border: 'none', borderBottom: '1px dashed var(--cit-navy-dk)', cursor: 'pointer',
+              padding: '7px 12px', fontFamily: "'Oswald', sans-serif",
+            }}>
+              <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--cit-navy-dk)' }}>{c.name}</span>
+              {c.blurb && <span style={{ display: 'block', fontSize: 10.5, color: 'var(--cit-navy-lt)', fontFamily: "'Special Elite', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.blurb}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ScorePanel({ counts }: { counts: { valid: number; reject: number; skip: number; favs: number } }) {
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long' });
   const rows: Array<[string, number, string]> = [
@@ -605,6 +667,8 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const [incognito, setIncognito] = useState(false);
   const incognitoRef = useRef(incognito);
   incognitoRef.current = incognito;
+  const [serendipity, setSerendipity] = useState(0);
+  const changeSerendipity = (v: number) => { setSerendipity(v); saveSettings({ serendipity: v }).catch(() => {}); };
 
   const swipe = useSwipeDeck(FALLBACK_CONCEPTS, () => setDetailOpen(true), () => incognitoRef.current);
   const [rawDeck, setRawDeck] = useState<Concept[]>([]);
@@ -673,6 +737,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     getSettings().then(s => {
       if (s?.semanticContrastEnabled) setSemanticEnabled(true);
       if (s?.incognito) setIncognito(true);
+      if (typeof s?.serendipity === 'number') setSerendipity(s.serendipity);
     });
     getAllConstraints().then(cs => setSavedThemes(cs.sort((a, b) => b.useCount - a.useCount).map(c => c.text)));
   }, []);
@@ -798,6 +863,13 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           }
         }
 
+        // Sérendipité : injecte une dose de hasard dans la pioche ciblée/contraste
+        if (serendipity > 0 && rawDeck.length > 0 && fresh.length > 0 && fresh !== rawDeck) {
+          const freshIds = new Set(fresh.map(c => c.id));
+          const randomPool = [...rawDeck].filter(c => !freshIds.has(c.id)).sort(() => Math.random() - 0.5);
+          if (randomPool.length > 0) fresh = interleaveWeighted([fresh, randomPool], [Math.max(1, 100 - serendipity), serendipity]);
+        }
+
         fresh = fresh.filter(c => !excluded.has(c.id));
         if (!cancelled) {
           if (fresh.length >= 1) {
@@ -814,7 +886,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       }
     })();
     return () => { cancelled = true; };
-  }, [mode, themes, mixThemes, explorationAnchorId, contrastSub, rawDeck.length, adopted.length]);
+  }, [mode, themes, mixThemes, explorationAnchorId, contrastSub, serendipity, rawDeck.length, adopted.length]);
 
   // #13 — Contraste sémantique réel (opt-in) : on classe le pool par distance
   // cosinus croissante au barycentre sémantique des concepts adoptés. Les plus
@@ -851,11 +923,28 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const current = swipe.current;
   const anchor = adopted.find(c => c.id === explorationAnchorId) ?? null;
 
+  // Ajout inline d'un concept (toute procédure) → tête de pioche, prêt à être jugé
+  const addOwnConcept = async (c: Concept) => {
+    await cacheConcept(c);
+    swipe.setDeck([c, ...swipe.deck.filter(x => x.id !== c.id)]);
+    toast.show({ tone: 'success', title: 'Concept ajouté', body: `${c.name} est placé en tête de votre pioche.` });
+  };
+
   // Sync favorite state when current changes
   useEffect(() => {
     if (!current) { setCurrentFavorite(false); return; }
     getCachedConcept(current.id).then(c => setCurrentFavorite(!!c?.isFavorite));
   }, [current?.id]);
+
+  // Raccourci clavier « F » → ouvre/ferme la fiche complète
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if ((e.key === 'f' || e.key === 'F') && current) setDetailOpen(o => !o);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [current]);
 
   // Per-mode card props
   const cardProps = (() => {
@@ -962,11 +1051,13 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
                 <strong>{contextualAlert.text}</strong>
               </p>
             ) : (
-              <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>
-                {mode === 'random'   && <>Mode <strong>ALÉATOIRE</strong>. Le Bureau tire sans tenir compte de votre profil.</>}
-                {mode === 'targeted' && <>Mode <strong>CIBLÉ</strong>. Écrivez des thèmes (résolus via Wikidata) et/ou ancrez un concept. {mixThemes ? 'Tirage mélangé pondéré.' : 'Intersection stricte de tous les thèmes.'}</>}
-                {mode === 'contrast' && <>Mode <strong>CONTRASTE</strong>. {CONTRAST_SUBS.find(s => s.id === contrastSub)?.hint}.</>}
-              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 3, columnGap: 8, fontFamily: "'Special Elite', monospace", fontSize: 11, color: 'var(--cit-navy-dk)' }}>
+                <span style={{ color: 'var(--cit-navy)', fontWeight: 700 }}>→</span><span>Adopter</span>
+                <span style={{ color: 'var(--cit-brick)', fontWeight: 700 }}>←</span><span>Rejeter</span>
+                <span style={{ color: 'var(--cit-rust)', fontWeight: 700 }}>↑</span><span>Favori</span>
+                <span style={{ color: 'var(--cit-navy-lt)', fontWeight: 700 }}>↓</span><span>Neutre (revu plus tard)</span>
+                <span style={{ fontWeight: 700 }}>F</span><span>Fiche complète</span>
+              </div>
             )}
             {mode === 'contrast' && contrastSub === 'far' && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--cit-navy-dk)' }}>
@@ -989,10 +1080,24 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
               </div>
             )}
           </CitPanel>
+          <CitPanel title="Sérendipité">
+            <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 6 }}>
+              Dose de hasard injectée dans la pioche.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="range" min={0} max={100} value={serendipity} onChange={e => changeSerendipity(+e.target.value)} style={{ flex: 1 }}/>
+              <span className="cit-h1" style={{ fontSize: 18, color: 'var(--cit-brick)', textShadow: 'none', minWidth: 40, textAlign: 'right' }}>{serendipity}%</span>
+            </div>
+            <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginTop: 4 }}>
+              {serendipity === 0 ? 'Strictement vos critères.' : serendipity >= 80 ? 'Chaos quasi total.' : 'Quelques surprises hors-cadre.'}
+              {mode === 'random' && ' (sans effet en Aléatoire)'}
+            </div>
+          </CitPanel>
         </div>
 
         {/* Card column */}
         <div>
+          <InlineAddConcept onPick={addOwnConcept}/>
           <div style={{ position: 'relative', padding: mode === 'contrast' ? '24px 18px 0' : 0 }}>
             {loading && !current ? (
               <SkeletonCard />
@@ -1031,7 +1136,22 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
             }}/>
           </div>
 
-          <div style={{ marginTop: 20 }}>
+          {current && (
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center' }}>
+              <button onClick={() => setDetailOpen(true)} style={{
+                background: 'var(--cit-navy-dk)',
+                color: 'var(--cit-butter)',
+                border: '2.5px solid var(--cit-navy-dk)',
+                padding: '9px 22px',
+                fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700,
+                letterSpacing: '.14em', textTransform: 'uppercase',
+                cursor: 'pointer',
+                boxShadow: '3px 3px 0 var(--cit-brick)',
+              }}>★ Voir la fiche complète ↗ <span style={{ opacity: 0.65, fontSize: 11 }}>· touche F</span></button>
+            </div>
+          )}
+
+          <div style={{ marginTop: 16 }}>
             <CitizenActions onAction={(v) => {
               if (v === 'back') {
                 if (!swipe.canBack) {
@@ -1046,21 +1166,6 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
               }
             }}/>
           </div>
-
-          {current && (
-            <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center' }}>
-              <button onClick={() => setDetailOpen(true)} style={{
-                background: 'transparent',
-                color: 'var(--cit-navy-dk)',
-                border: '2px solid var(--cit-navy-dk)',
-                padding: '6px 14px',
-                fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
-                letterSpacing: '.14em', textTransform: 'uppercase',
-                cursor: 'pointer',
-                boxShadow: '2px 2px 0 var(--cit-navy-dk)',
-              }}>★ Voir la fiche complète ↗</button>
-            </div>
-          )}
 
           {mode === 'random' && (
             <div className="cit-script" style={{

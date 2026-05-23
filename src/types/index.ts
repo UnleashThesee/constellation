@@ -78,6 +78,7 @@ export interface AppSettings {
   chromaticEnabled?: boolean;
   operatorName?: string;
   skipDelayDays?: number;
+  serendipity?: number;
   lastBoostAt?: number;
   totalUsageMs?: number;
   hintsSeen?: Record<string, boolean>;
