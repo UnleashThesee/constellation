@@ -444,35 +444,53 @@ export async function fetchConceptById(qid: string): Promise<Concept | null> {
  * Récupère ~500 Q-IDs Wikidata triés par notoriété (count de sitelinks Wikipedia).
  * Cache TTL 30j. Utilisé comme pool de tirage du mode Aléatoire.
  */
-const NOTORIETY_SPARQL = `
-SELECT ?item WHERE {
-  ?item wikibase:sitelinks ?sl .
-  FILTER(?sl > 80)
-  VALUES ?type { wd:Q5 wd:Q571 wd:Q11424 wd:Q7889 wd:Q482994 wd:Q386724 wd:Q15619164 wd:Q179805 }
-  ?item wdt:P31/wdt:P279* ?type .
-}
-ORDER BY DESC(?sl)
-LIMIT 500`;
+// Catégories diverses pour la pioche aléatoire. Une requête par catégorie
+// (scopée par type/occupation → rapide et fiable, contrairement à un scan global
+// de tous les items à sitelinks). [propriété, QID].
+const NOTORIETY_CATS: Array<[string, string]> = [
+  ['P106', 'Q4964182'],  // philosophe
+  ['P106', 'Q36180'],    // écrivain·e
+  ['P106', 'Q901'],      // scientifique
+  ['P106', 'Q639669'],   // musicien·ne
+  ['P106', 'Q1028181'],  // peintre
+  ['P106', 'Q2526255'],  // réalisateur·rice
+  ['P106', 'Q49757'],    // poète·sse
+  ['P106', 'Q82955'],    // politicien·ne
+  ['P31',  'Q11424'],    // film
+  ['P31',  'Q7889'],     // jeu vidéo
+  ['P31',  'Q7725634'],  // œuvre littéraire
+  ['P31',  'Q571'],      // livre
+];
 
+/**
+ * Construit un large pool diversifié pour la pioche aléatoire, via plusieurs
+ * requêtes légères (une par catégorie), résilientes (Promise.allSettled). Le
+ * seuil de notoriété est tiré au hasard pour varier le « niveau de célébrité »
+ * d'une construction de cache à l'autre.
+ */
 export async function fetchNotorietyBase(): Promise<string[]> {
-  const cacheKey = 'notoriety-base-v1';
+  const cacheKey = 'notoriety-base-v2';
   const cached = await cacheWikiGet<string[]>(cacheKey);
   if (cached && cached.length > 0) return cached;
-  try {
-    const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(NOTORIETY_SPARQL)}&format=json`;
-    const res = await fetchWithRetry(url, { headers: { 'Accept': 'application/sparql-results+json' } });
-    if (!res.ok) return [];
-    const data = await res.json();
-    type Binding = { item?: { value: string } };
-    const bindings = (data.results?.bindings ?? []) as Binding[];
-    const ids = bindings
-      .map(b => b.item?.value?.split('/').pop())
-      .filter((x): x is string => !!x);
-    if (ids.length > 0) await cacheWikiSet(cacheKey, ids);
-    return ids;
-  } catch {
-    return [];
-  }
+
+  const floor = [12, 25, 45][Math.floor(Math.random() * 3)];
+  const queryFor = ([prop, qid]: [string, string]) => `
+SELECT ?item WHERE {
+  ?item wdt:${prop}${prop === 'P31' ? '/wdt:P279*' : ''} wd:${qid} ;
+        wikibase:sitelinks ?sl .
+  FILTER(?sl > ${floor})
+}
+ORDER BY DESC(?sl)
+LIMIT 80`;
+
+  const cats = Array.from(new Set(NOTORIETY_CATS.map(c => c.join(':')))).map(s => s.split(':') as [string, string]);
+  const lists = await Promise.allSettled(cats.map(async cat => {
+    const rows = await sparql<{ item?: { value: string } }>(queryFor(cat));
+    return rows.map(b => b.item?.value?.split('/').pop()).filter((x): x is string => !!x);
+  }));
+  const ids = Array.from(new Set(lists.flatMap(r => r.status === 'fulfilled' ? r.value : [])));
+  if (ids.length > 0) await cacheWikiSet(cacheKey, ids).catch(() => {});
+  return ids;
 }
 
 export async function fetchRandomConcepts(count = 5): Promise<Concept[]> {
