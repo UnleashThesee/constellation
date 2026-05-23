@@ -218,6 +218,8 @@ function ThemeSwatch({ name, sub, preview, active, onClick }: {
 
 function DemolishModal({ open, onCancel, onConfirm }: { open: boolean; onCancel: () => void; onConfirm: () => void }) {
   const [text, setText] = useState('');
+  // Comparaison insensible aux accents et à la casse : « DEMOLIR » ou « démolir » conviennent.
+  const ok = text.trim().normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase() === 'DEMOLIR';
   if (!open) return null;
   return (
     <div style={{
@@ -235,9 +237,9 @@ function DemolishModal({ open, onCancel, onConfirm }: { open: boolean; onCancel:
         </div>
         <p className="cit-typed" style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--cit-cream)' }}>
           Cette action efface tous vos concepts adoptés, vos interactions et votre profil.
-          Tapez <strong style={{ color: 'var(--cit-butter)' }}>DÉMOLIR</strong> pour confirmer.
+          Tapez <strong style={{ color: 'var(--cit-butter)' }}>DEMOLIR</strong> pour confirmer.
         </p>
-        <input value={text} onChange={e => setText(e.target.value)} placeholder="DÉMOLIR" style={{
+        <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && ok) onConfirm(); }} placeholder="DEMOLIR" autoFocus style={{
           width: '100%', boxSizing: 'border-box', marginTop: 12,
           padding: '10px 14px',
           border: '2.5px solid var(--cit-cream)',
@@ -246,14 +248,14 @@ function DemolishModal({ open, onCancel, onConfirm }: { open: boolean; onCancel:
         }}/>
         <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end' }}>
           <CitButton tone="navy" onClick={onCancel}>Annuler</CitButton>
-          <button disabled={text !== 'DÉMOLIR'} onClick={onConfirm} style={{
-            background: text === 'DÉMOLIR' ? 'var(--cit-cream)' : 'var(--cit-paper-dk)',
+          <button disabled={!ok} onClick={onConfirm} style={{
+            background: ok ? 'var(--cit-cream)' : 'var(--cit-paper-dk)',
             color: 'var(--cit-brick)',
             border: '3px solid var(--cit-navy-dk)',
             padding: '10px 18px',
             fontFamily: "'Alfa Slab One', serif", fontSize: 16,
-            cursor: text === 'DÉMOLIR' ? 'pointer' : 'not-allowed',
-            opacity: text === 'DÉMOLIR' ? 1 : 0.5,
+            cursor: ok ? 'pointer' : 'not-allowed',
+            opacity: ok ? 1 : 0.5,
             textTransform: 'uppercase', letterSpacing: '.04em',
           }}>★ DÉMOLIR</button>
         </div>

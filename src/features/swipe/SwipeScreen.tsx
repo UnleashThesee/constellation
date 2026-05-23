@@ -865,25 +865,12 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   };
   useEffect(() => { refreshTodayCounts(); }, [swipe.counts, currentFavorite]);
 
-  // Alerte bulle contextuelle : palier ou saturation catégorie
+  // Alerte bulle contextuelle : uniquement les paliers (positifs). Pas d'alerte de saturation.
   const contextualAlert = (() => {
     const totalAdopted = adopted.length;
     if (totalAdopted >= 200 && totalAdopted < 210) return { tone: 'milestone' as const, text: `★ Palier atteint : ${totalAdopted} concepts adoptés !` };
     if (totalAdopted >= 100 && totalAdopted < 110) return { tone: 'milestone' as const, text: `★ Cap des 100 concepts franchi !` };
     if (totalAdopted >= 50 && totalAdopted < 55) return { tone: 'milestone' as const, text: `★ Cap des 50 concepts. Pensez au Boost.` };
-    // Détection saturation : la cat dominante > 50% des cats adoptées
-    if (adopted.length >= 10) {
-      const catCount: Record<string, number> = {};
-      adopted.forEach(c => c.cats.forEach(([k, w]) => { catCount[k] = (catCount[k] ?? 0) + w; }));
-      const total = Object.values(catCount).reduce((s, v) => s + v, 0);
-      const [topKey, topVal] = (Object.entries(catCount).sort((a, b) => b[1] - a[1])[0] ?? ['', 0]) as [string, number];
-      if (total > 0 && topVal / total > 0.5) {
-        return {
-          tone: 'saturation' as const,
-          text: `Saturation ${CATEGORIES[topKey as CategoryKey]?.label ?? topKey} ${Math.round((topVal / total) * 100)}%. Essayez le mode Contraste.`,
-        };
-      }
-    }
     return null;
   })();
 
@@ -1264,7 +1251,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         {/* Left panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <ScorePanel counts={todayCounts}/>
-          <CitPanel title="La procédure" accent={contextualAlert?.tone === 'saturation' ? 'brick' : 'butter'}>
+          <CitPanel title="La procédure" accent="butter">
             <p className="cit-typed" style={{ fontSize: 11.5, lineHeight: 1.55, margin: 0, color: 'var(--cit-navy-dk)' }}>
               {mode === 'random' && <><strong>ALÉATOIRE.</strong> Le Bureau tire au hasard dans tout le catalogue, sans tenir compte de votre profil. Pour découvrir large.</>}
               {mode === 'targeted' && <><strong>CIBLÉ.</strong> Écrivez ce qui vous intéresse (une famille comme « guerre » ou un concept précis comme « Kant ») : le Bureau pioche les concepts liés. Filtrez par type avec la contrainte à droite.</>}
@@ -1273,8 +1260,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
             {contextualAlert && (
               <p className="cit-typed" style={{
                 fontSize: 11, lineHeight: 1.4, margin: '8px 0 0', padding: '6px 8px',
-                background: contextualAlert.tone === 'saturation' ? 'var(--cit-brick)' : 'var(--cit-butter)',
-                color: contextualAlert.tone === 'saturation' ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
+                background: 'var(--cit-butter)', color: 'var(--cit-navy-dk)',
                 border: '1.5px solid var(--cit-navy-dk)',
               }}>
                 <strong>{contextualAlert.text}</strong>
