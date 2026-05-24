@@ -15,6 +15,38 @@ import type { Concept, CategoryKey, ConceptLink, PersonalCategory, Tag } from '.
 
 interface Props { onTabChange?: (id: string) => void }
 
+// ---- Comparaison « univers d'un ami » (démo : concepts fictifs) ----
+const FRIEND_NAME = 'Camille · démo';
+type FriendEntry = { name: string; cats: Array<[CategoryKey, number]>; verdict: 'adopted' | 'rejected' };
+const FRIEND_UNIVERSE: FriendEntry[] = [
+  { name: 'Michel Foucault', cats: [['philosophie', 0.7], ['histoire', 0.3]], verdict: 'adopted' },
+  { name: 'Friedrich Nietzsche', cats: [['philosophie', 1]], verdict: 'adopted' },
+  { name: 'Hannah Arendt', cats: [['philosophie', 0.6], ['histoire', 0.4]], verdict: 'adopted' },
+  { name: 'Jorge Luis Borges', cats: [['litterature', 0.8], ['philosophie', 0.2]], verdict: 'adopted' },
+  { name: 'Italo Calvino', cats: [['litterature', 1]], verdict: 'adopted' },
+  { name: 'Virginia Woolf', cats: [['litterature', 1]], verdict: 'adopted' },
+  { name: 'David Lynch', cats: [['cinema', 1]], verdict: 'adopted' },
+  { name: 'Stanley Kubrick', cats: [['cinema', 1]], verdict: 'adopted' },
+  { name: 'Hayao Miyazaki', cats: [['cinema', 0.8], ['arts', 0.2]], verdict: 'adopted' },
+  { name: 'Aphex Twin', cats: [['musique', 1]], verdict: 'adopted' },
+  { name: 'Jean-Sébastien Bach', cats: [['musique', 1]], verdict: 'adopted' },
+  { name: 'Dark Souls', cats: [['jeuvideo', 0.8], ['arts', 0.2]], verdict: 'adopted' },
+  { name: 'Carl Gustav Jung', cats: [['humaines', 0.7], ['philosophie', 0.3]], verdict: 'adopted' },
+  { name: 'Fernand Braudel', cats: [['histoire', 0.6], ['humaines', 0.4]], verdict: 'adopted' },
+  { name: 'Marie Curie', cats: [['sciences', 1]], verdict: 'adopted' },
+  { name: 'Marvel Cinematic Universe', cats: [['cinema', 1]], verdict: 'rejected' },
+  { name: 'Téléréalité', cats: [['humaines', 1]], verdict: 'rejected' },
+];
+const normName = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, ' ').trim();
+// Position déterministe (à partir du nom) pour les nœuds fantômes de l'ami
+function hashPos(s: string): { x: number; y: number } {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  const a = (h >>> 0) / 4294967295;
+  const b = (Math.imul((h ^ 0x9e3779b9) >>> 0, 2654435761) >>> 0) / 4294967295;
+  return { x: 8 + a * 84, y: 8 + b * 84 };
+}
+
 interface MapNode {
   concept: Concept;
   x: number; y: number;
@@ -214,7 +246,7 @@ interface Filters {
 
 type NodeStatus = 'adopted' | 'rejected' | 'skipped';
 
-function MapFilters({ filters, setFilters, search, setSearch, nodes, personalCats, tags, conceptToPersonalCats, conceptToTags }: {
+function MapFilters({ filters, setFilters, search, setSearch, nodes, personalCats, tags, conceptToPersonalCats, conceptToTags, compareFriend, onToggleCompare, friendCompare }: {
   filters: Filters;
   setFilters: (f: Filters | ((p: Filters) => Filters)) => void;
   search: string; setSearch: (s: string) => void;
@@ -223,6 +255,9 @@ function MapFilters({ filters, setFilters, search, setSearch, nodes, personalCat
   tags: Tag[];
   conceptToPersonalCats: Map<string, Set<string>>;
   conceptToTags: Map<string, Set<string>>;
+  compareFriend: boolean;
+  onToggleCompare: () => void;
+  friendCompare: { common: FriendEntry[]; onlyFriend: FriendEntry[]; onlyYou: Concept[]; commonRejected: FriendEntry[]; similarity: number };
 }) {
   return (
     <div style={{
@@ -242,6 +277,39 @@ function MapFilters({ filters, setFilters, search, setSearch, nodes, personalCat
       </div>
 
       <div style={{ padding: '12px 14px' }}>
+        {/* Comparaison avec l'univers d'un ami (démo) */}
+        <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '2px dashed var(--cit-navy-dk)' }}>
+          <Toggle icon={<span style={{ fontSize: 13 }}>👥</span>} label="Comparer à un ami" on={compareFriend} onClick={onToggleCompare}/>
+          {compareFriend && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span className="cit-h1" style={{ fontSize: 26, color: 'var(--cit-rust)', textShadow: 'none', lineHeight: 0.9 }}>{friendCompare.similarity}%</span>
+                <span className="cit-condensed" style={{ fontSize: 9.5, color: 'var(--cit-navy-lt)' }}>de ressemblance · {FRIEND_NAME}</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 8 }}>
+                {([['En commun', friendCompare.common.length, 'var(--cit-navy)'], ['Que vous', friendCompare.onlyYou.length, 'var(--cit-navy-lt)'], ["Que l'ami", friendCompare.onlyFriend.length, 'var(--cit-rust)'], ['Rejets communs', friendCompare.commonRejected.length, 'var(--cit-brick)']] as const).map(([l, v, c]) => (
+                  <div key={l} style={{ border: '2px solid var(--cit-navy-dk)', padding: '3px 6px', background: 'var(--cit-paper)' }}>
+                    <div className="cit-h1" style={{ fontSize: 18, color: c, textShadow: 'none', lineHeight: 1 }}>{v}</div>
+                    <div className="cit-condensed" style={{ fontSize: 8.5, color: 'var(--cit-navy-lt)' }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+              {friendCompare.common.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>★ Concepts communs</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {friendCompare.common.slice(0, 8).map(f => (
+                      <span key={f.name} style={{ fontFamily: "'Oswald', sans-serif", fontSize: 9.5, fontWeight: 600, padding: '1px 6px', background: 'var(--cit-navy-dk)', color: 'var(--cit-cream)' }}>{f.name}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="cit-typed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)', marginTop: 8, fontStyle: 'italic', lineHeight: 1.35 }}>
+                Sur la carte : ⚪ liseré pointillé = concept commun · 👥 = univers de l'ami superposé.
+              </div>
+            </div>
+          )}
+        </div>
         <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 4 }}>★ Recherche</div>
         <div style={{ position: 'relative', marginBottom: 14 }}>
           <input value={search} onChange={e => setSearch(e.target.value)}
@@ -582,13 +650,15 @@ function NodeDetailPanel({ node, edges, allNodes, status, links, linkingFrom, on
   );
 }
 
-function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fullscreen, onFullscreenToggle }: {
+function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fullscreen, onFullscreenToggle, friendNodes, commonNames }: {
   nodes: MapNode[]; edges: MapEdge[];
   selectedId: string | null; onSelect: (id: string) => void;
   showEdges: boolean;
   statusFor: (id: string) => NodeStatus;
   fullscreen: boolean;
   onFullscreenToggle: () => void;
+  friendNodes?: MapNode[];
+  commonNames?: Set<string>;
 }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -815,6 +885,8 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
             <div style={{
               width: radius * 2, height: radius * 2,
               background: n.dominant,
+              backgroundImage: n.concept.portrait?.startsWith('http') ? `url(${n.concept.portrait})` : undefined,
+              backgroundSize: 'cover', backgroundPosition: 'center',
               border: `3px solid ${isSelected ? 'var(--cit-brick)' : 'var(--cit-navy-dk)'}`,
               borderRadius: '50%',
               boxShadow: isSelected
@@ -823,6 +895,12 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
               transition: 'all .2s ease',
               position: 'relative',
             }}>
+              {commonNames?.has(normName(n.concept.name)) && (
+                <span style={{
+                  position: 'absolute', inset: -5, borderRadius: '50%',
+                  border: '2.5px dashed var(--cit-rust)', pointerEvents: 'none',
+                }}/>
+              )}
               {n.concept.isFavorite && (
                 <span style={{
                   position: 'absolute', top: -8, right: -8,
@@ -856,6 +934,26 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
           </div>
         );
       })}
+      {/* Nœuds fantômes de l'ami (univers superposé) */}
+      {friendNodes?.map(n => (
+        <div key={n.concept.id} style={{
+          position: 'absolute', left: `${n.x}%`, top: `${n.y}%`,
+          transform: 'translate(-50%, -50%)', zIndex: 1, pointerEvents: 'none',
+        }}>
+          <div style={{
+            position: 'relative', width: n.size * 2, height: n.size * 2,
+            background: n.dominant, border: '2.5px dashed var(--cit-rust)',
+            borderRadius: '50%', opacity: 0.8,
+          }}>
+            <span style={{ position: 'absolute', top: -8, right: -8, fontSize: 11 }}>👥</span>
+          </div>
+          <div style={{
+            position: 'absolute', left: '50%', top: '100%', transform: 'translate(-50%, 3px)',
+            fontFamily: "'Oswald', sans-serif", fontSize: 9, fontWeight: 600, color: 'var(--cit-rust)',
+            whiteSpace: 'nowrap', textShadow: '1px 1px 0 var(--cit-cream)',
+          }}>{n.concept.name}</div>
+        </div>
+      ))}
       </div>
       )}{/* fin couche transformée */}
 
@@ -1020,6 +1118,7 @@ export function MapScreen({ onTabChange }: Props) {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [compareFriend, setCompareFriend] = useState(false);
 
   // #23 — persistance des filtres de carte (catégories perso, étiquettes, toggles)
   const filtersRestored = useRef(false);
@@ -1130,6 +1229,33 @@ export function MapScreen({ onTabChange }: Props) {
     adopted.find(c => c.id === id) ? 'adopted'
     : rejected.find(c => c.id === id) ? 'rejected'
     : 'skipped';
+
+  // Comparaison avec l'univers (fictif) d'un ami
+  const friendCompare = useMemo(() => {
+    const uAdopt = new Map(adopted.map(c => [normName(c.name), c] as const));
+    const uReject = new Set(rejected.map(c => normName(c.name)));
+    const fAdopt = FRIEND_UNIVERSE.filter(f => f.verdict === 'adopted');
+    const fReject = FRIEND_UNIVERSE.filter(f => f.verdict === 'rejected');
+    const fAdoptNames = new Set(fAdopt.map(f => normName(f.name)));
+    const common = fAdopt.filter(f => uAdopt.has(normName(f.name)));
+    const onlyFriend = fAdopt.filter(f => !uAdopt.has(normName(f.name)));
+    const onlyYou = adopted.filter(c => !fAdoptNames.has(normName(c.name)));
+    const commonRejected = fReject.filter(f => uReject.has(normName(f.name)));
+    const union = new Set([...uAdopt.keys(), ...fAdoptNames]);
+    const similarity = union.size ? Math.round((common.length / union.size) * 100) : 0;
+    return { common, onlyFriend, onlyYou, commonRejected, similarity };
+  }, [adopted, rejected]);
+  const commonNames = useMemo(() => new Set(friendCompare.common.map(f => normName(f.name))), [friendCompare]);
+  const friendNodes = useMemo<MapNode[]>(() => {
+    if (!compareFriend) return [];
+    return friendCompare.onlyFriend.map(f => {
+      const p = hashPos(f.name);
+      return {
+        concept: { id: `friend:${normName(f.name)}`, name: f.name, kind: 'Ami', cats: f.cats, blurb: '', refs: [] } as Concept,
+        x: p.x, y: p.y, size: 9, dominant: conceptDominant(f.cats).css,
+      };
+    });
+  }, [compareFriend, friendCompare]);
 
   // Combine concepts based on toggles
   const allConcepts = useMemo(() => {
@@ -1318,6 +1444,9 @@ export function MapScreen({ onTabChange }: Props) {
             tags={tags}
             conceptToPersonalCats={conceptToPersonalCats}
             conceptToTags={conceptToTags}
+            compareFriend={compareFriend}
+            onToggleCompare={() => setCompareFriend(v => !v)}
+            friendCompare={friendCompare}
           />
         )}
 
@@ -1341,6 +1470,8 @@ export function MapScreen({ onTabChange }: Props) {
             statusFor={statusFor}
             fullscreen={fullscreen}
             onFullscreenToggle={() => setFullscreen(v => !v)}
+            friendNodes={compareFriend ? friendNodes : undefined}
+            commonNames={compareFriend ? commonNames : undefined}
           />
         </div>
 
