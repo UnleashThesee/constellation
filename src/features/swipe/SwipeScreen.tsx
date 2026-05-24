@@ -661,9 +661,10 @@ function InlineAddConcept({ onPick, onSubmitText, placeholder = 'Cherchez un con
       )}
       {open && results.length > 0 && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+          position: 'absolute', top: '100%', right: 0, zIndex: 20,
+          minWidth: 'max(100%, 300px)', maxWidth: 380,
           background: 'var(--cit-cream)', border: '2.5px solid var(--cit-navy-dk)',
-          boxShadow: '4px 4px 0 var(--cit-navy-dk)', maxHeight: 260, overflow: 'auto',
+          boxShadow: '4px 4px 0 var(--cit-navy-dk)', maxHeight: 300, overflow: 'auto',
         }}>
           {results.map(c => (
             <button key={c.id} onClick={() => pick(c)} style={{
@@ -671,8 +672,8 @@ function InlineAddConcept({ onPick, onSubmitText, placeholder = 'Cherchez un con
               border: 'none', borderBottom: '1px dashed var(--cit-navy-dk)', cursor: 'pointer',
               padding: '7px 12px', fontFamily: "'Oswald', sans-serif",
             }}>
-              <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--cit-navy-dk)' }}>{c.name}</span>
-              {c.blurb && <span style={{ display: 'block', fontSize: 10.5, color: 'var(--cit-navy-lt)', fontFamily: "'Special Elite', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.blurb}</span>}
+              <span style={{ display: 'block', fontWeight: 700, fontSize: 13, color: 'var(--cit-navy-dk)' }}>{c.name}</span>
+              {c.blurb && <span style={{ display: 'block', fontSize: 10.5, color: 'var(--cit-navy-lt)', fontFamily: "'Special Elite', monospace", lineHeight: 1.3, marginTop: 1, whiteSpace: 'normal' }}>{c.blurb}</span>}
             </button>
           ))}
         </div>
@@ -739,7 +740,7 @@ function RegistrePanel({ history }: { history: Array<{ name: string; verdict: st
 }
 
 /** Contraintes de pioche (plusieurs possibles, intersection), valables dans toutes les procédures. */
-function ConstraintPanel({ constraints, onAdd, onRemove, noMatch }: { constraints: Array<{ text: string; qid?: string }>; onAdd: (t: string, qid?: string) => void; onRemove: (t: string) => void; noMatch: boolean }) {
+function ConstraintPanel({ constraints, onAdd, onRemove, note }: { constraints: Array<{ text: string; qid?: string }>; onAdd: (t: string, qid?: string) => void; onRemove: (t: string) => void; note: string }) {
   const active = constraints.length > 0;
   return (
     <div style={{ marginBottom: 2 }}>
@@ -778,7 +779,12 @@ function ConstraintPanel({ constraints, onAdd, onRemove, noMatch }: { constraint
             ))}
           </div>
         )}
-        {noMatch && (
+        {note === 'empty' && (
+          <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-brick)', lineHeight: 1.35, marginTop: 8, fontStyle: 'italic' }}>
+            ⚠ Ce type n'a pas de concepts dans Wikidata (les <em>citations</em>, par ex., n'y sont pas répertoriées comme objets).
+          </div>
+        )}
+        {note === 'widen' && (
           <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-brick)', lineHeight: 1.35, marginTop: 8, fontStyle: 'italic' }}>
             ⚠ Aucune carte ne croise cette contrainte avec vos critères — on élargit au type seul.
           </div>
@@ -809,7 +815,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const incognitoRef = useRef(incognito);
   incognitoRef.current = incognito;
   const [constraints, setConstraints] = useState<Array<{ text: string; qid?: string }>>([]);
-  const [constraintNoMatch, setConstraintNoMatch] = useState(false);
+  const [constraintNote, setConstraintNote] = useState('');
   const addConstraint = (t: string, qid?: string) => { const v = t.trim(); if (v) setConstraints(prev => prev.some(x => x.text.toLowerCase() === v.toLowerCase()) ? prev : [...prev, { text: v, qid }]); };
   const removeConstraint = (t: string) => setConstraints(prev => prev.filter(x => x.text !== t));
 
@@ -995,11 +1001,14 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           const allowed = await fetchConceptsForConstraints(constraints, 80);
           const ids = new Set(allowed.map(c => c.wikidataId).filter(Boolean));
           const inter = fresh.filter(c => c.wikidataId && ids.has(c.wikidataId));
-          // Pas d'intersection avec les thèmes : on élargit au type seul, et on le signale.
-          if (!cancelled) setConstraintNoMatch(inter.length === 0 && (entries.length > 0 || mode !== 'random'));
+          if (!cancelled) {
+            if (allowed.length === 0) setConstraintNote('empty');
+            else if (inter.length === 0 && (entries.length > 0 || mode !== 'random')) setConstraintNote('widen');
+            else setConstraintNote('');
+          }
           fresh = inter.length >= 1 ? inter : allowed;
         } else if (!cancelled) {
-          setConstraintNoMatch(false);
+          setConstraintNote('');
         }
 
         fresh = fresh.filter(c => !excluded.has(c.id));
@@ -1008,7 +1017,9 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
             await Promise.all(fresh.map(c => cacheConcept(c)));
             swipe.setDeck(fresh);
           } else {
-            swipe.setDeck(rawDeck);
+            // Repli : pioche aléatoire MAIS sans les cartes déjà traitées
+            const clean = rawDeck.filter(c => !excluded.has(c.id));
+            swipe.setDeck(clean.length > 0 ? clean : rawDeck);
           }
         }
       } catch {
@@ -1401,7 +1412,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
         {/* Right panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <ConstraintPanel constraints={constraints} onAdd={addConstraint} onRemove={removeConstraint} noMatch={constraintNoMatch}/>
+          <ConstraintPanel constraints={constraints} onAdd={addConstraint} onRemove={removeConstraint} note={constraintNote}/>
           <RegistrePanel history={swipe.history}/>
         </div>
       </div>
