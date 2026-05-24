@@ -492,19 +492,27 @@ export async function fetchConceptById(qid: string): Promise<Concept | null> {
 // Catégories diverses pour la pioche aléatoire. Une requête par catégorie
 // (scopée par type/occupation → rapide et fiable, contrairement à un scan global
 // de tous les items à sitelinks). [propriété, QID].
+// Pool équilibré : ~1/3 personnes, ~1/3 œuvres, ~1/3 idées/concepts/mouvements,
+// pour ne pas noyer la pioche sous les personnages illustres.
 const NOTORIETY_CATS: Array<[string, string]> = [
+  // — Personnes (occupation P106)
   ['P106', 'Q4964182'],  // philosophe
   ['P106', 'Q36180'],    // écrivain·e
   ['P106', 'Q901'],      // scientifique
   ['P106', 'Q639669'],   // musicien·ne
-  ['P106', 'Q1028181'],  // peintre
-  ['P106', 'Q2526255'],  // réalisateur·rice
-  ['P106', 'Q49757'],    // poète·sse
-  ['P106', 'Q82955'],    // politicien·ne
+  // — Œuvres (P31/P279*)
   ['P31',  'Q11424'],    // film
   ['P31',  'Q7889'],     // jeu vidéo
   ['P31',  'Q7725634'],  // œuvre littéraire
-  ['P31',  'Q571'],      // livre
+  ['P31',  'Q482994'],   // album
+  // — Idées / concepts / mouvements / genres / événements
+  ['P31',  'Q11862829'], // discipline académique (physique, sociologie…)
+  ['P31',  'Q968159'],   // mouvement artistique (cubisme, surréalisme…)
+  ['P31',  'Q188451'],   // genre musical (jazz, techno…)
+  ['P31',  'Q201658'],   // genre de film
+  ['P31',  'Q49773'],    // mouvement social
+  ['P31',  'Q198'],      // guerre (événements historiques)
+  ['P31',  'Q179805'],   // théorie politique / courant de pensée
 ];
 
 /**
@@ -514,7 +522,7 @@ const NOTORIETY_CATS: Array<[string, string]> = [
  * d'une construction de cache à l'autre.
  */
 export async function fetchNotorietyBase(): Promise<string[]> {
-  const cacheKey = 'notoriety-base-v2';
+  const cacheKey = 'notoriety-base-v3';
   const cached = await cacheWikiGet<string[]>(cacheKey);
   if (cached && cached.length > 0) return cached;
 
