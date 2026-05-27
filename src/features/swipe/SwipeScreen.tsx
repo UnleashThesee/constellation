@@ -7,7 +7,7 @@ import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
 import { DomainBackdrop, dominantCat } from '../../lib/domainArt';
 import { MapDropOverlay } from './MapDropOverlay';
-import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsForConstraints, fetchConceptsForEntry, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, fetchConceptImage, type SemanticRelation } from '../../services/wikidata';
+import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsForConstraints, filterConceptsByConstraints, fetchConceptsForEntry, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, fetchConceptImage, type SemanticRelation } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, addTagToConcept, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
@@ -1012,17 +1012,30 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           }
         }
 
-        // Contraintes (toutes procédures) : restreint à l'intersection des types Wikidata
+        // Contraintes : restreint au(x) type(s) Wikidata demandé(s).
         if (constraints.length > 0) {
-          const allowed = await fetchConceptsForConstraints(constraints, 80);
-          const ids = new Set(allowed.map(c => c.wikidataId).filter(Boolean));
-          const inter = fresh.filter(c => c.wikidataId && ids.has(c.wikidataId));
-          if (!cancelled) {
-            if (allowed.length === 0) setConstraintNote('empty');
-            else if (inter.length === 0 && (entries.length > 0 || mode !== 'random')) setConstraintNote('widen');
-            else setConstraintNote('');
+          const themed = (mode === 'targeted' && entries.length > 0) || mode === 'contrast';
+          if (themed && fresh.length > 0) {
+            // Croise le thème avec la contrainte : on garde les concepts du thème
+            // QUI SONT du type voulu (ex. « objets liés aux héros »).
+            const filtered = await filterConceptsByConstraints(fresh, constraints, 120);
+            if (filtered.length >= 1) {
+              fresh = filtered;
+              if (!cancelled) setConstraintNote('');
+            } else {
+              // Aucun concept du thème n'est de ce type : on élargit au type seul.
+              const allowed = await fetchConceptsForConstraints(constraints, 80);
+              if (!cancelled) setConstraintNote(allowed.length === 0 ? 'empty' : 'widen');
+              fresh = allowed;
+            }
+          } else {
+            // Sans thème (aléatoire) : pioche d'items du type demandé.
+            const allowed = await fetchConceptsForConstraints(constraints, 80);
+            const ids = new Set(allowed.map(c => c.wikidataId).filter(Boolean));
+            const inter = fresh.filter(c => c.wikidataId && ids.has(c.wikidataId));
+            if (!cancelled) setConstraintNote(allowed.length === 0 ? 'empty' : '');
+            fresh = inter.length >= 1 ? inter : allowed;
           }
-          fresh = inter.length >= 1 ? inter : allowed;
         } else if (!cancelled) {
           setConstraintNote('');
         }

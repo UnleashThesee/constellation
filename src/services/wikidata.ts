@@ -718,6 +718,42 @@ export async function fetchConceptsForConstraints(items: Array<{ text: string; q
 }
 
 /**
+ * Filtre une liste de concepts pour ne garder que ceux qui sont du/des type(s)
+ * demandé(s) (instance/sous-classe de, conjonctif). Une seule requête SPARQL
+ * `VALUES`. Sert à CROISER un ciblage (« héros ») avec une contrainte de type
+ * (« objet ») : on conserve les voisins du thème QUI SONT du type voulu —
+ * contrairement à une intersection avec une liste globale d'objets populaires.
+ */
+export async function filterConceptsByConstraints(
+  concepts: Concept[],
+  items: Array<{ text: string; qid?: string }>,
+  cap = 120,
+): Promise<Concept[]> {
+  const pool = concepts.filter(c => c.wikidataId && /^Q\d+$/.test(c.wikidataId)).slice(0, cap);
+  if (pool.length === 0) return [];
+  const resolved = await Promise.all(items.map(async it =>
+    (it.qid && /^Q\d+$/.test(it.qid)) ? it.qid : await searchEntityId(it.text),
+  ));
+  const typeQids = resolved.filter((q): q is string => !!q);
+  if (typeQids.length === 0) return [];
+  const values = pool.map(c => `wd:${c.wikidataId}`).join(' ');
+  const clauses = typeQids.map(q => `?item wdt:P31/wdt:P279* wd:${q} .`).join('\n  ');
+  const query = `
+SELECT DISTINCT ?item WHERE {
+  VALUES ?item { ${values} }
+  ${clauses}
+}`;
+  try {
+    const rows = await sparql<{ item: { value: string } }>(query);
+    const ok = new Set(rows.map(r => r.item.value.replace('http://www.wikidata.org/entity/', '')));
+    return pool.filter(c => ok.has(c.wikidataId as string));
+  } catch {
+    return [];
+  }
+}
+
+
+/**
  * Entrée libre du mode Ciblé : résout le mot une fois, puis fusionne ses
  * « membres » (instances/sous-classes, si c'est une famille) ET son « voisinage »
  * (entités reliées, si c'est un concept précis). Couvre les deux cas d'un coup.
