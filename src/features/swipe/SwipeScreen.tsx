@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSwipeDeck } from './useSwipeDeck';
+import { SwipeQueue } from './SwipeQueue';
 import { Sunburst, Stamp, PixelDie, Aster, SkeletonCard } from '../../components/ui/atoms';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
@@ -11,9 +12,6 @@ import { playSound } from '../../lib/sounds';
 import { consumePendingSwipeDeck } from '../../lib/pending';
 import { embedConcepts, centroid, cosineSim, embeddingsStatus } from '../../services/embeddings';
 import type { Concept, SwipeMode, CategoryKey } from '../../types';
-
-// v2 — jardin en arrière-plan (Phaser, chargé à la demande)
-const GardenCanvas = lazy(() => import('../garden/GardenCanvas').then(m => ({ default: m.GardenCanvas })));
 
 const FALLBACK_CONCEPTS: Concept[] = [
   {
@@ -1191,16 +1189,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   })();
 
   return (
-    <div className="citizen" style={{ position: 'relative', width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'transparent' }}>
-      {/* v2 — Plan arrière : le jardin vivant, peuplé par les concepts adoptés */}
-      <Suspense fallback={null}>
-        <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
-          <GardenCanvas concepts={adopted} interactive={false} zoom={0.85}/>
-        </div>
-      </Suspense>
-      <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: 'var(--cit-paper)', opacity: 0.5, pointerEvents: 'none' }}/>
-      {/* Plan central + contrôles, au-dessus du jardin */}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', flex: 1, minHeight: '100vh' }}>
+    <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <CitizenMasthead
         kicker="Bonjour,"
         title="CITOYEN"
@@ -1447,6 +1436,8 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         </div>
       </div>
 
+      <SwipeQueue items={swipe.treatedLog}/>
+
       <CitizenFooter right={FOOTERS[mode]}/>
 
       <ConceptDetailModal
@@ -1491,7 +1482,6 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           </div>
         </div>
       )}
-      </div>
     </div>
   );
 }

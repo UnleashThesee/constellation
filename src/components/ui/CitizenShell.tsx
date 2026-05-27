@@ -3,7 +3,6 @@ import { FileSeal } from './atoms';
 
 const CITIZEN_TABS = [
   { id: 'swipe',    label: '★ Le Swipe' },
-  { id: 'garden',   label: 'Jardin' },
   { id: 'map',      label: 'Cartographie' },
   { id: 'ideas',    label: 'Idées' },
   { id: 'favs',     label: 'Favoris' },

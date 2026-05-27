@@ -5,6 +5,8 @@ import { playSound } from '../../lib/sounds';
 
 interface Particle { id: number; dx: number; dy: number; left: number; top: number; }
 
+export interface TreatedEntry { concept: Concept; verdict: SwipeVerdict; fav: boolean }
+
 interface SwipeDeckState {
   current: Concept | undefined;
   deck: Concept[];
@@ -22,6 +24,8 @@ interface SwipeDeckState {
   appendDeck: (concepts: Concept[]) => void;
   canBack: boolean;
   treatedIds: Set<string>;
+  // File des cartes traitées (ordre chronologique) pour l'affichage de la queue.
+  treatedLog: TreatedEntry[];
 }
 
 const SESSION_ID = `session-${Date.now()}`;
@@ -38,7 +42,10 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   // Pile des cartes traitées (pour l'annulation). Les cartes traitées sont
   // RETIRÉES de la pioche — jamais remises en queue — pour ne pas reboucler.
-  const treatedRef = useRef<Array<{ concept: Concept; verdict: SwipeVerdict; fav: boolean }>>([]);
+  const treatedRef = useRef<TreatedEntry[]>([]);
+  // Journal d'affichage (state → re-render de la queue). Borné pour la mémoire ;
+  // en lockstep avec treatedRef (push au swipe, pop à l'annulation).
+  const [treatedLog, setTreatedLog] = useState<TreatedEntry[]>([]);
   // Ensemble (non borné) de tous les ids déjà jugés cette session : permet de
   // filtrer toute reconstruction de pioche pour ne jamais re-présenter une carte.
   const treatedIdsRef = useRef<Set<string>>(new Set());
@@ -114,6 +121,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
       writeDeck(d => (d[0]?.id === current.id ? d.slice(1) : d.filter(c => c.id !== current.id)));
       treatedRef.current = [...treatedRef.current, { concept: current, verdict, fav: false }].slice(-6);
       treatedIdsRef.current.add(current.id);
+      setTreatedLog(l => [...l, { concept: current, verdict, fav: false }].slice(-60));
       setCounts(c => ({
         ...c,
         valid:  verdict === 'valid'  ? c.valid  + 1 : c.valid,
@@ -154,6 +162,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
       writeDeck(d => (d[0]?.id === current.id ? d.slice(1) : d.filter(c => c.id !== current.id)));
       treatedRef.current = [...treatedRef.current, { concept: current, verdict: 'valid' as SwipeVerdict, fav: true }].slice(-6);
       treatedIdsRef.current.add(current.id);
+      setTreatedLog(l => [...l, { concept: current, verdict: 'valid' as SwipeVerdict, fav: true }].slice(-60));
       setCounts(c => ({ ...c, valid: c.valid + 1, favs: c.favs + 1 }));
       setHistory(h => [{
         name: current.name.split(' ').pop() ?? current.name,
@@ -173,6 +182,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
     const last = treatedRef.current[treatedRef.current.length - 1];
     treatedRef.current = treatedRef.current.slice(0, -1);
     treatedIdsRef.current.delete(last.concept.id);
+    setTreatedLog(l => l.slice(0, -1));
     writeDeck(d => [last.concept, ...d.filter(c => c.id !== last.concept.id)]);
     setCounts(c => ({
       valid:  c.valid  - (last.verdict === 'valid'  ? 1 : 0),
@@ -254,5 +264,6 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
     appendDeck,
     canBack: history.length > 0 && history.length <= 10,
     treatedIds: treatedIdsRef.current,
+    treatedLog,
   };
 }

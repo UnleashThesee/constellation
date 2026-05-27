@@ -8,7 +8,6 @@ interface Props {
 
 const MAIN_TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'swipe',   label: 'Swipe',  icon: '✦' },
-  { id: 'garden',  label: 'Jardin', icon: '🌱' },
   { id: 'map',     label: 'Map',    icon: '◉' },
   { id: 'ideas',   label: 'Idées',  icon: '★' },
 ];
@@ -41,7 +40,7 @@ export function MobileBottomNav({ active, onChange }: Props) {
         paddingBottom: 'env(safe-area-inset-bottom, 0)',
         display: 'none',
       }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
           {MAIN_TABS.map(t => {
             const on = active === t.id;
             return (

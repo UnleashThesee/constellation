@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { SwipeScreen } from './features/swipe/SwipeScreen';
@@ -35,10 +35,7 @@ export function applyThemeClass(theme: string): void {
 type AppState = 'loading' | 'onboarding' | 'post-onboarding' | 'app';
 export type TabId =
   | 'swipe' | 'map' | 'combine' | 'ideas' | 'favs' | 'settings'
-  | 'stats' | 'about' | 'search' | 'perso' | 'combos' | 'constraints' | 'garden';
-
-// v2 — vue Jardin (Phaser) chargée à la demande pour ne pas alourdir le bundle initial
-const GardenScreen = lazy(() => import('./features/garden/GardenScreen'));
+  | 'stats' | 'about' | 'search' | 'perso' | 'combos' | 'constraints';
 
 function LoadingScreen() {
   return (
@@ -93,7 +90,7 @@ function OfflineBanner() {
 
 const VALID_TABS: TabId[] = [
   'swipe', 'map', 'combine', 'ideas', 'favs', 'settings',
-  'stats', 'about', 'search', 'perso', 'combos', 'constraints', 'garden',
+  'stats', 'about', 'search', 'perso', 'combos', 'constraints',
 ];
 
 function tabFromPath(pathname: string): TabId {
@@ -178,7 +175,6 @@ export default function App() {
       <Route path="/combos" element={<CombosLibraryScreen onTabChange={onTabChange} />} />
       <Route path="/constraints" element={<ConstraintsScreen onTabChange={onTabChange} />} />
       <Route path="/swipe" element={<SwipeScreen onTabChange={onTabChange} />} />
-      <Route path="/garden" element={<Suspense fallback={<LoadingScreen />}><GardenScreen onTabChange={onTabChange} /></Suspense>} />
       <Route path="*" element={<Navigate to="/swipe" replace />} />
     </Routes>
   );
