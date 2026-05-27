@@ -16,6 +16,31 @@ import { embedConcepts, centroid, cosineSim, embeddingsStatus } from '../../serv
 import type { Concept, SwipeMode, CategoryKey, SwipeVerdict, AppSettings } from '../../types';
 import { buildAiCrossConcepts } from '../../services/llm';
 
+// Contrôles flottants de l'interface immersive v3
+const ROUND_BTN: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  minWidth: 38, height: 38, padding: '0 12px', borderRadius: 999,
+  background: 'rgba(0,0,0,.3)', color: 'var(--cit-cream)', border: '2px solid var(--cit-butter)',
+  cursor: 'pointer', fontFamily: "'Alfa Slab One', serif", fontSize: 16, lineHeight: 1,
+};
+const MINI_LINK_BTN: React.CSSProperties = {
+  background: 'rgba(0,0,0,.35)', color: 'var(--cit-cream)', border: '2px solid var(--cit-butter)',
+  padding: '5px 13px', cursor: 'pointer', borderRadius: 999,
+  fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase',
+};
+const MODE_SHORT: Record<string, string> = { random: 'Aléa', targeted: 'Ciblé', contrast: 'Contraste' };
+const NAV_ITEMS: Array<{ id: string; label: string }> = [
+  { id: 'swipe', label: '★ Le Swipe' },
+  { id: 'map', label: 'Cartographie' },
+  { id: 'combine', label: 'Combiner' },
+  { id: 'ideas', label: 'Idées' },
+  { id: 'favs', label: 'Favoris' },
+  { id: 'search', label: 'Recherche' },
+  { id: 'constraints', label: 'Contraintes' },
+  { id: 'stats', label: 'Statistiques' },
+  { id: 'settings', label: 'Réglages' },
+];
+
 const FALLBACK_CONCEPTS: Concept[] = [
   {
     id: 'foucault', name: 'Michel Foucault', years: '1926 — 1984', kind: 'Auteur',
@@ -191,7 +216,7 @@ function Laurel({ width = 200, color = 'var(--cit-mustard)' }: { width?: number;
   );
 }
 
-function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, leftBorder, contrast, isFavorite, onToggleFavorite, relations, extract, imageUrl }: {
+function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, contrast, isFavorite, onToggleFavorite, extract, imageUrl }: {
   concept: Concept;
   tilt: 'right' | 'left' | 'up' | 'down' | null;
   dragOffset: { x: number; y: number };
@@ -208,247 +233,124 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
   imageUrl?: string;
 }) {
   const isDragging = dragOffset.x !== 0 || dragOffset.y !== 0;
-  const rotate = isDragging ? `rotate(${dragOffset.x * 0.04 - 0.6}deg)` : 'rotate(-0.6deg)';
+  const rotate = isDragging ? `rotate(${dragOffset.x * 0.03}deg)` : 'rotate(0deg)';
   const translate = isDragging ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : '';
 
   const imageSrc = imageUrl ?? (concept.portrait?.startsWith('http') ? concept.portrait : undefined);
   const initials = concept.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
   const domColor = conceptDominant(concept.cats).css;
   const catKey = dominantCat(concept.cats);
+  const source = sourceOverride ?? SOURCE_LABELS[concept.sourceKind ?? 'random'] ?? 'Sélection aléatoire';
+
+  const RINGS = 'radial-gradient(circle at 50% 50%,'
+    + ' var(--cit-navy-dk) 0 63.5%,'
+    + ' var(--cit-butter) 63.5% 66%,'
+    + ' var(--cit-navy-dk) 66% 68%,'
+    + ' var(--cit-mustard) 68% 78%,'
+    + ' var(--cit-brick) 78% 81%,'
+    + ' var(--cit-navy-dk) 81% 90%,'
+    + ' var(--cit-butter) 90% 93%,'
+    + ' var(--cit-mustard) 93% 100%)';
 
   return (
     <div
       className={animClass || ''}
       style={{
         position: 'relative',
+        width: 'min(74vh, 94vw, 700px)',
+        height: 'min(74vh, 94vw, 700px)',
         transform: `${translate} ${rotate}`.trim(),
         touchAction: 'none',
         cursor: isDragging ? 'grabbing' : 'grab',
-        transition: isDragging ? 'none' : 'transform .25s cubic-bezier(.2,.7,.3,1)',
+        transition: isDragging ? 'none' : 'transform .28s cubic-bezier(.2,.7,.3,1)',
       }}
       onPointerDown={onPointerDown}
     >
-      {contrast && (
-        <span className="cit-pulse-brick" style={{
-          position: 'absolute', inset: -16, zIndex: 10, pointerEvents: 'none',
-          border: '3px dashed var(--cit-brick)',
-        }}/>
-      )}
-      {contrast && (
-        <div style={{ position: 'absolute', top: -28, left: 18, zIndex: 11, transform: 'rotate(-4deg)', pointerEvents: 'none' }}>
-          <Stamp tone="brick">★ LOIN DE VOTRE UNIVERS ★</Stamp>
-        </div>
-      )}
+      {/* Cible / bullseye : anneaux concentriques */}
       <div style={{
-        position: 'relative', overflow: 'hidden',
-        background: 'var(--cit-navy-dk)',
-        border: '3px solid var(--cit-navy-dk)',
-        boxShadow: '6px 6px 0 var(--cit-navy-dk)',
-        padding: '30px 26px 24px',
-        borderLeft: leftBorder ? `14px solid ${leftBorder}` : undefined,
+        position: 'absolute', inset: 0, borderRadius: '50%', background: RINGS,
+        boxShadow: '0 22px 60px rgba(0,0,0,.55), inset 0 0 0 3px var(--cit-navy-dk)',
       }}>
-        <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.1, pointerEvents: 'none' }}/>
-        {/* Bandes pellicule (haut/bas) — clin d'œil au ruban MGM */}
-        {[0, 1].map(b => (
-          <div key={b} style={{ position: 'absolute', left: 0, right: 0, [b ? 'bottom' : 'top']: 0, height: 15, background: 'var(--cit-mustard)', borderTop: b ? '2px solid var(--cit-navy-dk)' : undefined, borderBottom: b ? undefined : '2px solid var(--cit-navy-dk)', zIndex: 4 } as React.CSSProperties}>
-            <div style={{ position: 'absolute', inset: '4px 0', background: 'repeating-linear-gradient(90deg, transparent 0 7px, var(--cit-navy-dk) 7px 13px)', opacity: 0.85 }}/>
-          </div>
-        ))}
-        {/* Cadre médaillon — double filet doré */}
-        <div style={{
-          position: 'relative', zIndex: 2, margin: '6px 2px',
-          borderRadius: 38,
-          border: '2.5px solid var(--cit-mustard)',
-          boxShadow: 'inset 0 0 0 4px var(--cit-navy-dk), inset 0 0 0 6px var(--cit-butter), 0 0 26px rgba(0,0,0,.4)',
-          overflow: 'hidden',
-        }}>
-        {/* Verdict overlays */}
-        {tilt === 'left' && (
-          <div style={{ position: 'absolute', top: 80, left: 36, zIndex: 5, pointerEvents: 'none', transform: 'rotate(-12deg)' }}>
-            <Stamp tone="brick" size={36}>Retour à l'expéditeur</Stamp>
-          </div>
-        )}
-        {tilt === 'right' && (
-          <div style={{ position: 'absolute', top: 80, right: 36, zIndex: 5, pointerEvents: 'none', transform: 'rotate(11deg)' }}>
-            <Stamp tone="navy" size={36}>Bienvenue !</Stamp>
-          </div>
-        )}
-        {tilt === 'up' && (
-          <div style={{ position: 'absolute', top: '28%', left: '50%', transform: 'translate(-50%,-50%) rotate(-3deg)', zIndex: 5, pointerEvents: 'none' }}>
-            <Stamp tone="mustard" size={32}>★ Coup de cœur</Stamp>
-          </div>
-        )}
-        {tilt === 'down' && (
-          <div style={{ position: 'absolute', bottom: '20%', left: '50%', transform: 'translate(-50%,50%) rotate(2deg)', zIndex: 5, pointerEvents: 'none' }}>
-            <Stamp tone="navy" size={32}>Neutre</Stamp>
-          </div>
-        )}
-
-        {/* Navy header bar */}
-        <div style={{
-          background: 'var(--cit-navy-dk)', color: 'var(--cit-cream)',
-          padding: '16px 28px 18px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 18, position: 'relative',
-          borderBottom: '3px solid var(--cit-navy-dk)',
-        }}>
-          <div className="cit-halftone" style={{ position: 'absolute', inset: 0 }}/>
-          <div style={{ position: 'relative', zIndex: 1, flex: 1, minWidth: 0 }}>
-            <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              {badge}
-              <span>★ FICHE N° {concept.rec ?? 'REC-0001'} · {sourceOverride ?? SOURCE_LABELS[concept.sourceKind ?? 'random'] ?? 'Sélection aléatoire'} ★</span>
-            </div>
-            <h2 className="cit-h1 cit-h1--reverse" style={{ margin: '2px 0 2px', fontSize: 48, lineHeight: 0.92, wordBreak: 'break-word' }}>
-              {concept.name}<span style={{ color: 'var(--cit-butter)' }}>!</span>
-            </h2>
-            <div className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-cream)' }}>
-              {concept.kind}{concept.years ? ` · ${concept.years}` : ''}
-            </div>
-          </div>
-          <Sunburst size={88} color="var(--cit-butter)" behindColor="var(--cit-brick)"/>
-        </div>
-
-        {/* Body 2-col */}
-        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '180px 1fr', gap: 20, padding: '18px 24px 14px' }}>
-          {/* Fond procédural du domaine dominant */}
-          <DomainBackdrop cat={catKey} baseOpacity={0.09} motifOpacity={0.2} style={{ zIndex: 0 }}/>
-          {/* Portrait */}
-          <div style={{ position: 'relative', zIndex: 1 }}>
-            <div style={{
-              position: 'relative',
-              borderRadius: '50%',
-              border: '3px solid var(--cit-mustard)',
-              background: 'var(--cit-butter)',
-              aspectRatio: '1/1',
-              boxShadow: '0 0 0 4px var(--cit-navy-dk), 0 0 0 6px var(--cit-butter), 4px 5px 0 rgba(0,0,0,.3)',
-              overflow: 'hidden',
-            }}>
-              {imageSrc ? (
-                <img src={imageSrc} alt={concept.name} loading="lazy"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
-              ) : (
-                <div style={{ position: 'absolute', inset: 0, background: domColor, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-                  <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.25 }}/>
-                  <DomainBackdrop cat={catKey} baseOpacity={0} motifOpacity={0.5} color="oklch(96% 0.025 90)"/>
-                  <span style={{
-                    position: 'relative', fontFamily: "'Alfa Slab One', serif",
-                    fontSize: 54, lineHeight: 1, color: 'var(--cit-cream)',
-                    textShadow: '3px 3px 0 oklch(0% 0 0 / 0.4)', letterSpacing: '.02em',
-                  }}>{initials || '★'}</span>
-                </div>
-              )}
-              <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0,
-                background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
-                fontFamily: "'Alfa Slab One', serif", fontSize: 12,
-                padding: '3px 8px', textAlign: 'center',
-                letterSpacing: '.06em', borderTop: '2px solid var(--cit-butter)',
-              }}>
-                {concept.years ?? '—'}
-              </div>
-            </div>
-
-            {/* Chromatic signature */}
-            <div style={{ marginTop: 10 }}>
-              <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 3 }}>
-                Empreinte
-              </div>
-              <div style={{
-                height: 10,
-                background: gradientForWeights(concept.cats),
-                border: '2px solid var(--cit-navy-dk)',
-                boxShadow: '2px 2px 0 var(--cit-navy-dk)',
-              }}/>
-            </div>
-          </div>
-
-          {/* Text → mini-encadrés */}
-          <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, gap: 10 }}>
-            {/* Description */}
-            <div style={{
-              background: 'var(--cit-paper)', borderLeft: '4px solid var(--cit-mustard)',
-              padding: '8px 12px',
-            }}>
-              <p className="cit-typed" style={{ margin: 0, fontSize: 15, lineHeight: 1.62, color: 'var(--cit-navy-dk)' }}>
-                {extract || concept.blurb}
-              </p>
-            </div>
-
-            {/* Carte proposée par l'IA : marquage + source réelle */}
-            {concept.aiGenerated && (
-              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontFamily: "'Oswald', sans-serif", fontSize: 10.5 }}>
-                <span style={{
-                  background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', padding: '2px 8px',
-                  fontWeight: 700, letterSpacing: '.1em', boxShadow: '2px 2px 0 var(--cit-brick)',
-                }}>✦ PROPOSÉ PAR L'IA</span>
-                {concept.sourceWork && (
-                  <span style={{ color: 'var(--cit-navy-lt)' }}>
-                    source :{' '}
-                    {concept.sourceWork.url
-                      ? <a href={concept.sourceWork.url} target="_blank" rel="noreferrer" style={{ color: 'var(--cit-brick)', fontWeight: 700 }}>{concept.sourceWork.name} ↗</a>
-                      : <strong style={{ color: 'var(--cit-navy-dk)' }}>{concept.sourceWork.name}</strong>}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Relations Wikidata */}
-            {relations && relations.length > 0 && (
-              <div style={{
-                background: 'var(--cit-paper-dk)', border: '1.5px solid var(--cit-navy-dk)',
-                borderLeft: '4px solid var(--cit-navy)', padding: '8px 12px',
-              }}>
-                <div className="cit-condensed" style={{ fontSize: 10, color: 'var(--cit-navy-lt)', marginBottom: 5, letterSpacing: '.1em' }}>
-                  ★ RELATIONS WIKIDATA
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {relations.slice(0, 14).map((r, i) => (
-                    <span key={i} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px',
-                      background: 'var(--cit-cream)', border: '2px solid var(--cit-navy-dk)',
-                      fontFamily: "'Oswald', sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: '.04em',
-                      color: 'var(--cit-navy-dk)',
-                    }}>
-                      <span style={{ color: 'var(--cit-brick)', fontSize: 8.5, textTransform: 'uppercase' }}>{r.propertyLabel}</span>
-                      <span style={{ textTransform: 'uppercase' }}>{r.targetLabel}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Catégories & Voir aussi : deux zones distinctes */}
-            <div style={{ marginTop: 'auto', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {/* Catégories — fond crème, liseré couleur dominante */}
-              <div style={{
-                flex: '1 1 140px', minWidth: 0, background: 'var(--cit-cream)',
-                border: '1.5px solid var(--cit-navy-dk)', borderLeft: `5px solid ${domColor}`, padding: '6px 10px',
-              }}>
-                <div className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)', letterSpacing: '.12em', marginBottom: 4 }}>CATÉGORIES</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {concept.cats.map(([k]) => <CitCat key={k} catKey={k} small/>)}
-                </div>
-              </div>
-              {/* Voir aussi — bloc navy, forme distincte */}
-              {concept.refs.length > 0 && (
-                <div style={{ flex: '1 1 140px', minWidth: 0, background: 'var(--cit-navy-dk)', padding: '6px 10px' }}>
-                  <div className="cit-condensed" style={{ fontSize: 9, color: 'var(--cit-butter)', letterSpacing: '.12em', marginBottom: 4 }}>↗ VOIR AUSSI</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                    {concept.refs.map((r, i) => (
-                      <span key={i} className="cit-condensed" style={{
-                        fontSize: 9.5, padding: '2px 8px',
-                        background: 'var(--cit-cream)', color: 'var(--cit-navy-dk)', border: '1.5px solid var(--cit-butter)', fontWeight: 600,
-                      }}>{r}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        </div>
-        <Laurel/>
+        <div className="cit-halftone" style={{ position: 'absolute', inset: 0, borderRadius: '50%', opacity: 0.08, pointerEvents: 'none' }}/>
       </div>
+
+      {contrast && (
+        <span className="cit-pulse-brick" style={{ position: 'absolute', inset: -10, zIndex: 12, borderRadius: '50%', border: '3px dashed var(--cit-brick)', pointerEvents: 'none' }}/>
+      )}
+
+      {/* Disque central — contenu */}
+      <div style={{
+        position: 'absolute', inset: '18%', borderRadius: '50%',
+        background: 'var(--cit-paper)',
+        border: '3px solid var(--cit-navy-dk)',
+        boxShadow: 'inset 0 0 0 4px var(--cit-butter), inset 0 0 24px rgba(0,0,0,.12)',
+        overflow: 'hidden',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        textAlign: 'center', padding: '7% 13%',
+      }}>
+        <DomainBackdrop cat={catKey} baseOpacity={0.06} motifOpacity={0.14}/>
+        {onToggleFavorite && (
+          <button onClick={onToggleFavorite} title="Favori" style={{
+            position: 'absolute', top: '12%', right: '15%', zIndex: 3,
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: 20, lineHeight: 1, color: isFavorite ? 'var(--cit-brick)' : 'var(--cit-navy-lt)',
+          }}>{isFavorite ? '★' : '☆'}</button>
+        )}
+        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, maxWidth: '100%' }}>
+          <div className="cit-condensed" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 9.5, letterSpacing: '.07em', color: 'var(--cit-brick)', textTransform: 'uppercase' }}>
+            {badge}<span>★ {source} ★</span>
+          </div>
+          <div style={{
+            width: 'clamp(56px, 13vmin, 104px)', aspectRatio: '1 / 1', borderRadius: '50%',
+            border: '3px solid var(--cit-mustard)', background: 'var(--cit-butter)',
+            boxShadow: '0 0 0 3px var(--cit-navy-dk)', overflow: 'hidden', position: 'relative', margin: '2px 0',
+          }}>
+            {imageSrc ? (
+              <img src={imageSrc} alt={concept.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
+            ) : (
+              <div style={{ position: 'absolute', inset: 0, background: domColor, display: 'grid', placeItems: 'center' }}>
+                <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.25 }}/>
+                <span style={{ position: 'relative', fontFamily: "'Alfa Slab One', serif", fontSize: 'clamp(20px,6vmin,40px)', color: 'var(--cit-cream)', textShadow: '2px 2px 0 rgba(0,0,0,.4)' }}>{initials || '★'}</span>
+              </div>
+            )}
+          </div>
+          <h2 className="cit-h1" style={{
+            margin: '2px 0 0', fontSize: 'clamp(22px, 4.6vmin, 42px)', lineHeight: 0.95,
+            color: 'var(--cit-navy-dk)', wordBreak: 'break-word',
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          } as React.CSSProperties}>
+            {concept.name}<span style={{ color: 'var(--cit-brick)' }}>!</span>
+          </h2>
+          <div className="cit-condensed" style={{ fontSize: 'clamp(9px,1.7vmin,12px)', color: 'var(--cit-navy-lt)', letterSpacing: '.06em' }}>
+            {concept.kind}{concept.years ? ` · ${concept.years}` : ''}
+          </div>
+          <p className="cit-typed" style={{
+            margin: '5px 0 0', fontSize: 'clamp(11px, 1.9vmin, 15px)', lineHeight: 1.5, color: 'var(--cit-navy-dk)',
+            display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          } as React.CSSProperties}>
+            {extract || concept.blurb}
+          </p>
+          {concept.aiGenerated && (
+            <div className="cit-condensed" style={{ marginTop: 2, fontSize: 9, letterSpacing: '.07em', color: 'var(--cit-brick)' }}>
+              ✦ PROPOSÉ PAR L'IA{concept.sourceWork ? ` · ${concept.sourceWork.name}` : ''}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center', marginTop: 5 }}>
+            {concept.cats.slice(0, 3).map(([k]) => <CitCat key={k} catKey={k} small/>)}
+          </div>
+        </div>
+      </div>
+
+      {/* Lauriers MGM, chevauchant le bas de l'anneau */}
+      <div style={{ position: 'absolute', left: '50%', bottom: '4%', transform: 'translateX(-50%)', zIndex: 2, width: '52%', pointerEvents: 'none' }}>
+        <Laurel width={320} color="var(--cit-butter)"/>
+      </div>
+
+      {/* Verdict overlays */}
+      {tilt === 'left' && (<div style={{ position: 'absolute', top: '34%', left: '50%', transform: 'translate(-50%,-50%) rotate(-12deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="brick" size={32}>Retour à l'expéditeur</Stamp></div>)}
+      {tilt === 'right' && (<div style={{ position: 'absolute', top: '34%', left: '50%', transform: 'translate(-50%,-50%) rotate(10deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="navy" size={32}>Bienvenue !</Stamp></div>)}
+      {tilt === 'up' && (<div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%) rotate(-3deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="mustard" size={30}>★ Coup de cœur</Stamp></div>)}
+      {tilt === 'down' && (<div style={{ position: 'absolute', top: '62%', left: '50%', transform: 'translate(-50%,-50%) rotate(2deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="navy" size={30}>Neutre</Stamp></div>)}
     </div>
   );
 }
@@ -902,6 +804,8 @@ export function SwipeScreenV3({ onTabChange }: { onTabChange?: (id: string) => v
   const [loading, setLoading] = useState(true);
   const [adopted, setAdopted] = useState<Concept[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [constraintOpen, setConstraintOpen] = useState(false);
   // Mode Ciblé : thèmes (texte libre, résolus via Wikidata) + ancrage + intersection/mélange
   const [entries, setEntries] = useState<Array<{ text: string; qid?: string; weight: number }>>([]);
   const [mixThemes, setMixThemes] = useState(false);
@@ -1364,202 +1268,124 @@ export function SwipeScreenV3({ onTabChange }: { onTabChange?: (id: string) => v
   })();
 
   return (
-    <div className="citizen" style={{ width: '100%', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <CitizenMasthead
-        kicker="Bonjour,"
-        title="CITOYEN"
-        active="swipe"
-        onTabChange={onTabChange}
-        right={<>
-          {boostLabel && (
-            <Stamp tone="brick" rotate={-3}>
-              ★ BOOST · {Math.min(boostInitial - swipe.deck.length + 1, boostInitial)}/{boostInitial}
-            </Stamp>
-          )}
-          <button onClick={toggleIncognito} title={incognito ? 'INCOGNITO : vos décisions sont privées (exclues d’un univers partagé). Cliquez pour repasser en public.' : 'PUBLIC : vos décisions peuvent être partagées. Cliquez pour passer en incognito (privé).'} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 7,
-            background: incognito ? 'var(--cit-brick)' : 'transparent',
-            color: incognito ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
-            border: `2.5px solid ${incognito ? 'var(--cit-brick)' : 'var(--cit-navy-dk)'}`,
-            padding: '5px 12px', cursor: 'pointer',
-            fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700,
-            letterSpacing: '.12em', textTransform: 'uppercase',
-            boxShadow: incognito ? '2px 2px 0 var(--cit-navy-dk)' : 'none',
-          }}>
-            <EyeIcon off={incognito}/>
-            {incognito ? 'Incognito · privé' : 'Public · visible'}
-          </button>
-          <CitButton size="sm" onClick={() => onTabChange?.('search')}>⌕ Recherche</CitButton>
-          <Sunburst size={68} color="var(--cit-mustard)"/>
-        </>}
-      />
+    <div className="citizen" style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden', background: 'radial-gradient(circle at 50% 36%, var(--cit-navy) 0%, var(--cit-navy-dk) 72%)' }}>
+      <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.06, pointerEvents: 'none' }}/>
 
-      {boostLabel && (
-        <div style={{
-          padding: '8px 32px',
-          background: 'var(--cit-brick)',
-          color: 'var(--cit-cream)',
-          borderBottom: '2px solid var(--cit-navy-dk)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          position: 'relative', zIndex: 3,
-        }}>
-          <span className="cit-condensed" style={{ fontSize: 11, color: 'var(--cit-butter)', letterSpacing: '.14em' }}>
-            ★ MODE BOOST · {boostLabel.toUpperCase()}
-          </span>
-          <button onClick={() => { setBoostLabel(null); setBoostInitial(0); }} style={{
-            background: 'var(--cit-cream)', color: 'var(--cit-brick)',
-            border: '2px solid var(--cit-navy-dk)',
-            padding: '2px 10px', cursor: 'pointer',
-            fontFamily: "'Alfa Slab One', serif", fontSize: 12,
-          }}>✕ Sortir du boost</button>
+      {/* Barre flottante minimale */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 45, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '12px 16px', pointerEvents: 'none' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', pointerEvents: 'auto' }}>
+          <button onClick={() => { setMenuOpen(o => !o); setConstraintOpen(false); }} title="Menu" style={ROUND_BTN}>≡</button>
+          <div style={{ display: 'flex', gap: 3, background: 'rgba(0,0,0,.28)', borderRadius: 999, padding: 3, border: '2px solid var(--cit-butter)' }}>
+            {(['random', 'targeted', 'contrast'] as SwipeMode[]).map(m => (
+              <button key={m} onClick={() => setMode(m)} style={{
+                cursor: 'pointer', border: 'none', borderRadius: 999, padding: '5px 12px',
+                fontFamily: "'Oswald', sans-serif", fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase',
+                background: mode === m ? 'var(--cit-butter)' : 'transparent',
+                color: mode === m ? 'var(--cit-navy-dk)' : 'var(--cit-cream)',
+              }}>{MODE_SHORT[m]}</button>
+            ))}
+          </div>
         </div>
-      )}
-
-      <ModeBar mode={mode} setMode={setMode} queueSize={swipe.deck.length}/>
-
-      {/* Mode-specific banners */}
-      {mode === 'targeted' && (
-        <CibleBanner
-          entries={entries}
-          onAdd={addEntry}
-          onRemove={removeEntry}
-          onWeight={setEntryWeight}
-          mixThemes={mixThemes}
-          onToggleMix={() => setMixThemes(v => !v)}
-          suggestions={savedThemes}
-          loading={targetedLoading}
-        />
-      )}
-      {mode === 'contrast' && (
-        <ContrasteBanner sub={contrastSub} onSet={setContrastSub}/>
-      )}
-
-      <div style={{
-        flex: 1, padding: '14px 20px 30px', overflow: 'auto',
-        display: 'flex', justifyContent: 'center',
-      }}>
-        {/* Colonne unique centrée — focalisée sur le swipe */}
-        <div style={{ width: '100%', maxWidth: 760 }}>
-          {/* Contrainte — gardée mais discrète, au-dessus de la carte */}
-          <div style={{ maxWidth: 400, margin: '0 auto 14px' }}>
-            <ConstraintPanel constraints={constraints} onAdd={addConstraint} onRemove={removeConstraint} note={constraintNote} onAiComplete={completeWithAi} aiBusy={aiBusy} llmReady={llmReady}/>
-          </div>
-          {/* Card column — panneaux d'info (Bilan/Procédure/Raccourcis/Registre) masqués en v3 */}
-          <div>
-          <InlineAddConcept onPick={addOwnConcept} label="Ajouter votre propre concept"/>
-          <div style={{ position: 'relative', padding: mode === 'contrast' ? '24px 18px 0' : 0 }}>
-            {loading && !current ? (
-              <SkeletonCard />
-            ) : current ? (
-              <CitizenCard
-                concept={current}
-                tilt={swipe.tilt}
-                dragOffset={swipe.drag}
-                animClass={swipe.animClass}
-                onPointerDown={swipe.onPointerDown}
-                isFavorite={currentFavorite}
-                relations={currentRelations}
-                extract={currentExtract ?? undefined}
-                imageUrl={currentImage ?? undefined}
-                onToggleFavorite={async () => {
-                  await cacheConcept(current);
-                  const next = await toggleFavorite(current.id);
-                  setCurrentFavorite(next);
-                  if (next) playSound('favorite');
-                }}
-                {...cardProps}
-              />
-            ) : null}
-
-            {/* Peeking stack shadows */}
-            <div style={{
-              position: 'absolute', inset: 0, zIndex: -1,
-              transform: 'translate(10px, 14px) rotate(1.2deg)',
-              background: 'var(--cit-paper-dk)',
-              border: '2.5px solid var(--cit-navy-dk)',
-              pointerEvents: 'none',
-            }}/>
-            <div style={{
-              position: 'absolute', inset: 0, zIndex: -2,
-              transform: 'translate(20px, 26px) rotate(-1.8deg)',
-              background: 'var(--cit-cream)',
-              border: '2.5px solid var(--cit-navy-dk)',
-              pointerEvents: 'none',
-            }}/>
-          </div>
-
-          {current && tagOpen && (
-            <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', gap: 8 }}>
-              <input
-                autoFocus
-                value={tagInput}
-                onChange={e => setTagInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') submitTag(); else if (e.key === 'Escape') { setTagOpen(false); setTagInput(''); } }}
-                placeholder={`Étiquette pour « ${current.name} »…`}
-                style={{
-                  flex: '0 1 340px', padding: '7px 12px', border: '2.5px solid var(--cit-rust)',
-                  background: 'var(--cit-cream)', fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)',
-                }}/>
-              <CitButton size="sm" tone="brick" onClick={submitTag}>✎ Étiqueter</CitButton>
-            </div>
-          )}
-
-          {current && (
-            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <button onClick={() => setDetailOpen(true)} style={{
-                background: 'var(--cit-navy-dk)',
-                color: 'var(--cit-butter)',
-                border: '2.5px solid var(--cit-navy-dk)',
-                padding: '9px 22px',
-                fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700,
-                letterSpacing: '.14em', textTransform: 'uppercase',
-                cursor: 'pointer',
-                boxShadow: '3px 3px 0 var(--cit-brick)',
-              }}>★ Voir la fiche complète ↗ <span style={{ opacity: 0.65, fontSize: 11 }}>· touche F</span></button>
-              <button onClick={() => setTagOpen(o => !o)} style={{
-                background: tagOpen ? 'var(--cit-rust)' : 'transparent',
-                color: tagOpen ? 'var(--cit-cream)' : 'var(--cit-navy-dk)',
-                border: '2.5px solid var(--cit-navy-dk)',
-                padding: '9px 18px',
-                fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700,
-                letterSpacing: '.14em', textTransform: 'uppercase',
-                cursor: 'pointer',
-                boxShadow: '3px 3px 0 var(--cit-navy-dk)',
-              }}>✎ Étiqueter <span style={{ opacity: 0.65, fontSize: 11 }}>· touche T</span></button>
-            </div>
-          )}
-
-          <div style={{ marginTop: 16 }}>
-            <CitizenActions onAction={(v) => {
-              if (v === 'back') {
-                if (!swipe.canBack) {
-                  toast.show({ tone: 'warning', title: 'Limite de retour arrière', body: 'Vous ne pouvez pas remonter au-delà de 10 actions ou avant le début de la session.' });
-                  return;
-                }
-                swipe.back();
-              } else if (v === 'favorite') {
-                swipe.favorite();
-              } else {
-                swipe.cycle(v);
-              }
-            }}/>
-          </div>
-
-          {mode === 'random' && (
-            <div className="cit-script" style={{
-              fontSize: 22, color: 'var(--cit-navy)', marginTop: 14,
-              textAlign: 'center', transform: 'rotate(-0.8deg)',
-            }}>
-              La chance vous sourit, citoyen !
-            </div>
-          )}
-        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', pointerEvents: 'auto' }}>
+          {boostLabel && <Stamp tone="brick" rotate={-3}>★ BOOST {Math.min(boostInitial - swipe.deck.length + 1, boostInitial)}/{boostInitial}</Stamp>}
+          <button onClick={toggleIncognito} title={incognito ? 'Incognito · privé' : 'Public · visible'} style={{ ...ROUND_BTN, background: incognito ? 'var(--cit-brick)' : ROUND_BTN.background, color: incognito ? 'var(--cit-cream)' : ROUND_BTN.color }}><EyeIcon off={incognito}/></button>
+          <button onClick={() => { setConstraintOpen(o => !o); setMenuOpen(false); }} title="Contraindre / compléter la pioche" style={{ ...ROUND_BTN, background: (constraints.length > 0 || constraintOpen) ? 'var(--cit-brick)' : ROUND_BTN.background, color: (constraints.length > 0 || constraintOpen) ? 'var(--cit-cream)' : ROUND_BTN.color }}>▽{constraints.length > 0 ? ` ${constraints.length}` : ''}</button>
         </div>
       </div>
 
-      <SwipeQueue items={swipe.treatedLog}/>
+      {/* Backdrop de fermeture des popovers */}
+      {(menuOpen || constraintOpen) && (
+        <div onClick={() => { setMenuOpen(false); setConstraintOpen(false); }} style={{ position: 'absolute', inset: 0, zIndex: 30 }}/>
+      )}
 
-      <CitizenFooter right={FOOTERS[mode]}/>
+      {/* Menu de navigation */}
+      {menuOpen && (
+        <div style={{ position: 'absolute', top: 58, left: 16, zIndex: 40, background: 'var(--cit-cream)', border: '3px solid var(--cit-navy-dk)', boxShadow: '5px 5px 0 var(--cit-navy-dk)', minWidth: 196 }}>
+          {NAV_ITEMS.map(it => (
+            <button key={it.id} onClick={() => { setMenuOpen(false); if (it.id !== 'swipe') onTabChange?.(it.id); }} style={{
+              display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px',
+              background: it.id === 'swipe' ? 'var(--cit-butter)' : 'transparent', border: 'none', borderBottom: '1px solid var(--cit-navy-dk)',
+              cursor: 'pointer', fontFamily: "'Oswald', sans-serif", fontSize: 12, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--cit-navy-dk)',
+            }}>{it.label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Popover contrainte / IA */}
+      {constraintOpen && (
+        <div style={{ position: 'absolute', top: 58, right: 16, zIndex: 40, width: 360, maxWidth: '92vw' }}>
+          <div style={{ background: 'var(--cit-cream)', border: '3px solid var(--cit-navy-dk)', boxShadow: '5px 5px 0 var(--cit-navy-dk)', padding: 10, maxHeight: '80vh', overflow: 'auto' }}>
+            <ConstraintPanel constraints={constraints} onAdd={addConstraint} onRemove={removeConstraint} note={constraintNote} onAiComplete={completeWithAi} aiBusy={aiBusy} llmReady={llmReady}/>
+            <div style={{ marginTop: 8 }}>
+              <InlineAddConcept onPick={addOwnConcept} label="Ajouter votre propre concept"/>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Saisie ciblage / contraste (compacte) */}
+      {(mode === 'targeted' || mode === 'contrast') && (
+        <div style={{ position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 25, width: 'min(680px, 94vw)' }}>
+          {mode === 'targeted' && (
+            <CibleBanner entries={entries} onAdd={addEntry} onRemove={removeEntry} onWeight={setEntryWeight} mixThemes={mixThemes} onToggleMix={() => setMixThemes(v => !v)} suggestions={savedThemes} loading={targetedLoading}/>
+          )}
+          {mode === 'contrast' && <ContrasteBanner sub={contrastSub} onSet={setContrastSub}/>}
+        </div>
+      )}
+
+      {/* Scène centrale : médaillon */}
+      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: '60px 12px 104px' }}>
+        {loading && !current ? (
+          <div style={{ width: 'min(70vh,92vw,660px)', aspectRatio: '1 / 1', borderRadius: '50%', background: 'var(--cit-navy)', border: '3px solid var(--cit-navy-dk)', display: 'grid', placeItems: 'center' }}>
+            <span className="cit-condensed" style={{ color: 'var(--cit-cream)', letterSpacing: '.22em', fontSize: 12 }}>CHARGEMENT…</span>
+          </div>
+        ) : current ? (
+          <CitizenCard
+            concept={current}
+            tilt={swipe.tilt}
+            dragOffset={swipe.drag}
+            animClass={swipe.animClass}
+            onPointerDown={swipe.onPointerDown}
+            isFavorite={currentFavorite}
+            relations={currentRelations}
+            extract={currentExtract ?? undefined}
+            imageUrl={currentImage ?? undefined}
+            onToggleFavorite={async () => {
+              await cacheConcept(current);
+              const next = await toggleFavorite(current.id);
+              setCurrentFavorite(next);
+              if (next) playSound('favorite');
+            }}
+            {...cardProps}
+          />
+        ) : (
+          <div className="cit-script" style={{ color: 'var(--cit-cream)', fontSize: 24 }}>Plus de cartes pour le moment…</div>
+        )}
+      </div>
+
+      {/* Étiquetage (overlay) */}
+      {current && tagOpen && (
+        <div style={{ position: 'absolute', bottom: 100, left: '50%', transform: 'translateX(-50%)', zIndex: 35, display: 'flex', gap: 8, background: 'var(--cit-cream)', border: '2.5px solid var(--cit-rust)', padding: 8, boxShadow: '3px 3px 0 var(--cit-navy-dk)' }}>
+          <input autoFocus value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitTag(); else if (e.key === 'Escape') { setTagOpen(false); setTagInput(''); } }} placeholder={`Étiquette pour « ${current.name} »…`} style={{ flex: '0 1 320px', padding: '7px 12px', border: '2px solid var(--cit-navy-dk)', background: 'var(--cit-paper)', fontFamily: "'Special Elite', monospace", fontSize: 13, color: 'var(--cit-navy-dk)' }}/>
+          <CitButton size="sm" tone="brick" onClick={submitTag}>✎</CitButton>
+        </div>
+      )}
+
+      {/* Actions flottantes */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '0 0 14px' }}>
+        {current && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setDetailOpen(true)} style={MINI_LINK_BTN}>★ Fiche <span style={{ opacity: 0.55 }}>F</span></button>
+            <button onClick={() => setTagOpen(o => !o)} style={{ ...MINI_LINK_BTN, ...(tagOpen ? { background: 'var(--cit-rust)' } : {}) }}>✎ Étiqueter <span style={{ opacity: 0.55 }}>T</span></button>
+          </div>
+        )}
+        <CitizenActions onAction={(v) => {
+          if (v === 'back') {
+            if (!swipe.canBack) { toast.show({ tone: 'warning', title: 'Limite de retour arrière', body: 'Vous ne pouvez pas remonter au-delà de 10 actions ou avant le début de la session.' }); return; }
+            swipe.back();
+          } else if (v === 'favorite') { swipe.favorite(); } else { swipe.cycle(v); }
+        }}/>
+      </div>
 
       <ConceptDetailModal
         concept={current ?? null}
