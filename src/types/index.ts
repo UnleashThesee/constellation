@@ -35,10 +35,12 @@ export interface Concept {
   sourceTag?: string;
   isFavorite?: boolean;
   isManual?: boolean;         // créé manuellement (concept libre)
+  aiGenerated?: boolean;      // proposé par le LLM, sans fiche encyclopédique propre
+  sourceWork?: { name: string; url?: string }; // œuvre réelle vérifiée d'où il provient
   createdAt?: Date;
 }
 
-export type SourceKind = 'linked' | 'random' | 'explore' | 'contrast' | 'cross';
+export type SourceKind = 'linked' | 'random' | 'explore' | 'contrast' | 'cross' | 'ai';
 
 export interface Interaction {
   id?: number;

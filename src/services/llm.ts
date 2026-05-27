@@ -3,6 +3,7 @@
 
 import type { Concept, AppSettings } from '../types';
 import { cacheLlmGet, cacheLlmSet } from '../stores/db';
+import { searchEntityId, fetchConceptById } from './wikidata';
 
 export interface GeneratedIdea {
   titre: string;
@@ -279,6 +280,120 @@ export async function deepDiveIdea(params: {
   const raw = await callLlm(params.settings, prompt);
   const parsed = extractJson(raw);
   return parsed as DeepDive;
+}
+
+// ── Complément IA d'un croisement (ciblage × contrainte) ─────────────────────
+// Quand Wikidata est trop maigre (ex. « armes × jeux vidéos »), le LLM propose
+// des items réels à l'intersection, qu'on ANCRE ensuite : soit ils ont une vraie
+// fiche Wikidata, soit on les rattache à leur œuvre réelle (vérifiée). Sinon on
+// les écarte (mode « souple » mais source réelle exigée).
+
+const AI_CATS = ['philosophie', 'sciences', 'humaines', 'economie', 'litterature', 'arts', 'musique', 'cinema', 'jeuvideo', 'histoire', 'geographie', 'personnages'];
+
+interface CrossCandidate { nom: string; description?: string; categories?: string[]; oeuvre?: string; type?: string }
+
+function normName(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+}
+function slugId(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
+}
+function namesMatch(a: string, b: string): boolean {
+  const na = normName(a), nb = normName(b);
+  if (!na || !nb) return false;
+  return na === nb || na.includes(nb) || nb.includes(na);
+}
+
+function buildCrossPrompt(p: { themes: string[]; constraints: string[]; exclude: string[]; count: number }): string {
+  const lines: string[] = [];
+  lines.push('Tu es un moteur de découverte pour Constellation. On croise des THÈMES avec des CONTRAINTES/TYPES, et on veut des entités RÉELLES et notables précisément à l\'intersection.');
+  lines.push('');
+  lines.push(`THÈMES : ${p.themes.join(', ') || '(aucun)'}`);
+  lines.push(`CONTRAINTES / TYPES : ${p.constraints.join(', ') || '(aucune)'}`);
+  lines.push('');
+  lines.push(`Donne ${p.count} items qui sont À LA FOIS du type demandé ET issus des thèmes (ex. thèmes="jeu vidéo", contrainte="arme" → armes emblématiques de jeux vidéo : BFG 9000, Master Sword, Gravity Gun…).`);
+  lines.push('Items vérifiables et précis. Pour chacun, indique l\'œuvre RÉELLE (jeu, film, livre, saga) d\'où il provient.');
+  if (p.exclude.length) { lines.push(''); lines.push(`N'inclus AUCUN de ces items déjà vus : ${p.exclude.slice(0, 60).join(', ')}.`); }
+  lines.push('');
+  lines.push('Format JSON STRICT, tableau uniquement :');
+  lines.push('[{');
+  lines.push('  "nom": "nom exact de l\'item",');
+  lines.push('  "description": "1-2 lignes en français",');
+  lines.push('  "categories": ["jeuvideo", …] (parmi : philosophie, sciences, humaines, economie, litterature, arts, musique, cinema, jeuvideo, histoire, geographie, personnages),');
+  lines.push('  "oeuvre": "œuvre/source réelle d\'où provient l\'item (ou \\"\\" si objet réel)",');
+  lines.push('  "type": "ce qu\'est l\'item (arme, personnage, véhicule…)"');
+  lines.push('}]');
+  lines.push('');
+  lines.push('Réponds UNIQUEMENT par le tableau JSON.');
+  return lines.join('\n');
+}
+
+async function generateCrossCandidates(params: { settings: AppSettings; themes: string[]; constraints: string[]; exclude: string[]; count: number }): Promise<CrossCandidate[]> {
+  const prompt = buildCrossPrompt(params);
+  const raw = await callLlm(params.settings, prompt);
+  const parsed = extractJson(raw);
+  if (Array.isArray(parsed)) return parsed as CrossCandidate[];
+  if (parsed && typeof parsed === 'object') {
+    for (const v of Object.values(parsed as Record<string, unknown>)) if (Array.isArray(v)) return v as CrossCandidate[];
+  }
+  return [];
+}
+
+async function groundCandidate(cand: CrossCandidate): Promise<Concept | null> {
+  const nom = (cand?.nom ?? '').trim();
+  if (!nom) return null;
+  const cats = (Array.isArray(cand.categories) ? cand.categories : []).filter(c => AI_CATS.includes(c));
+  const catW = (cats.length ? cats : ['jeuvideo']).slice(0, 3).map((k, i) => [k, i === 0 ? 1 : 0.5]) as Concept['cats'];
+
+  // 1) L'item a-t-il une vraie fiche Wikidata cohérente ?
+  const qid = await searchEntityId(nom).catch(() => null);
+  if (qid) {
+    const real = await fetchConceptById(qid).catch(() => null);
+    if (real && namesMatch(real.name, nom)) return { ...real, sourceKind: 'ai' };
+  }
+  // 2) Souple : rattacher à une œuvre RÉELLE vérifiée.
+  const oeuvre = (cand.oeuvre ?? '').trim();
+  if (oeuvre) {
+    const wq = await searchEntityId(oeuvre).catch(() => null);
+    if (wq) return {
+      id: `ai:${slugId(nom)}`,
+      name: nom,
+      kind: (cand.type ?? '').trim() || 'Concept',
+      cats: catW,
+      blurb: (cand.description ?? '').trim() || `${nom} — issu de ${oeuvre}.`,
+      refs: [oeuvre],
+      sourceKind: 'ai',
+      aiGenerated: true,
+      sourceWork: { name: oeuvre, url: `https://www.wikidata.org/wiki/${wq}` },
+      createdAt: new Date(),
+    };
+  }
+  return null;
+}
+
+/**
+ * Génère via LLM des concepts à l'intersection (thèmes × contraintes), ancrés à
+ * une source réelle, dédupliqués contre `exclude` (noms déjà vus/traités).
+ */
+export async function buildAiCrossConcepts(params: {
+  settings: AppSettings; themes: string[]; constraints: string[]; exclude?: string[]; count?: number;
+}): Promise<Concept[]> {
+  const candidates = await generateCrossCandidates({
+    settings: params.settings, themes: params.themes, constraints: params.constraints,
+    exclude: params.exclude ?? [], count: params.count ?? 10,
+  });
+  const excludeNorm = new Set((params.exclude ?? []).map(normName));
+  const grounded = await Promise.all(candidates.map(c => groundCandidate(c).catch(() => null)));
+  const out: Concept[] = [];
+  const seen = new Set<string>();
+  for (const c of grounded) {
+    if (!c) continue;
+    const nn = normName(c.name);
+    if (!nn || seen.has(nn) || excludeNorm.has(nn)) continue;
+    seen.add(nn);
+    out.push(c);
+  }
+  return out;
 }
 
 /** Test rapide : envoie un prompt court pour vérifier la clé. */

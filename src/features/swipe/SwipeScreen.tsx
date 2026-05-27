@@ -13,7 +13,8 @@ import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
 import { consumePendingSwipeDeck } from '../../lib/pending';
 import { embedConcepts, centroid, cosineSim, embeddingsStatus } from '../../services/embeddings';
-import type { Concept, SwipeMode, CategoryKey, SwipeVerdict } from '../../types';
+import type { Concept, SwipeMode, CategoryKey, SwipeVerdict, AppSettings } from '../../types';
+import { buildAiCrossConcepts } from '../../services/llm';
 
 const FALLBACK_CONCEPTS: Concept[] = [
   {
@@ -98,6 +99,7 @@ const SOURCE_LABELS: Record<string, string> = {
   explore: 'Exploration',
   contrast: 'Contraste',
   cross: 'Croisement',
+  ai: 'Croisement IA',
 };
 
 function CitIconReject() {
@@ -325,6 +327,24 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
                 {extract || concept.blurb}
               </p>
             </div>
+
+            {/* Carte proposée par l'IA : marquage + source réelle */}
+            {concept.aiGenerated && (
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontFamily: "'Oswald', sans-serif", fontSize: 10.5 }}>
+                <span style={{
+                  background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', padding: '2px 8px',
+                  fontWeight: 700, letterSpacing: '.1em', boxShadow: '2px 2px 0 var(--cit-brick)',
+                }}>✦ PROPOSÉ PAR L'IA</span>
+                {concept.sourceWork && (
+                  <span style={{ color: 'var(--cit-navy-lt)' }}>
+                    source :{' '}
+                    {concept.sourceWork.url
+                      ? <a href={concept.sourceWork.url} target="_blank" rel="noreferrer" style={{ color: 'var(--cit-brick)', fontWeight: 700 }}>{concept.sourceWork.name} ↗</a>
+                      : <strong style={{ color: 'var(--cit-navy-dk)' }}>{concept.sourceWork.name}</strong>}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Relations Wikidata */}
             {relations && relations.length > 0 && (
@@ -747,7 +767,7 @@ function RegistrePanel({ history }: { history: Array<{ name: string; verdict: st
 }
 
 /** Contraintes de pioche (plusieurs possibles, intersection), valables dans toutes les procédures. */
-function ConstraintPanel({ constraints, onAdd, onRemove, note }: { constraints: Array<{ text: string; qid?: string }>; onAdd: (t: string, qid?: string) => void; onRemove: (t: string) => void; note: string }) {
+function ConstraintPanel({ constraints, onAdd, onRemove, note, onAiComplete, aiBusy, llmReady }: { constraints: Array<{ text: string; qid?: string }>; onAdd: (t: string, qid?: string) => void; onRemove: (t: string) => void; note: string; onAiComplete?: () => void; aiBusy?: boolean; llmReady?: boolean }) {
   const active = constraints.length > 0;
   return (
     <div style={{ marginBottom: 2 }}>
@@ -796,6 +816,28 @@ function ConstraintPanel({ constraints, onAdd, onRemove, note }: { constraints: 
             ⚠ Aucune carte ne croise cette contrainte avec vos critères — on élargit au type seul.
           </div>
         )}
+        {note === 'ai' && (
+          <div className="cit-typed" style={{ fontSize: 10, color: 'var(--cit-navy)', lineHeight: 1.35, marginTop: 8, fontStyle: 'italic' }}>
+            ✦ Croisement complété par l'IA — cartes marquées « IA », sourcées à leur œuvre.
+          </div>
+        )}
+        {onAiComplete && (
+          <>
+            <button onClick={onAiComplete} disabled={aiBusy} title={llmReady ? 'Compléter ce croisement avec votre LLM' : 'Configurez votre clé API dans Réglages'} style={{
+              marginTop: 8, width: '100%', padding: '7px 10px', cursor: aiBusy ? 'wait' : 'pointer',
+              background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)', border: '2.5px solid var(--cit-navy-dk)',
+              fontFamily: "'Oswald', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase',
+              boxShadow: '2px 2px 0 var(--cit-brick)', opacity: aiBusy ? 0.7 : 1,
+            }}>
+              {aiBusy ? '✦ Génération…' : '✦ Compléter avec l\'IA'}
+            </button>
+            {!llmReady && (
+              <div className="cit-typed" style={{ fontSize: 9, color: 'var(--cit-navy-lt)', marginTop: 4, fontStyle: 'italic' }}>
+                Nécessite votre clé API (Réglages).
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -823,6 +865,11 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   incognitoRef.current = incognito;
   const [constraints, setConstraints] = useState<Array<{ text: string; qid?: string }>>([]);
   const [constraintNote, setConstraintNote] = useState('');
+  // Complément IA d'un croisement maigre (clé LLM de l'utilisateur, cf. Réglages).
+  const [aiBusy, setAiBusy] = useState(false);
+  const [llmReady, setLlmReady] = useState(false);
+  const aiSettingsRef = useRef<AppSettings | null>(null);
+  const aiAttemptKeyRef = useRef<string>('');
   const addConstraint = (t: string, qid?: string) => { const v = t.trim(); if (v) setConstraints(prev => prev.some(x => x.text.toLowerCase() === v.toLowerCase()) ? prev : [...prev, { text: v, qid }]); };
   const removeConstraint = (t: string) => setConstraints(prev => prev.filter(x => x.text !== t));
 
@@ -891,6 +938,8 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     getSettings().then(s => {
       if (s?.semanticContrastEnabled) setSemanticEnabled(true);
       if (s?.incognito) setIncognito(true);
+      aiSettingsRef.current = s ?? null;
+      setLlmReady(!!s?.llmKey?.trim());
     });
     getAllConstraints().then(cs => setSavedThemes(cs.sort((a, b) => b.useCount - a.useCount).map(c => c.text)));
   }, []);
@@ -898,6 +947,39 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const enableSemanticContrast = async () => {
     setSemanticEnabled(true);
     await saveSettings({ semanticContrastEnabled: true });
+  };
+
+  // Complément IA manuel : génère des concepts au croisement (thèmes × contraintes),
+  // ancrés à une source réelle, et les ajoute à la pioche.
+  const completeWithAi = async () => {
+    if (aiBusy) return;
+    const s = aiSettingsRef.current;
+    if (!s?.llmKey?.trim()) {
+      toast.show({ tone: 'warning', title: 'Clé IA manquante', body: 'Ajoutez votre clé API dans Réglages pour utiliser le complément IA.' });
+      return;
+    }
+    const themes = entries.map(e => e.text);
+    const cons = constraints.map(c => c.text);
+    if (themes.length === 0 && cons.length === 0) {
+      toast.show({ tone: 'warning', title: 'Rien à croiser', body: 'Ajoutez un thème (mode Ciblé) et/ou une contrainte.' });
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const exclude = [...swipe.deck.map(c => c.name), ...swipe.treatedLog.map(t => t.concept.name)];
+      const ai = await buildAiCrossConcepts({ settings: s, themes, constraints: cons, exclude, count: 10 });
+      if (ai.length > 0) {
+        await Promise.all(ai.map(c => cacheConcept(c)));
+        swipe.appendDeck(ai);
+        toast.show({ tone: 'success', title: `★ ${ai.length} carte${ai.length > 1 ? 's' : ''} ajoutée${ai.length > 1 ? 's' : ''} par l'IA` });
+      } else {
+        toast.show({ tone: 'warning', title: 'Aucun résultat IA', body: "L'IA n'a pas trouvé d'item vérifiable pour ce croisement." });
+      }
+    } catch (e) {
+      toast.show({ tone: 'warning', title: 'Échec du complément IA', body: e instanceof Error ? e.message : 'Erreur inconnue.' });
+    } finally {
+      setAiBusy(false);
+    }
   };
 
   // Mode Ciblé — entrées libres (un thème OU un concept précis) ; chaque ajout
@@ -1038,6 +1120,26 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           }
         } else if (!cancelled) {
           setConstraintNote('');
+        }
+
+        // Complément IA (auto) : croisement thème × contrainte trop maigre côté Wikidata.
+        const aiKey = `${mode}|${entries.map(e => e.text).join(',')}|${constraints.map(c => c.text).join(',')}`;
+        if (mode === 'targeted' && entries.length > 0 && constraints.length > 0
+            && fresh.length < 6 && aiSettingsRef.current?.llmKey?.trim()
+            && aiAttemptKeyRef.current !== aiKey) {
+          aiAttemptKeyRef.current = aiKey;
+          try {
+            const exclude = [...fresh.map(c => c.name), ...swipe.treatedLog.map(t => t.concept.name)];
+            const ai = await buildAiCrossConcepts({
+              settings: aiSettingsRef.current, themes: entries.map(e => e.text),
+              constraints: constraints.map(c => c.text), exclude, count: 10,
+            });
+            if (!cancelled && ai.length > 0) {
+              const have = new Set(fresh.map(c => c.id));
+              fresh = [...fresh, ...ai.filter(c => !have.has(c.id))];
+              setConstraintNote('ai');
+            }
+          } catch { /* clé invalide / quota : on garde le résultat Wikidata */ }
         }
 
         fresh = fresh.filter(c => !excluded.has(c.id) && !swipe.treatedIds.has(c.id));
@@ -1456,7 +1558,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
 
         {/* Right panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <ConstraintPanel constraints={constraints} onAdd={addConstraint} onRemove={removeConstraint} note={constraintNote}/>
+          <ConstraintPanel constraints={constraints} onAdd={addConstraint} onRemove={removeConstraint} note={constraintNote} onAiComplete={completeWithAi} aiBusy={aiBusy} llmReady={llmReady}/>
           <RegistrePanel history={swipe.history}/>
         </div>
       </div>
