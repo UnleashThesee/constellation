@@ -283,6 +283,7 @@ export function SettingsScreen({ onTabChange }: Props) {
   const [volume, setVolume] = useState(40);
   const [chromaticOn, setChromaticOn] = useState(true);
   const [skipDelay, setSkipDelay] = useState(30);
+  const [swipeUi, setSwipeUi] = useState<'v2' | 'v3'>('v2');
   const toast = useToast();
 
   useEffect(() => {
@@ -296,6 +297,7 @@ export function SettingsScreen({ onTabChange }: Props) {
         if (typeof s.masterVolume === 'number') setVolume(Math.round(s.masterVolume * 100));
         if (typeof s.chromaticEnabled === 'boolean') setChromaticOn(s.chromaticEnabled);
         if (typeof s.skipDelayDays === 'number') setSkipDelay(s.skipDelayDays);
+        if (s.swipeUi === 'v3' || s.swipeUi === 'v2') setSwipeUi(s.swipeUi);
       }
     });
     getSettings().then(s => { if (s?.operatorName) setName(s.operatorName); });
@@ -313,6 +315,7 @@ export function SettingsScreen({ onTabChange }: Props) {
   useEffect(() => { saveSettings({ llmProvider: llmProvider as 'claude' | 'openai', llmKey }).catch(() => {}); }, [llmProvider, llmKey]);
   useEffect(() => { saveSettings({ operatorName: name }).catch(() => {}); }, [name]);
   useEffect(() => { saveSettings({ skipDelayDays: skipDelay }).catch(() => {}); }, [skipDelay]);
+  useEffect(() => { saveSettings({ swipeUi }).catch(() => {}); }, [swipeUi]);
   useEffect(() => {
     saveSettings({ chromaticEnabled: chromaticOn }).catch(() => {});
     if (!chromaticOn) {
@@ -447,6 +450,14 @@ export function SettingsScreen({ onTabChange }: Props) {
                 { value: 'cross', label: 'CROISEMENT' },
               ]}/>
             </FormRow>
+            <div style={{ marginTop: 12 }}>
+              <FormRow label="Interface du Swipe" hint="v2 = interface classique (panneaux latéraux). v3 = épurée, carte en cartouche centré.">
+                <SelectInput value={swipeUi} onChange={v => setSwipeUi(v === 'v3' ? 'v3' : 'v2')} options={[
+                  { value: 'v2', label: 'V2 · CLASSIQUE' },
+                  { value: 'v3', label: 'V3 · CARTOUCHE (ÉPURÉE)' },
+                ]}/>
+              </FormRow>
+            </div>
             <div style={{ marginTop: 12 }}>
               <FormRow label={`Délai avant ré-apparition d'un « passé » · ${skipDelay} jours`} hint="Plus court = vous reverrez vite les concepts mis de côté.">
                 <Slider value={skipDelay} onChange={setSkipDelay} min={1} max={90} unit=" j"/>

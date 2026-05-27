@@ -67,6 +67,7 @@ export interface AppSettings {
   id?: number;
   theme: ThemeKey | string;
   swipeMode: SwipeMode;
+  swipeUi?: 'v2' | 'v3';
   llmProvider?: 'claude' | 'openai';
   llmKey?: string;
   llmModel?: string;

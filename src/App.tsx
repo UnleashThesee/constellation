@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { SwipeScreen } from './features/swipe/SwipeScreen';
+import { SwipeScreenV3 } from './features/swipe/SwipeScreenV3';
 import { MapScreen } from './features/map/MapScreen';
 import { CombinatorScreen } from './features/combinator/CombinatorScreen';
 import { IdeasScreen } from './features/ideas/IdeasScreen';
@@ -58,6 +59,17 @@ function LoadingScreen() {
       </div>
     </div>
   );
+}
+
+// Choisit l'interface Swipe (v2 classique / v3 cartouche) selon les Réglages.
+// La route se remonte à chaque navigation vers /swipe, donc le choix est relu.
+function SwipeRoute({ onTabChange }: { onTabChange?: (id: string) => void }) {
+  const [ui, setUi] = useState<'v2' | 'v3' | null>(null);
+  useEffect(() => { getSettings().then(s => setUi(s?.swipeUi === 'v3' ? 'v3' : 'v2')); }, []);
+  if (ui === null) return null;
+  return ui === 'v3'
+    ? <SwipeScreenV3 onTabChange={onTabChange} />
+    : <SwipeScreen onTabChange={onTabChange} />;
 }
 
 function OfflineBanner() {
@@ -174,7 +186,7 @@ export default function App() {
       <Route path="/perso" element={<PersoScreen onTabChange={onTabChange} />} />
       <Route path="/combos" element={<CombosLibraryScreen onTabChange={onTabChange} />} />
       <Route path="/constraints" element={<ConstraintsScreen onTabChange={onTabChange} />} />
-      <Route path="/swipe" element={<SwipeScreen onTabChange={onTabChange} />} />
+      <Route path="/swipe" element={<SwipeRoute onTabChange={onTabChange} />} />
       <Route path="*" element={<Navigate to="/swipe" replace />} />
     </Routes>
   );
