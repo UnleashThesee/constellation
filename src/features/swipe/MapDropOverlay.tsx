@@ -114,6 +114,8 @@ export function MapDropOverlay({ concept, verdict, fav = false, onDone }: { conc
 
   const visible = phase !== 'hidden' && phase !== 'out';
   const lit = phase === 'focus' || phase === 'out';
+  const zoom = lit ? 1.16 : 1;
+  const origin = newNode ? `${newNode.x}% ${newNode.y}%` : '50% 50%';
 
   return (
     <div aria-hidden style={{
@@ -142,6 +144,9 @@ export function MapDropOverlay({ concept, verdict, fav = false, onDone }: { conc
           ★ VOTRE UNIVERS · {nodes.length} NŒUD{nodes.length > 1 ? 'S' : ''}
         </div>
 
+        {/* Scène carto (léger zoom vers le point d'atterrissage) */}
+        <div style={{ position: 'absolute', inset: 0, transformOrigin: origin,
+          transform: `scale(${zoom})`, transition: 'transform .7s cubic-bezier(.2,.7,.3,1)' }}>
         {/* Régions thématiques */}
         {regions.map(r => <DomainBlob key={r.cat} cat={r.cat} leftPct={r.x} topPct={r.y} sizePct={r.size} intensity={0.7}/>)}
 
@@ -185,7 +190,9 @@ export function MapDropOverlay({ concept, verdict, fav = false, onDone }: { conc
               overflow: 'hidden', border: `3px solid ${ring}`,
               background: img ? 'var(--cit-cream)' : st.color,
               display: 'grid', placeItems: 'center', zIndex: 5,
-              boxShadow: kind === 'favorite' ? `0 0 14px var(--cit-mustard), 2px 2px 0 var(--cit-navy-dk)` : '2px 2px 0 var(--cit-navy-dk)',
+              boxShadow: kind === 'favorite' ? `0 0 16px var(--cit-mustard), 2px 2px 0 var(--cit-navy-dk)`
+                : kind === 'valid' ? `0 0 14px oklch(60% 0.16 150), 2px 2px 0 var(--cit-navy-dk)`
+                : '2px 2px 0 var(--cit-navy-dk)',
               filter: kind === 'skip' && lit ? 'grayscale(0.7)' : undefined,
               transform: `scale(${lit ? 1 : 0.2})`,
               opacity: lit ? 1 : 0,
@@ -204,6 +211,7 @@ export function MapDropOverlay({ concept, verdict, fav = false, onDone }: { conc
             }}>{concept.name}</div>
           </>
         )}
+        </div>
 
         {/* Bandeau */}
         <div style={{
@@ -248,12 +256,18 @@ function VerdictFx({ kind }: { kind: FxKind }) {
       {burst(10, 76, () => <span style={{ fontSize: 18, lineHeight: 1, color: 'var(--cit-mustard)', textShadow: '0 0 2px var(--cit-navy-dk), 1px 1px 0 var(--cit-navy-dk)' }}>★</span>)}
     </>
   );
-  if (kind === 'valid') return (
-    <>
-      <div className="md-ring" style={{ width: 66, height: 66, border: '3px solid oklch(52% 0.13 150)' }}/>
-      {burst(14, 66, () => <span style={{ display: 'block', width: 7, height: 7, borderRadius: '50%', background: 'oklch(55% 0.15 150)' }}/>)}
-    </>
-  );
+  if (kind === 'valid') {
+    const r2: React.CSSProperties = { width: 90, height: 90, border: '2.5px solid oklch(62% 0.13 150)' };
+    (r2 as Record<string, string>).animationDelay = '.09s';
+    return (
+      <>
+        <div className="md-ring" style={{ width: 60, height: 60, border: '4px solid oklch(55% 0.15 150)' }}/>
+        <div className="md-ring" style={r2}/>
+        {burst(11, 72, () => <span style={{ display: 'block', width: 8, height: 8, borderRadius: '50%', background: 'oklch(56% 0.15 150)', boxShadow: '0 0 5px oklch(62% 0.16 150)' }}/>)}
+        {burst(8, 56, () => <span style={{ fontSize: 15, lineHeight: 1, color: 'oklch(58% 0.16 150)', textShadow: '0 0 2px var(--cit-navy-dk)' }}>✦</span>)}
+      </>
+    );
+  }
   if (kind === 'reject') return (
     <>
       <div className="md-hole" style={{ width: 96, height: 96,
