@@ -7,6 +7,7 @@ import { computeForceLayout } from '../map/forceLayout';
 import { getAdoptedConcepts, getFilterState } from '../../stores/db';
 
 type SeedMap = Record<string, { x: number; y: number; size: number }>;
+type FxKind = 'favorite' | 'valid' | 'reject' | 'skip';
 
 const VERDICT_RING: Record<SwipeVerdict, string> = {
   valid:  'oklch(52% 0.13 150)',
@@ -39,12 +40,14 @@ interface NodeView { id: string; x: number; y: number; size: number; cats: strin
  * swipé se pose à sa vraie place parmi ses voisins, mis en avant. Puis retour
  * au deck. Non bloquant (pointerEvents: none).
  */
-export function MapDropOverlay({ concept, verdict, onDone }: { concept: Concept; verdict: SwipeVerdict; onDone: () => void }) {
+export function MapDropOverlay({ concept, verdict, fav = false, onDone }: { concept: Concept; verdict: SwipeVerdict; fav?: boolean; onDone: () => void }) {
   const [phase, setPhase] = useState<'hidden' | 'in' | 'focus' | 'out'>('hidden');
+  const [sink, setSink] = useState(false);
   const [universe, setUniverse] = useState<{ concepts: Concept[]; seed: SeedMap | undefined } | null>(null);
   const img = useConceptImage(concept);
   const st = spriteStyle(concept);
-  const ring = VERDICT_RING[verdict];
+  const kind: FxKind = fav ? 'favorite' : verdict;
+  const ring = fav ? 'var(--cit-mustard)' : VERDICT_RING[verdict];
 
   useEffect(() => {
     let alive = true;
@@ -55,9 +58,11 @@ export function MapDropOverlay({ concept, verdict, onDone }: { concept: Concept;
   useEffect(() => {
     const r = requestAnimationFrame(() => setPhase('in'));
     const t1 = setTimeout(() => setPhase('focus'), 360);
-    const t2 = setTimeout(() => setPhase('out'), 1700);
-    const t3 = setTimeout(onDone, 2050);
-    return () => { cancelAnimationFrame(r); clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    // Rejet : le concept tombe dans un trou peu après s'être posé.
+    const tSink = verdict === 'reject' && !fav ? setTimeout(() => setSink(true), 1050) : undefined;
+    const t2 = setTimeout(() => setPhase('out'), 1750);
+    const t3 = setTimeout(onDone, 2100);
+    return () => { cancelAnimationFrame(r); clearTimeout(t1); if (tSink) clearTimeout(tSink); clearTimeout(t2); clearTimeout(t3); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -118,7 +123,7 @@ export function MapDropOverlay({ concept, verdict, onDone }: { concept: Concept;
       transition: 'background .34s ease',
     }}>
       <div style={{
-        position: 'relative', width: 'min(94vw, 940px)', height: 'min(78vh, 680px)',
+        position: 'relative', width: 'min(97vw, 1280px)', height: 'min(90vh, 880px)',
         background: 'radial-gradient(circle at 50% 50%, var(--cit-paper) 0%, var(--cit-paper-dk) 100%)',
         border: '3px solid var(--cit-navy-dk)', boxShadow: '8px 8px 0 var(--cit-navy-dk)',
         overflow: 'hidden',
@@ -166,29 +171,36 @@ export function MapDropOverlay({ concept, verdict, onDone }: { concept: Concept;
           );
         })}
 
-        {/* Marqueur du nouveau concept + onde + libellé */}
+        {/* Marqueur du nouveau concept + effets selon le verdict + libellé */}
         {newNode && (
           <>
+            {/* Couche d'effets, centrée sur le point d'atterrissage */}
+            <div style={{ position: 'absolute', left: `${newNode.x}%`, top: `${newNode.y}%`, width: 0, height: 0, zIndex: 4, pointerEvents: 'none' }}>
+              {lit && <VerdictFx kind={kind}/>}
+            </div>
+
             <div style={{
               position: 'absolute', left: `${newNode.x}%`, top: `${newNode.y}%`,
               width: 40, height: 40, marginLeft: -20, marginTop: -20, borderRadius: '50%',
               overflow: 'hidden', border: `3px solid ${ring}`,
               background: img ? 'var(--cit-cream)' : st.color,
-              display: 'grid', placeItems: 'center', zIndex: 3,
-              boxShadow: '2px 2px 0 var(--cit-navy-dk)',
-              transform: `translate(0,0) scale(${lit ? 1 : 0.2})`,
+              display: 'grid', placeItems: 'center', zIndex: 5,
+              boxShadow: kind === 'favorite' ? `0 0 14px var(--cit-mustard), 2px 2px 0 var(--cit-navy-dk)` : '2px 2px 0 var(--cit-navy-dk)',
+              filter: kind === 'skip' && lit ? 'grayscale(0.7)' : undefined,
+              transform: `scale(${lit ? 1 : 0.2})`,
               opacity: lit ? 1 : 0,
               transition: 'transform .5s cubic-bezier(.2,1.3,.4,1), opacity .35s ease',
+              animation: sink ? 'md-sink .6s cubic-bezier(.5,0,.9,.4) forwards' : undefined,
             }}>
               {img ? <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
                    : <span style={{ fontSize: 18, lineHeight: 1 }}>{st.glyph}</span>}
             </div>
             <div style={{
               position: 'absolute', left: `${newNode.x}%`, top: `${newNode.y}%`,
-              transform: 'translate(-50%, 26px)', zIndex: 3,
-              fontFamily: "'Alfa Slab One', serif", fontSize: 13, color: 'var(--cit-navy-dk)',
+              transform: 'translate(-50%, 26px)', zIndex: 5,
+              fontFamily: "'Alfa Slab One', serif", fontSize: 14, color: 'var(--cit-navy-dk)',
               whiteSpace: 'nowrap', textShadow: '1px 1px 0 var(--cit-cream), -1px 1px 0 var(--cit-cream)',
-              opacity: lit ? 1 : 0, transition: 'opacity .4s ease .1s', pointerEvents: 'none',
+              opacity: lit && !sink ? 1 : 0, transition: 'opacity .4s ease .1s', pointerEvents: 'none',
             }}>{concept.name}</div>
           </>
         )}
@@ -196,12 +208,59 @@ export function MapDropOverlay({ concept, verdict, onDone }: { concept: Concept;
         {/* Bandeau */}
         <div style={{
           position: 'absolute', left: 0, right: 0, bottom: 0,
-          background: 'var(--cit-navy-dk)', color: 'var(--cit-butter)',
+          background: 'var(--cit-navy-dk)', color: kind === 'favorite' ? 'var(--cit-mustard)' : 'var(--cit-butter)',
           padding: '8px 12px', textAlign: 'center',
           fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700,
           letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>{VERDICT_TITLE[verdict](concept.name)}</div>
+        }}>{fav ? `★ ${concept.name} — coup de cœur !` : VERDICT_TITLE[verdict](concept.name)}</div>
       </div>
     </div>
   );
+}
+
+// Projectiles répartis en cercle autour du point d'atterrissage.
+function burst(n: number, dist: number, child: (i: number) => React.ReactNode): React.ReactNode[] {
+  return Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    const r = dist * (0.7 + Math.random() * 0.5);
+    const style: React.CSSProperties = { animationDelay: `${Math.random() * 0.12}s` };
+    (style as Record<string, string>)['--dx'] = `${Math.cos(a) * r}px`;
+    (style as Record<string, string>)['--dy'] = `${Math.sin(a) * r}px`;
+    return <span key={i} className="md-burst" style={style}>{child(i)}</span>;
+  });
+}
+
+/** Effets visuels selon le choix : éclairs (favori), étincelles (adopté), trou (rejet), onde neutre (passé). */
+function VerdictFx({ kind }: { kind: FxKind }) {
+  if (kind === 'favorite') return (
+    <>
+      <div className="md-ring" style={{ width: 76, height: 76, border: '4px solid var(--cit-mustard)', boxShadow: '0 0 0 1.5px var(--cit-navy-dk)' }}/>
+      {[0, 45, 90, 135, 180, 225, 270, 315].map(r => {
+        const s: React.CSSProperties = {};
+        (s as Record<string, string>)['--rot'] = `${r}deg`;
+        return (
+          <svg key={r} className="md-bolt" width="18" height="70" viewBox="0 0 18 70" style={s}>
+            <polyline points="10,2 4,29 12,32 5,68" fill="none" stroke="var(--cit-navy-dk)" strokeWidth="5.5" strokeLinejoin="round" strokeLinecap="round"/>
+            <polyline points="10,2 4,29 12,32 5,68" fill="none" stroke="var(--cit-mustard)" strokeWidth="2.8" strokeLinejoin="round" strokeLinecap="round"/>
+          </svg>
+        );
+      })}
+      {burst(10, 76, () => <span style={{ fontSize: 18, lineHeight: 1, color: 'var(--cit-mustard)', textShadow: '0 0 2px var(--cit-navy-dk), 1px 1px 0 var(--cit-navy-dk)' }}>★</span>)}
+    </>
+  );
+  if (kind === 'valid') return (
+    <>
+      <div className="md-ring" style={{ width: 66, height: 66, border: '3px solid oklch(52% 0.13 150)' }}/>
+      {burst(14, 66, () => <span style={{ display: 'block', width: 7, height: 7, borderRadius: '50%', background: 'oklch(55% 0.15 150)' }}/>)}
+    </>
+  );
+  if (kind === 'reject') return (
+    <>
+      <div className="md-hole" style={{ width: 96, height: 96,
+        background: 'radial-gradient(circle, oklch(0% 0 0) 32%, oklch(0% 0 0 / 0.55) 62%, transparent 76%)',
+        boxShadow: 'inset 0 0 14px oklch(0% 0 0)' }}/>
+      {burst(8, 56, () => <span style={{ display: 'block', width: 6, height: 10, background: 'var(--cit-brick)', transform: 'rotate(15deg)' }}/>)}
+    </>
+  );
+  return <div className="md-ring" style={{ width: 58, height: 58, border: '2.5px dashed var(--cit-navy-lt)' }}/>;
 }

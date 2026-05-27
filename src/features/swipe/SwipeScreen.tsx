@@ -826,12 +826,12 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const addConstraint = (t: string, qid?: string) => { const v = t.trim(); if (v) setConstraints(prev => prev.some(x => x.text.toLowerCase() === v.toLowerCase()) ? prev : [...prev, { text: v, qid }]); };
   const removeConstraint = (t: string) => setConstraints(prev => prev.filter(x => x.text !== t));
 
-  const [drop, setDrop] = useState<{ concept: Concept; verdict: SwipeVerdict; key: number } | null>(null);
+  const [drop, setDrop] = useState<{ concept: Concept; verdict: SwipeVerdict; fav: boolean; key: number } | null>(null);
   const swipe = useSwipeDeck(
     [],
     () => setDetailOpen(true),
     () => incognitoRef.current,
-    (e) => setDrop({ concept: e.concept, verdict: e.verdict, key: Date.now() }),
+    (e) => setDrop({ concept: e.concept, verdict: e.verdict, fav: e.fav, key: Date.now() }),
   );
   const [rawDeck, setRawDeck] = useState<Concept[]>([]);
   const [currentFavorite, setCurrentFavorite] = useState(false);
@@ -1496,7 +1496,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
       )}
 
       {drop && (
-        <MapDropOverlay key={drop.key} concept={drop.concept} verdict={drop.verdict} onDone={() => setDrop(null)}/>
+        <MapDropOverlay key={drop.key} concept={drop.concept} verdict={drop.verdict} fav={drop.fav} onDone={() => setDrop(null)}/>
       )}
     </div>
   );
