@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSwipeDeck } from './useSwipeDeck';
 import { SwipeQueue } from './SwipeQueue';
+import { useSprite } from '../../services/sprites';
 import { Sunburst, Stamp, PixelDie, Aster, SkeletonCard } from '../../components/ui/atoms';
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
@@ -181,6 +182,9 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
   const rotate = isDragging ? `rotate(${dragOffset.x * 0.04 - 0.6}deg)` : 'rotate(-0.6deg)';
   const translate = isDragging ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : '';
 
+  // Sprite IA prioritaire sur la photo Wikipédia (généré 500 ms après affichage
+  // pour ne pas dépenser sur les cartes survolées/zappées trop vite).
+  const sprite = useSprite(concept, 500);
   const imageSrc = imageUrl ?? (concept.portrait?.startsWith('http') ? concept.portrait : undefined);
   const initials = concept.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
   const domColor = conceptDominant(concept.cats).css;
@@ -270,7 +274,12 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
               boxShadow: '4px 4px 0 var(--cit-navy-dk)',
               overflow: 'hidden',
             }}>
-              {imageSrc ? (
+              {sprite ? (
+                <div style={{ position: 'absolute', inset: 0, background: domColor, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+                  <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.2 }}/>
+                  <img src={sprite} alt={concept.name} style={{ position: 'relative', width: '92%', height: '92%', objectFit: 'contain', imageRendering: 'pixelated', display: 'block' }}/>
+                </div>
+              ) : imageSrc ? (
                 <img src={imageSrc} alt={concept.name} loading="lazy"
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
               ) : (

@@ -24,6 +24,7 @@ export class ConstellationDB extends Dexie {
   cacheWiki!: Table<{ key: string; data: unknown; createdAt: Date }>;
   links!: Table<ConceptLink>;
   embeddings!: Table<{ id: string; vec: number[]; createdAt: Date }>;
+  sprites!: Table<{ id: string; dataUri: string; createdAt: Date }>;
 
   constructor() {
     super('ConstellationDB');
@@ -58,6 +59,10 @@ export class ConstellationDB extends Dexie {
     this.version(5).stores({
       // Cache des embeddings sémantiques (all-MiniLM-L6-v2, 384 dims) par concept.
       embeddings: 'id, createdAt',
+    });
+    this.version(6).stores({
+      // Cache des sprites pixel-art IA (data-URI PNG ~64px) par concept.
+      sprites: 'id, createdAt',
     });
     // ⚠ Stratégie de migration : chaque nouvelle version doit UNIQUEMENT
     // AJOUTER des tables ou des index. Ne jamais retirer/renommer une table
