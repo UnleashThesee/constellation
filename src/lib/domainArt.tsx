@@ -124,8 +124,8 @@ export function DomainBackdrop({ cat, baseOpacity = 0.07, motifOpacity = 0.16, c
 }
 
 /** Tache douce d'un domaine pour la carto : dégradé radial teinté + motif léger, clippé en cercle. */
-export function DomainBlob({ cat, leftPct, topPct, sizePct }: {
-  cat: CategoryKey; leftPct: number; topPct: number; sizePct: number;
+export function DomainBlob({ cat, leftPct, topPct, sizePct, intensity = 1 }: {
+  cat: CategoryKey; leftPct: number; topPct: number; sizePct: number; intensity?: number;
 }) {
   const color = domainColor(cat);
   return (
@@ -135,11 +135,11 @@ export function DomainBlob({ cat, leftPct, topPct, sizePct }: {
       borderRadius: '50%', overflow: 'hidden', pointerEvents: 'none', zIndex: 0,
     }}>
       <div style={{ position: 'absolute', inset: 0, borderRadius: '50%',
-        background: `radial-gradient(circle, ${color} 0%, transparent 68%)`, opacity: 0.14 }}/>
+        background: `radial-gradient(circle, ${color} 0%, transparent 68%)`, opacity: 0.14 * intensity }}/>
       <div style={{ position: 'absolute', inset: 0, borderRadius: '50%',
         WebkitMaskImage: 'radial-gradient(circle, #000 38%, transparent 70%)',
         maskImage: 'radial-gradient(circle, #000 38%, transparent 70%)' }}>
-        <DomainBackdrop cat={cat} baseOpacity={0} motifOpacity={0.5}/>
+        <DomainBackdrop cat={cat} baseOpacity={0} motifOpacity={0.5 * intensity}/>
       </div>
     </div>
   );
