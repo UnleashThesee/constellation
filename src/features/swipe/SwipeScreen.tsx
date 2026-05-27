@@ -1038,11 +1038,19 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   // (avec pagination/décalage) et l'ajoute à la pioche — évite le bouclage partout.
   const lastRefillRef = useRef(0);
   const refillPageRef = useRef(0);
+  const refillBusyRef = useRef(false);
   useEffect(() => { refillPageRef.current = 0; }, [mode, entries, constraints, contrastSub]);
   useEffect(() => {
     const total = swipe.counts.valid + swipe.counts.reject + swipe.counts.skip;
-    if (total === 0 || total % 15 !== 0 || total === lastRefillRef.current) return;
-    lastRefillRef.current = total;
+    // Réapprovisionne par paliers (tous les 15 swipes) OU dès que la pioche
+    // descend bas — les cartes traitées étant retirées, la pioche se vide,
+    // il faut donc la regarnir avant qu'elle ne soit épuisée.
+    const milestone = total > 0 && total % 15 === 0 && total !== lastRefillRef.current;
+    const low = rawDeck.length > 0 && swipe.deck.length <= 6;
+    if (!milestone && !low) return;
+    if (refillBusyRef.current) return;
+    if (milestone) lastRefillRef.current = total;
+    refillBusyRef.current = true;
     const page = ++refillPageRef.current;
     (async () => {
       try {
@@ -1062,9 +1070,9 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         }
         batch = batch.filter(c => !excluded.has(c.id));
         if (batch.length) { await Promise.all(batch.map(c => cacheConcept(c))); swipe.appendDeck(batch); }
-      } catch { /* ignore */ }
+      } catch { /* ignore */ } finally { refillBusyRef.current = false; }
     })();
-  }, [swipe.counts, mode, entries, contrastSub, constraints, adopted]);
+  }, [swipe.counts, swipe.deck.length, rawDeck.length, mode, entries, contrastSub, constraints, adopted]);
 
   // #13 — Contraste sémantique réel (opt-in) : on classe le pool par distance
   // cosinus croissante au barycentre sémantique des concepts adoptés. Les plus

@@ -35,6 +35,9 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
   const [particles, setParticles] = useState<Particle[]>([]);
   const animLock = useRef(false);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  // Pile des cartes traitées (pour l'annulation). Les cartes traitées sont
+  // RETIRÉES de la pioche — jamais remises en queue — pour ne pas reboucler.
+  const treatedRef = useRef<Array<{ concept: Concept; verdict: SwipeVerdict; fav: boolean }>>([]);
 
   // Sync deck when initialDeck changes (async load)
   useEffect(() => {
@@ -84,10 +87,8 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
     recordVerdict(current, verdict, SESSION_ID, { private: getIncognito?.() }).catch(() => {});
 
     setTimeout(() => {
-      setDeckState(d => {
-        const [head, ...rest] = d;
-        return [...rest, head];
-      });
+      setDeckState(d => d.slice(1));
+      treatedRef.current = [...treatedRef.current, { concept: current, verdict, fav: false }].slice(-6);
       setCounts(c => ({
         ...c,
         valid:  verdict === 'valid'  ? c.valid  + 1 : c.valid,
@@ -124,7 +125,8 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
     setTimeout(() => setParticles([]), 700);
     recordVerdict(current, 'valid', SESSION_ID, { favorite: true, private: getIncognito?.() }).catch(() => {});
     setTimeout(() => {
-      setDeckState(d => { const [head, ...rest] = d; return [...rest, head]; });
+      setDeckState(d => d.slice(1));
+      treatedRef.current = [...treatedRef.current, { concept: current, verdict: 'valid' as SwipeVerdict, fav: true }].slice(-6);
       setCounts(c => ({ ...c, valid: c.valid + 1, favs: c.favs + 1 }));
       setHistory(h => [{
         name: current.name.split(' ').pop() ?? current.name,
@@ -139,14 +141,19 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
   }, [deck, getIncognito]);
 
   const back = useCallback(() => {
-    if (animLock.current || deck.length < 2) return;
+    if (animLock.current || treatedRef.current.length === 0) return;
     playSound('back');
-    setDeckState(d => {
-      const last = d[d.length - 1];
-      return [last, ...d.slice(0, -1)];
-    });
+    const last = treatedRef.current[treatedRef.current.length - 1];
+    treatedRef.current = treatedRef.current.slice(0, -1);
+    setDeckState(d => [last.concept, ...d]);
+    setCounts(c => ({
+      valid:  c.valid  - (last.verdict === 'valid'  ? 1 : 0),
+      reject: c.reject - (last.verdict === 'reject' ? 1 : 0),
+      skip:   c.skip   - (last.verdict === 'skip'   ? 1 : 0),
+      favs:   c.favs   - (last.fav ? 1 : 0),
+    }));
     setHistory(h => h.slice(1));
-  }, [deck]);
+  }, []);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (animLock.current) return;
