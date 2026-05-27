@@ -21,6 +21,7 @@ interface SwipeDeckState {
   setDeck: (concepts: Concept[]) => void;
   appendDeck: (concepts: Concept[]) => void;
   canBack: boolean;
+  treatedIds: Set<string>;
 }
 
 const SESSION_ID = `session-${Date.now()}`;
@@ -38,32 +39,55 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
   // Pile des cartes traitées (pour l'annulation). Les cartes traitées sont
   // RETIRÉES de la pioche — jamais remises en queue — pour ne pas reboucler.
   const treatedRef = useRef<Array<{ concept: Concept; verdict: SwipeVerdict; fav: boolean }>>([]);
+  // Ensemble (non borné) de tous les ids déjà jugés cette session : permet de
+  // filtrer toute reconstruction de pioche pour ne jamais re-présenter une carte.
+  const treatedIdsRef = useRef<Set<string>>(new Set());
+  // Miroir synchrone de la pioche : `cycle`/`favorite` lisent la tête ICI (et
+  // non dans la closure) pour ne jamais agir sur une carte périmée. Maintenu à
+  // jour DANS l'updater de state → toujours cohérent avec ce qui est commité.
+  const deckRef = useRef<Concept[]>(initialDeck);
+  const writeDeck = useCallback((next: Concept[] | ((d: Concept[]) => Concept[])) => {
+    setDeckState(prev => {
+      const v = typeof next === 'function' ? (next as (d: Concept[]) => Concept[])(prev) : next;
+      deckRef.current = v;
+      return v;
+    });
+  }, []);
+  // Miroirs des callbacks-props (recréés à chaque rendu côté appelant) pour que
+  // cycle/favorite/onPointerDown gardent une identité STABLE : sinon le listener
+  // clavier se re-attache à chaque rendu, rouvrant la fenêtre de course.
+  const onTapRef = useRef(onTap); onTapRef.current = onTap;
+  const getIncognitoRef = useRef(getIncognito); getIncognitoRef.current = getIncognito;
 
   // Sync deck when initialDeck changes (async load)
   useEffect(() => {
     if (initialDeck.length > 0 && deck.length === 0) {
-      setDeckState(initialDeck);
+      writeDeck(initialDeck);
     }
   }, [initialDeck]);
 
   const setDeck = useCallback((concepts: Concept[]) => {
-    setDeckState(concepts);
-  }, []);
+    writeDeck(concepts);
+  }, [writeDeck]);
 
   // Ajoute des concepts inédits à la fin (sans perturber la carte courante)
   const appendDeck = useCallback((concepts: Concept[]) => {
-    setDeckState(d => {
+    writeDeck(d => {
       const have = new Set(d.map(c => c.id));
-      const add = concepts.filter(c => !have.has(c.id));
+      // On exclut aussi les cartes déjà traitées : l'appelant filtre AVANT
+      // ses `await` (cache), mais un swipe peut survenir pendant ce délai —
+      // ce dernier filtre, évalué au commit, ferme la course.
+      const add = concepts.filter(c => !have.has(c.id) && !treatedIdsRef.current.has(c.id));
       return add.length ? [...d, ...add] : d;
     });
-  }, []);
+  }, [writeDeck]);
 
   const cycle = useCallback((verdict: SwipeVerdict) => {
-    if (animLock.current || !deck.length) return;
+    if (animLock.current) return;
+    const current = deckRef.current[0];
+    if (!current) return;
     animLock.current = true;
 
-    const current = deck[0];
     const cls = verdict === 'valid' ? 'cst-fly--right'
       : verdict === 'reject' ? 'cst-fly--left'
       : verdict === 'skip' ? 'cst-fly--down' : '';
@@ -84,11 +108,12 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
     }
 
     // Persiste le concept + le verdict atomiquement (transaction Dexie)
-    recordVerdict(current, verdict, SESSION_ID, { private: getIncognito?.() }).catch(() => {});
+    recordVerdict(current, verdict, SESSION_ID, { private: getIncognitoRef.current?.() }).catch(() => {});
 
     setTimeout(() => {
-      setDeckState(d => d.slice(1));
+      writeDeck(d => (d[0]?.id === current.id ? d.slice(1) : d.filter(c => c.id !== current.id)));
       treatedRef.current = [...treatedRef.current, { concept: current, verdict, fav: false }].slice(-6);
+      treatedIdsRef.current.add(current.id);
       setCounts(c => ({
         ...c,
         valid:  verdict === 'valid'  ? c.valid  + 1 : c.valid,
@@ -105,13 +130,14 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
       setDrag({ x: 0, y: 0 });
       animLock.current = false;
     }, 420);
-  }, [deck, getIncognito]);
+  }, [writeDeck]);
 
   // Favori (↑) = adopter ET marquer favori en une fois
   const favorite = useCallback(() => {
-    if (animLock.current || !deck.length) return;
+    if (animLock.current) return;
+    const current = deckRef.current[0];
+    if (!current) return;
     animLock.current = true;
-    const current = deck[0];
     setAnimClass('cst-fly--up');
     playSound('favorite');
     const sparks = Array.from({ length: 14 }, (_, i) => ({
@@ -123,10 +149,11 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
     }));
     setParticles(sparks);
     setTimeout(() => setParticles([]), 700);
-    recordVerdict(current, 'valid', SESSION_ID, { favorite: true, private: getIncognito?.() }).catch(() => {});
+    recordVerdict(current, 'valid', SESSION_ID, { favorite: true, private: getIncognitoRef.current?.() }).catch(() => {});
     setTimeout(() => {
-      setDeckState(d => d.slice(1));
+      writeDeck(d => (d[0]?.id === current.id ? d.slice(1) : d.filter(c => c.id !== current.id)));
       treatedRef.current = [...treatedRef.current, { concept: current, verdict: 'valid' as SwipeVerdict, fav: true }].slice(-6);
+      treatedIdsRef.current.add(current.id);
       setCounts(c => ({ ...c, valid: c.valid + 1, favs: c.favs + 1 }));
       setHistory(h => [{
         name: current.name.split(' ').pop() ?? current.name,
@@ -138,14 +165,15 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
       setDrag({ x: 0, y: 0 });
       animLock.current = false;
     }, 420);
-  }, [deck, getIncognito]);
+  }, [writeDeck]);
 
   const back = useCallback(() => {
     if (animLock.current || treatedRef.current.length === 0) return;
     playSound('back');
     const last = treatedRef.current[treatedRef.current.length - 1];
     treatedRef.current = treatedRef.current.slice(0, -1);
-    setDeckState(d => [last.concept, ...d]);
+    treatedIdsRef.current.delete(last.concept.id);
+    writeDeck(d => [last.concept, ...d.filter(c => c.id !== last.concept.id)]);
     setCounts(c => ({
       valid:  c.valid  - (last.verdict === 'valid'  ? 1 : 0),
       reject: c.reject - (last.verdict === 'reject' ? 1 : 0),
@@ -153,7 +181,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
       favs:   c.favs   - (last.fav ? 1 : 0),
     }));
     setHistory(h => h.slice(1));
-  }, []);
+  }, [writeDeck]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (animLock.current) return;
@@ -186,13 +214,13 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
       else {
         setDrag({ x: 0, y: 0 }); setTilt(null);
         // Tap detection : no significant drag = treat as click → open detail
-        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) onTap?.();
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) onTapRef.current?.();
       }
     };
 
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-  }, [cycle, favorite, onTap]);
+  }, [cycle, favorite]);
 
   // Keyboard controls
   useEffect(() => {
@@ -225,5 +253,6 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
     setDeck,
     appendDeck,
     canBack: history.length > 0 && history.length <= 10,
+    treatedIds: treatedIdsRef.current,
   };
 }

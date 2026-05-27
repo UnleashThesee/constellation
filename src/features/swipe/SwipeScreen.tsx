@@ -955,7 +955,10 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   // Fallback silencieux sur le pool aléatoire si rien ne remonte.
   useEffect(() => {
     if (rawDeck.length === 0) return;
-    if (mode === 'random' && constraints.length === 0) { swipe.setDeck(rawDeck); return; }
+    if (mode === 'random' && constraints.length === 0) {
+      swipe.setDeck(rawDeck.filter(c => !swipe.treatedIds.has(c.id)));
+      return;
+    }
     let cancelled = false;
     (async () => {
       setTargetedLoading(true);
@@ -1014,25 +1017,30 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
           setConstraintNote('');
         }
 
-        fresh = fresh.filter(c => !excluded.has(c.id));
+        fresh = fresh.filter(c => !excluded.has(c.id) && !swipe.treatedIds.has(c.id));
         if (!cancelled) {
           if (fresh.length >= 1) {
             await Promise.all(fresh.map(c => cacheConcept(c)));
             swipe.setDeck(fresh);
           } else {
             // Repli : pioche aléatoire MAIS sans les cartes déjà traitées
-            const clean = rawDeck.filter(c => !excluded.has(c.id));
-            swipe.setDeck(clean.length > 0 ? clean : rawDeck);
+            const clean = rawDeck.filter(c => !excluded.has(c.id) && !swipe.treatedIds.has(c.id));
+            swipe.setDeck(clean);
           }
         }
       } catch {
-        if (!cancelled) swipe.setDeck(rawDeck);
+        if (!cancelled) swipe.setDeck(rawDeck.filter(c => !swipe.treatedIds.has(c.id)));
       } finally {
         if (!cancelled) setTargetedLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [mode, entries, mixThemes, contrastSub, constraints, rawDeck.length, adopted.length]);
+    // On NE met PAS `adopted` en dépendance : sinon chaque adoption relancerait
+    // cet effet et reconstruirait toute la pioche (cartes déjà vues qui
+    // reviennent). Les modes Contraste se reconstruisent au changement de
+    // sous-mode et se regarnissent via l'effet de refill.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, entries, mixThemes, contrastSub, constraints, rawDeck.length]);
 
   // Variété dans TOUS les modes : à mesure qu'on swipe, recharge un lot frais
   // (avec pagination/décalage) et l'ajoute à la pioche — évite le bouclage partout.
@@ -1046,7 +1054,9 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
     // descend bas — les cartes traitées étant retirées, la pioche se vide,
     // il faut donc la regarnir avant qu'elle ne soit épuisée.
     const milestone = total > 0 && total % 15 === 0 && total !== lastRefillRef.current;
-    const low = rawDeck.length > 0 && swipe.deck.length <= 6;
+    // « pioche basse » : seulement après le 1er swipe, pour ne pas déclencher
+    // un fetch parasite au démarrage (deck transitoirement à 0 avant setDeck).
+    const low = rawDeck.length > 0 && total > 0 && swipe.deck.length <= 6;
     if (!milestone && !low) return;
     if (refillBusyRef.current) return;
     if (milestone) lastRefillRef.current = total;
@@ -1068,7 +1078,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         } else {
           batch = await fetchRandomConcepts(20);
         }
-        batch = batch.filter(c => !excluded.has(c.id));
+        batch = batch.filter(c => !excluded.has(c.id) && !swipe.treatedIds.has(c.id));
         if (batch.length) { await Promise.all(batch.map(c => cacheConcept(c))); swipe.appendDeck(batch); }
       } catch { /* ignore */ } finally { refillBusyRef.current = false; }
     })();
@@ -1094,7 +1104,7 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
         const candVecs = await embedConcepts(candidates);
         if (cancelled || candVecs.size === 0) return;
         const ranked = [...rawDeck]
-          .filter(c => candVecs.has(c.id))
+          .filter(c => candVecs.has(c.id) && !swipe.treatedIds.has(c.id))
           .map(c => ({ c, sim: cosineSim(center, candVecs.get(c.id)!) }))
           .sort((a, b) => a.sim - b.sim)
           .map(x => x.c);
