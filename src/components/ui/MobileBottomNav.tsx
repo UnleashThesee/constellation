@@ -8,6 +8,7 @@ interface Props {
 
 const MAIN_TABS: Array<{ id: TabId; label: string; icon: string }> = [
   { id: 'swipe',   label: 'Swipe',  icon: '✦' },
+  { id: 'garden',  label: 'Jardin', icon: '🌱' },
   { id: 'map',     label: 'Map',    icon: '◉' },
   { id: 'ideas',   label: 'Idées',  icon: '★' },
 ];
