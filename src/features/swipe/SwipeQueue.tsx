@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { TreatedEntry } from './useSwipeDeck';
-import { spriteStyle, useSprite } from '../../services/sprites';
+import { spriteStyle, useConceptImage } from '../../services/sprites';
 import type { Concept, SwipeVerdict } from '../../types';
 
 const RING: Record<SwipeVerdict, string> = {
@@ -15,9 +15,9 @@ const VERDICT_FILTER: Record<SwipeVerdict, string> = {
 };
 const VERDICT_OPACITY: Record<SwipeVerdict, number> = { valid: 1, reject: 0.7, skip: 0.55 };
 
-/** Vignette d'un concept : sprite IA si disponible, sinon placeholder de domaine. */
-export function ConceptSprite({ concept, size = 44, delayMs = 0 }: { concept: Concept; size?: number; delayMs?: number }) {
-  const url = useSprite(concept, delayMs);
+/** Vignette d'un concept : image Wikidata/Wikipédia si disponible, sinon placeholder de domaine. */
+export function ConceptSprite({ concept, size = 44 }: { concept: Concept; size?: number }) {
+  const url = useConceptImage(concept);
   const st = spriteStyle(concept);
   return (
     <div style={{
@@ -26,7 +26,7 @@ export function ConceptSprite({ concept, size = 44, delayMs = 0 }: { concept: Co
       borderRadius: 5, overflow: 'hidden',
     }}>
       {url
-        ? <img src={url} alt={concept.name} width={size} height={size} style={{ imageRendering: 'pixelated', width: '100%', height: '100%', objectFit: 'contain' }} />
+        ? <img src={url} alt={concept.name} width={size} height={size} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         : <span style={{ fontSize: Math.round(size * 0.5), lineHeight: 1 }}>{st.glyph}</span>}
     </div>
   );

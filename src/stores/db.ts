@@ -61,7 +61,9 @@ export class ConstellationDB extends Dexie {
       embeddings: 'id, createdAt',
     });
     this.version(6).stores({
-      // Cache des sprites pixel-art IA (data-URI PNG ~64px) par concept.
+      // Store conservé pour ne pas casser la migration des clients déjà en v6 ;
+      // inutilisé (la génération de sprites IA a été abandonnée au profit des
+      // images Wikidata/Wikipédia).
       sprites: 'id, createdAt',
     });
     // ⚠ Stratégie de migration : chaque nouvelle version doit UNIQUEMENT
