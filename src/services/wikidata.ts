@@ -265,6 +265,10 @@ const PROPERTY_LABELS: Record<string, string> = {
   P135: 'mouvement',           // movement
   P136: 'genre',               // genre
   P101: 'champ',               // field of work
+  P1441: 'présent dans',       // present in work
+  P674: 'personnages',         // characters
+  P1080: 'univers',            // from narrative universe
+  P179: 'série',               // part of the series
 };
 
 const ALLOWED_PROPS = Object.keys(PROPERTY_LABELS);
@@ -579,7 +583,10 @@ export async function fetchRandomConcepts(count = 5): Promise<Concept[]> {
 // Stratégies de suggestion via vraie SPARQL Wikidata (#11 + #12)
 // ============================================================
 
-const REL_PROPS = ['P31', 'P279', 'P361', 'P527', 'P737', 'P135', 'P136', 'P101'];
+// P1441/P674/P1080/P179 : liens « œuvre ↔ personnages/objets/univers/série ».
+// Indispensables pour les croisements pop-culture (ex. saga × armes, jeu × personnages),
+// que les seules relations taxonomiques (P31/P279…) ne couvrent pas.
+const REL_PROPS = ['P31', 'P279', 'P361', 'P527', 'P737', 'P135', 'P136', 'P101', 'P1441', 'P674', 'P1080', 'P179'];
 
 /** Mapping contrainte texte → Q-ID Wikidata (recherche fuzzy). */
 const CONSTRAINT_QID_MAP: Record<string, string> = {
