@@ -191,32 +191,129 @@ function CitCat({ catKey, weight, small }: { catKey: CategoryKey; weight?: numbe
 }
 
 // Couronne de lauriers (clin d'œil au cartouche MGM), dessinée en SVG.
-function Laurel({ width = 200, color = 'var(--cit-mustard)' }: { width?: number; color?: string }) {
+// Cartouche ornemental façon médaillon doré gravé (lauriers + ruban + titre en arc),
+// dessiné en SVG avec dégradé métallique, perforations « pellicule », tremblé fait-main
+// (feTurbulence/feDisplacementMap) et grain, pour éviter l'aspect « vecteur trop lisse ».
+function Cartouche({ name, motto }: { name: string; motto: string }) {
+  const CX = 500, CY = 548, R = 300;
+  const pol = (r: number, deg: number): [number, number] => {
+    const a = (deg * Math.PI) / 180;
+    return [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+  };
+  // Perforations type pellicule, le long de l'anneau
+  const dots = Array.from({ length: 72 }, (_, i) => {
+    const [x, y] = pol(R - 1, (i / 72) * 360);
+    return <circle key={`d${i}`} cx={x} cy={y} r={3} fill="#f4e7c2" opacity={0.92} />;
+  });
+  // Une branche de lauriers le long d'un arc extérieur
   const branch = (mirror: boolean) => {
     const leaves = [];
-    const n = 8;
+    const n = 11;
     for (let i = 0; i < n; i++) {
       const t = i / (n - 1);
-      const a = (-86 + t * 78) * Math.PI / 180;
-      const R = 64;
-      let x = 100 + R * Math.cos(a);
-      let y = 64 + R * Math.sin(a);
-      let rot = a * 180 / Math.PI + 96;
-      if (mirror) { x = 200 - x; rot = 180 - rot; }
-      leaves.push(<ellipse key={(mirror ? 'r' : 'l') + i} cx={x} cy={y} rx={8.5} ry={3.2}
-        transform={`rotate(${rot} ${x} ${y})`} fill={color} opacity={0.95 - t * 0.12}/>);
+      const deg = 96 + t * 86;                 // de bas-centre vers le côté
+      const rad = R + 22 + Math.sin(t * Math.PI) * 16;
+      let [x, y] = pol(rad, mirror ? 180 - deg : deg);
+      let rot = (mirror ? 180 - deg : deg) + 90 + (mirror ? 24 : -24);
+      const len = 30 - t * 10;
+      leaves.push(
+        <ellipse key={`${mirror ? 'r' : 'l'}${i}`} cx={x} cy={y} rx={len} ry={len * 0.34}
+          transform={`rotate(${rot} ${x} ${y})`} fill="url(#cgold)" filter="url(#crough)" />
+      );
     }
     return leaves;
   };
+  // Arc pour le titre (au-dessus du médaillon)
+  const [ax0, ay0] = pol(R + 70, 214);
+  const [ax1, ay1] = pol(R + 70, 326);
+  const titleArc = `M ${ax0.toFixed(1)} ${ay0.toFixed(1)} A ${R + 70} ${R + 70} 0 0 1 ${ax1.toFixed(1)} ${ay1.toFixed(1)}`;
+  const fs = name.length <= 9 ? 70 : name.length <= 14 ? 58 : name.length <= 20 ? 46 : name.length <= 28 ? 37 : 30;
+  // Ruban à devise (banderole au-dessus du médaillon)
+  const ribY = CY - R - 6;
+
   return (
-    <svg width={width} height={width * 0.34} viewBox="0 0 200 68" style={{ display: 'block', margin: '10px auto 0', opacity: 0.92 }} aria-hidden="true">
-      {branch(false)}{branch(true)}
-      <circle cx={100} cy={60} r={3.4} fill={color}/>
+    <svg viewBox="0 0 1000 1000" width="100%" height="100%" style={{ display: 'block' }} aria-hidden="true">
+      <defs>
+        <linearGradient id="cgold" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#7c5c20" />
+          <stop offset="20%" stopColor="#caa442" />
+          <stop offset="44%" stopColor="#f7e9b2" />
+          <stop offset="58%" stopColor="#e7cd76" />
+          <stop offset="80%" stopColor="#a87b27" />
+          <stop offset="100%" stopColor="#6c4c16" />
+        </linearGradient>
+        <radialGradient id="cglow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#26467f" stopOpacity="0.85" />
+          <stop offset="60%" stopColor="#16264f" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="#0a1431" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="cinner" cx="50%" cy="48%" r="52%">
+          <stop offset="0%" stopColor="#0a1330" stopOpacity="0" />
+          <stop offset="74%" stopColor="#0a1330" stopOpacity="0" />
+          <stop offset="100%" stopColor="#05091d" stopOpacity="0.9" />
+        </radialGradient>
+        <filter id="crough" x="-20%" y="-20%" width="140%" height="140%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves={2} seed={7} result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale={5} xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        <filter id="cdrop" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="9" stdDeviation="11" floodColor="#050a1f" floodOpacity="0.8" />
+        </filter>
+        <filter id="cgrain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} stitchTiles="stitch" result="g" />
+          <feColorMatrix in="g" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0" />
+        </filter>
+      </defs>
+
+      {/* halo / profondeur */}
+      <circle cx={CX} cy={CY} r={460} fill="url(#cglow)" />
+
+      {/* lauriers */}
+      <g filter="url(#cdrop)">{branch(false)}{branch(true)}</g>
+      {/* nœud bas */}
+      <circle cx={CX} cy={CY + R + 30} r={11} fill="url(#cgold)" filter="url(#cdrop)" />
+
+      {/* anneau principal + filets + perforations */}
+      <g filter="url(#cdrop)">
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="url(#cgold)" strokeWidth={26} />
+        <circle cx={CX} cy={CY} r={R - 22} fill="none" stroke="url(#cgold)" strokeWidth={6} />
+        <circle cx={CX} cy={CY} r={R + 20} fill="none" stroke="url(#cgold)" strokeWidth={6} />
+      </g>
+      {dots}
+      {/* ombre intérieure du médaillon */}
+      <circle cx={CX} cy={CY} r={R - 26} fill="url(#cinner)" />
+
+      {/* ruban / banderole à devise */}
+      <g filter="url(#cdrop)">
+        {/* enroulements latéraux */}
+        <path d={`M ${CX - 250} ${ribY + 8} q -34 6 -40 34 q 22 -6 40 6 z`} fill="url(#cgold)" />
+        <path d={`M ${CX + 250} ${ribY + 8} q 34 6 40 34 q -22 -6 -40 6 z`} fill="url(#cgold)" />
+        {/* corps du ruban (arc) */}
+        <path d={`M ${CX - 250} ${ribY + 8}
+                  Q ${CX} ${ribY - 60} ${CX + 250} ${ribY + 8}
+                  L ${CX + 250} ${ribY + 46}
+                  Q ${CX} ${ribY - 22} ${CX - 250} ${ribY + 46} Z`}
+          fill="#f3e6c2" stroke="url(#cgold)" strokeWidth={4} filter="url(#crough)" />
+        <path id="cmottoArc" d={`M ${CX - 224} ${ribY + 18} Q ${CX} ${ribY - 40} ${CX + 224} ${ribY + 18}`} fill="none" />
+        <text fontFamily="'Oswald', sans-serif" fontSize={26} fontWeight={700} letterSpacing="3" fill="#5b4316">
+          <textPath href="#cmottoArc" startOffset="50%" textAnchor="middle">{motto.toUpperCase()}</textPath>
+        </text>
+      </g>
+
+      {/* titre du concept, en arc */}
+      <path id="ctitleArc" d={titleArc} fill="none" />
+      <text fontFamily="'Alfa Slab One', serif" fontSize={fs} fill="url(#cgold)" letterSpacing="1"
+        filter="url(#cdrop)" style={{ paintOrder: 'stroke' } as React.CSSProperties} stroke="#4a3410" strokeWidth={1.2}>
+        <textPath href="#ctitleArc" startOffset="50%" textAnchor="middle">{name}</textPath>
+      </text>
+
+      {/* grain */}
+      <rect x="0" y="0" width="1000" height="1000" filter="url(#cgrain)" opacity={0.1} style={{ mixBlendMode: 'overlay' } as React.CSSProperties} />
     </svg>
   );
 }
 
-function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, badge, contrast, isFavorite, onToggleFavorite, extract, imageUrl }: {
+function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sourceOverride, contrast, isFavorite, onToggleFavorite, extract, imageUrl }: {
   concept: Concept;
   tilt: 'right' | 'left' | 'up' | 'down' | null;
   dragOffset: { x: number; y: number };
@@ -233,32 +330,20 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
   imageUrl?: string;
 }) {
   const isDragging = dragOffset.x !== 0 || dragOffset.y !== 0;
-  const rotate = isDragging ? `rotate(${dragOffset.x * 0.03}deg)` : 'rotate(0deg)';
+  const rotate = isDragging ? `rotate(${dragOffset.x * 0.025}deg)` : 'rotate(0deg)';
   const translate = isDragging ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : '';
-
   const imageSrc = imageUrl ?? (concept.portrait?.startsWith('http') ? concept.portrait : undefined);
   const initials = concept.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
   const domColor = conceptDominant(concept.cats).css;
-  const catKey = dominantCat(concept.cats);
-  const source = sourceOverride ?? SOURCE_LABELS[concept.sourceKind ?? 'random'] ?? 'Sélection aléatoire';
-
-  const RINGS = 'radial-gradient(circle at 50% 50%,'
-    + ' var(--cit-navy-dk) 0 63.5%,'
-    + ' var(--cit-butter) 63.5% 66%,'
-    + ' var(--cit-navy-dk) 66% 68%,'
-    + ' var(--cit-mustard) 68% 78%,'
-    + ' var(--cit-brick) 78% 81%,'
-    + ' var(--cit-navy-dk) 81% 90%,'
-    + ' var(--cit-butter) 90% 93%,'
-    + ' var(--cit-mustard) 93% 100%)';
+  const source = sourceOverride ?? SOURCE_LABELS[concept.sourceKind ?? 'random'] ?? 'Ars Gratia Artis';
 
   return (
     <div
       className={animClass || ''}
       style={{
         position: 'relative',
-        width: 'min(74vh, 94vw, 700px)',
-        height: 'min(74vh, 94vw, 700px)',
+        width: 'min(90vh, 96vw, 940px)',
+        height: 'min(90vh, 96vw, 940px)',
         transform: `${translate} ${rotate}`.trim(),
         touchAction: 'none',
         cursor: isDragging ? 'grabbing' : 'grab',
@@ -266,91 +351,63 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
       }}
       onPointerDown={onPointerDown}
     >
-      {/* Cible / bullseye : anneaux concentriques */}
-      <div style={{
-        position: 'absolute', inset: 0, borderRadius: '50%', background: RINGS,
-        boxShadow: '0 22px 60px rgba(0,0,0,.55), inset 0 0 0 3px var(--cit-navy-dk)',
-      }}>
-        <div className="cit-halftone" style={{ position: 'absolute', inset: 0, borderRadius: '50%', opacity: 0.08, pointerEvents: 'none' }}/>
-      </div>
+      <Cartouche name={concept.name} motto={source} />
 
       {contrast && (
-        <span className="cit-pulse-brick" style={{ position: 'absolute', inset: -10, zIndex: 12, borderRadius: '50%', border: '3px dashed var(--cit-brick)', pointerEvents: 'none' }}/>
+        <span className="cit-pulse-brick" style={{ position: 'absolute', left: '6%', top: '6%', width: '88%', height: '88%', zIndex: 12, borderRadius: '50%', border: '3px dashed var(--cit-brick)', pointerEvents: 'none' }} />
       )}
 
-      {/* Disque central — contenu */}
+      {/* Contenu central (dans le médaillon) */}
       <div style={{
-        position: 'absolute', inset: '18%', borderRadius: '50%',
-        background: 'var(--cit-paper)',
-        border: '3px solid var(--cit-navy-dk)',
-        boxShadow: 'inset 0 0 0 4px var(--cit-butter), inset 0 0 24px rgba(0,0,0,.12)',
-        overflow: 'hidden',
+        position: 'absolute', left: '50%', top: '54.8%', transform: 'translate(-50%,-50%)',
+        width: '40%', maxHeight: '46%', zIndex: 2,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        textAlign: 'center', padding: '7% 13%',
+        textAlign: 'center', gap: 6, overflow: 'hidden',
       }}>
-        <DomainBackdrop cat={catKey} baseOpacity={0.06} motifOpacity={0.14}/>
         {onToggleFavorite && (
           <button onClick={onToggleFavorite} title="Favori" style={{
-            position: 'absolute', top: '12%', right: '15%', zIndex: 3,
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: 20, lineHeight: 1, color: isFavorite ? 'var(--cit-brick)' : 'var(--cit-navy-lt)',
+            position: 'absolute', top: -6, right: '6%', background: 'transparent', border: 'none',
+            cursor: 'pointer', fontSize: 20, lineHeight: 1, color: isFavorite ? 'var(--cit-butter)' : 'rgba(244,231,194,.5)', zIndex: 3,
           }}>{isFavorite ? '★' : '☆'}</button>
         )}
-        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, maxWidth: '100%' }}>
-          <div className="cit-condensed" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 9.5, letterSpacing: '.07em', color: 'var(--cit-brick)', textTransform: 'uppercase' }}>
-            {badge}<span>★ {source} ★</span>
-          </div>
-          <div style={{
-            width: 'clamp(56px, 13vmin, 104px)', aspectRatio: '1 / 1', borderRadius: '50%',
-            border: '3px solid var(--cit-mustard)', background: 'var(--cit-butter)',
-            boxShadow: '0 0 0 3px var(--cit-navy-dk)', overflow: 'hidden', position: 'relative', margin: '2px 0',
-          }}>
-            {imageSrc ? (
-              <img src={imageSrc} alt={concept.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
-            ) : (
-              <div style={{ position: 'absolute', inset: 0, background: domColor, display: 'grid', placeItems: 'center' }}>
-                <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.25 }}/>
-                <span style={{ position: 'relative', fontFamily: "'Alfa Slab One', serif", fontSize: 'clamp(20px,6vmin,40px)', color: 'var(--cit-cream)', textShadow: '2px 2px 0 rgba(0,0,0,.4)' }}>{initials || '★'}</span>
-              </div>
-            )}
-          </div>
-          <h2 className="cit-h1" style={{
-            margin: '2px 0 0', fontSize: 'clamp(22px, 4.6vmin, 42px)', lineHeight: 0.95,
-            color: 'var(--cit-navy-dk)', wordBreak: 'break-word',
-            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-          } as React.CSSProperties}>
-            {concept.name}<span style={{ color: 'var(--cit-brick)' }}>!</span>
-          </h2>
-          <div className="cit-condensed" style={{ fontSize: 'clamp(9px,1.7vmin,12px)', color: 'var(--cit-navy-lt)', letterSpacing: '.06em' }}>
-            {concept.kind}{concept.years ? ` · ${concept.years}` : ''}
-          </div>
-          <p className="cit-typed" style={{
-            margin: '5px 0 0', fontSize: 'clamp(11px, 1.9vmin, 15px)', lineHeight: 1.5, color: 'var(--cit-navy-dk)',
-            display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-          } as React.CSSProperties}>
-            {extract || concept.blurb}
-          </p>
-          {concept.aiGenerated && (
-            <div className="cit-condensed" style={{ marginTop: 2, fontSize: 9, letterSpacing: '.07em', color: 'var(--cit-brick)' }}>
-              ✦ PROPOSÉ PAR L'IA{concept.sourceWork ? ` · ${concept.sourceWork.name}` : ''}
+        <div style={{
+          width: 'clamp(70px, 14vmin, 130px)', aspectRatio: '1 / 1', borderRadius: '50%',
+          border: '3px solid #d8b14c', overflow: 'hidden', position: 'relative', flexShrink: 0,
+          boxShadow: '0 0 0 4px #0a1330, 0 6px 16px rgba(0,0,0,.5)',
+        }}>
+          {imageSrc ? (
+            <img src={imageSrc} alt={concept.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          ) : (
+            <div style={{ position: 'absolute', inset: 0, background: domColor, display: 'grid', placeItems: 'center' }}>
+              <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.25 }} />
+              <span style={{ position: 'relative', fontFamily: "'Alfa Slab One', serif", fontSize: 'clamp(22px,7vmin,46px)', color: 'var(--cit-cream)', textShadow: '2px 2px 0 rgba(0,0,0,.45)' }}>{initials || '★'}</span>
             </div>
           )}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center', marginTop: 5 }}>
-            {concept.cats.slice(0, 3).map(([k]) => <CitCat key={k} catKey={k} small/>)}
+        </div>
+        <div className="cit-condensed" style={{ fontSize: 'clamp(9px,1.7vmin,12px)', color: 'var(--cit-butter)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+          {concept.kind}{concept.years ? ` · ${concept.years}` : ''}
+        </div>
+        <p className="cit-typed" style={{
+          margin: 0, fontSize: 'clamp(10.5px, 1.75vmin, 14.5px)', lineHeight: 1.46, color: '#f1e7cf',
+          display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+        } as React.CSSProperties}>
+          {extract || concept.blurb}
+        </p>
+        {concept.aiGenerated && (
+          <div className="cit-condensed" style={{ fontSize: 9, letterSpacing: '.07em', color: 'var(--cit-butter)' }}>
+            ✦ PROPOSÉ PAR L'IA{concept.sourceWork ? ` · ${concept.sourceWork.name}` : ''}
           </div>
+        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center' }}>
+          {concept.cats.slice(0, 3).map(([k]) => <CitCat key={k} catKey={k} small />)}
         </div>
       </div>
 
-      {/* Lauriers MGM, chevauchant le bas de l'anneau */}
-      <div style={{ position: 'absolute', left: '50%', bottom: '4%', transform: 'translateX(-50%)', zIndex: 2, width: '52%', pointerEvents: 'none' }}>
-        <Laurel width={320} color="var(--cit-butter)"/>
-      </div>
-
       {/* Verdict overlays */}
-      {tilt === 'left' && (<div style={{ position: 'absolute', top: '34%', left: '50%', transform: 'translate(-50%,-50%) rotate(-12deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="brick" size={32}>Retour à l'expéditeur</Stamp></div>)}
-      {tilt === 'right' && (<div style={{ position: 'absolute', top: '34%', left: '50%', transform: 'translate(-50%,-50%) rotate(10deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="navy" size={32}>Bienvenue !</Stamp></div>)}
-      {tilt === 'up' && (<div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%) rotate(-3deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="mustard" size={30}>★ Coup de cœur</Stamp></div>)}
-      {tilt === 'down' && (<div style={{ position: 'absolute', top: '62%', left: '50%', transform: 'translate(-50%,-50%) rotate(2deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="navy" size={30}>Neutre</Stamp></div>)}
+      {tilt === 'left' && (<div style={{ position: 'absolute', top: '36%', left: '50%', transform: 'translate(-50%,-50%) rotate(-12deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="brick" size={32}>Retour à l'expéditeur</Stamp></div>)}
+      {tilt === 'right' && (<div style={{ position: 'absolute', top: '36%', left: '50%', transform: 'translate(-50%,-50%) rotate(10deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="navy" size={32}>Bienvenue !</Stamp></div>)}
+      {tilt === 'up' && (<div style={{ position: 'absolute', top: '52%', left: '50%', transform: 'translate(-50%,-50%) rotate(-3deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="mustard" size={30}>★ Coup de cœur</Stamp></div>)}
+      {tilt === 'down' && (<div style={{ position: 'absolute', top: '64%', left: '50%', transform: 'translate(-50%,-50%) rotate(2deg)', zIndex: 6, pointerEvents: 'none' }}><Stamp tone="navy" size={30}>Neutre</Stamp></div>)}
     </div>
   );
 }
