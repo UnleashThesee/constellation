@@ -5,13 +5,15 @@ import { Sunburst, Stamp, PixelDie, Aster, SkeletonCard } from '../../components
 import { CitizenMasthead, CitizenFooter, CitButton, CitPanel } from '../../components/ui/CitizenShell';
 import { ConceptDetailModal } from '../../components/ui/ConceptDetailModal';
 import { CATEGORIES, CATEGORY_LIST, gradientForWeights, conceptDominant, combinationMix } from '../../lib/categories';
+import { DomainBackdrop, dominantCat } from '../../lib/domainArt';
+import { MapDropOverlay } from './MapDropOverlay';
 import { fetchRandomConcepts, fetchNeighborConcepts, fetchConceptsForConstraints, fetchConceptsForEntry, searchConcepts, fetchSemanticRelations, fetchWikipediaExtract, fetchConceptImage, type SemanticRelation } from '../../services/wikidata';
 import { getAdoptedConcepts, getExcludedConceptIds, cacheConcept, toggleFavorite, getCachedConcept, getSettings, saveSettings, getConceptsByVerdict, recordConstraintUsage, getAllConstraints, addTagToConcept, db } from '../../stores/db';
 import { useToast } from '../../lib/toast';
 import { playSound } from '../../lib/sounds';
 import { consumePendingSwipeDeck } from '../../lib/pending';
 import { embedConcepts, centroid, cosineSim, embeddingsStatus } from '../../services/embeddings';
-import type { Concept, SwipeMode, CategoryKey } from '../../types';
+import type { Concept, SwipeMode, CategoryKey, SwipeVerdict } from '../../types';
 
 const FALLBACK_CONCEPTS: Concept[] = [
   {
@@ -184,6 +186,7 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
   const imageSrc = imageUrl ?? (concept.portrait?.startsWith('http') ? concept.portrait : undefined);
   const initials = concept.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
   const domColor = conceptDominant(concept.cats).css;
+  const catKey = dominantCat(concept.cats);
 
   return (
     <div
@@ -259,9 +262,11 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
         </div>
 
         {/* Body 2-col */}
-        <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 20, padding: '18px 24px 14px' }}>
+        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '180px 1fr', gap: 20, padding: '18px 24px 14px' }}>
+          {/* Fond procédural du domaine dominant */}
+          <DomainBackdrop cat={catKey} baseOpacity={0.09} motifOpacity={0.2} style={{ zIndex: 0 }}/>
           {/* Portrait */}
-          <div>
+          <div style={{ position: 'relative', zIndex: 1 }}>
             <div style={{
               position: 'relative',
               border: '3px solid var(--cit-navy-dk)',
@@ -276,6 +281,7 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
               ) : (
                 <div style={{ position: 'absolute', inset: 0, background: domColor, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
                   <div className="cit-halftone" style={{ position: 'absolute', inset: 0, opacity: 0.25 }}/>
+                  <DomainBackdrop cat={catKey} baseOpacity={0} motifOpacity={0.5} color="oklch(96% 0.025 90)"/>
                   <span style={{
                     position: 'relative', fontFamily: "'Alfa Slab One', serif",
                     fontSize: 54, lineHeight: 1, color: 'var(--cit-cream)',
@@ -309,7 +315,7 @@ function CitizenCard({ concept, tilt, dragOffset, animClass, onPointerDown, sour
           </div>
 
           {/* Text → mini-encadrés */}
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: 10 }}>
+          <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, gap: 10 }}>
             {/* Description */}
             <div style={{
               background: 'var(--cit-paper)', borderLeft: '4px solid var(--cit-mustard)',
@@ -820,7 +826,13 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
   const addConstraint = (t: string, qid?: string) => { const v = t.trim(); if (v) setConstraints(prev => prev.some(x => x.text.toLowerCase() === v.toLowerCase()) ? prev : [...prev, { text: v, qid }]); };
   const removeConstraint = (t: string) => setConstraints(prev => prev.filter(x => x.text !== t));
 
-  const swipe = useSwipeDeck([], () => setDetailOpen(true), () => incognitoRef.current);
+  const [drop, setDrop] = useState<{ concept: Concept; verdict: SwipeVerdict; key: number } | null>(null);
+  const swipe = useSwipeDeck(
+    [],
+    () => setDetailOpen(true),
+    () => incognitoRef.current,
+    (e) => setDrop({ concept: e.concept, verdict: e.verdict, key: Date.now() }),
+  );
   const [rawDeck, setRawDeck] = useState<Concept[]>([]);
   const [currentFavorite, setCurrentFavorite] = useState(false);
   const [boostLabel, setBoostLabel] = useState<string | null>(null);
@@ -1481,6 +1493,10 @@ export function SwipeScreen({ onTabChange }: { onTabChange?: (id: string) => voi
             </div>
           </div>
         </div>
+      )}
+
+      {drop && (
+        <MapDropOverlay key={drop.key} concept={drop.concept} verdict={drop.verdict} onDone={() => setDrop(null)}/>
       )}
     </div>
   );

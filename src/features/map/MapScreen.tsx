@@ -11,6 +11,7 @@ import {
 import { fetchRelatedQids } from '../../services/wikidata';
 import { useToast } from '../../lib/toast';
 import { computeForceLayout, type LayoutPosition } from './forceLayout';
+import { DomainBlob, dominantCat } from '../../lib/domainArt';
 import type { Concept, CategoryKey, ConceptLink, PersonalCategory, Tag } from '../../types';
 
 interface Props { onTabChange?: (id: string) => void }
@@ -687,6 +688,22 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
 
   const hoverNode = hoverId ? nodes.find(n => n.concept.id === hoverId) : null;
 
+  // Régions de domaine : centroïde + étendue des clusters par domaine dominant,
+  // pour peindre une tache thématique sous chaque grappe.
+  const domainRegions = useMemo(() => {
+    const groups = new Map<CategoryKey, { x: number; y: number }[]>();
+    for (const n of nodes) {
+      const k = dominantCat(n.concept.cats);
+      (groups.get(k) ?? groups.set(k, []).get(k)!).push({ x: n.x, y: n.y });
+    }
+    return [...groups.entries()].map(([cat, pts]) => {
+      const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+      const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+      const spread = Math.sqrt(pts.reduce((s, p) => s + (p.x - cx) ** 2 + (p.y - cy) ** 2, 0) / pts.length);
+      return { cat, x: cx, y: cy, size: Math.min(70, Math.max(22, spread * 2.6 + 16)) };
+    });
+  }, [nodes]);
+
   // Calcule l'ensemble des nœuds connectés au nœud sélectionné
   const connectedSet = useMemo(() => {
     if (!selectedId) return null;
@@ -834,6 +851,10 @@ function MapGraph({ nodes, edges, selectedId, onSelect, showEdges, statusFor, fu
         transformOrigin: 'center center',
         transition: panStart.current ? 'none' : 'transform 0.15s ease',
       }}>
+      {/* Régions thématiques par domaine (sous les liaisons et les nœuds) */}
+      {domainRegions.map(r => (
+        <DomainBlob key={r.cat} cat={r.cat} leftPct={r.x} topPct={r.y} sizePct={r.size}/>
+      ))}
       {showEdges && (
         <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} preserveAspectRatio="none">
           {edges.map((e, i) => {

@@ -30,7 +30,14 @@ interface SwipeDeckState {
 
 const SESSION_ID = `session-${Date.now()}`;
 
-export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getIncognito?: () => boolean): SwipeDeckState {
+export interface CommittedSwipe { concept: Concept; verdict: SwipeVerdict; fav: boolean }
+
+export function useSwipeDeck(
+  initialDeck: Concept[],
+  onTap?: () => void,
+  getIncognito?: () => boolean,
+  onCommitted?: (e: CommittedSwipe) => void,
+): SwipeDeckState {
   const [deck, setDeckState] = useState<Concept[]>(initialDeck);
   const [history, setHistory] = useState<SwipeHistoryEntry[]>([]);
   const [counts, setCounts] = useState<SessionStats>({ valid: 0, reject: 0, skip: 0, favs: 0 });
@@ -65,6 +72,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
   // clavier se re-attache à chaque rendu, rouvrant la fenêtre de course.
   const onTapRef = useRef(onTap); onTapRef.current = onTap;
   const getIncognitoRef = useRef(getIncognito); getIncognitoRef.current = getIncognito;
+  const onCommittedRef = useRef(onCommitted); onCommittedRef.current = onCommitted;
 
   // Sync deck when initialDeck changes (async load)
   useEffect(() => {
@@ -116,6 +124,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
 
     // Persiste le concept + le verdict atomiquement (transaction Dexie)
     recordVerdict(current, verdict, SESSION_ID, { private: getIncognitoRef.current?.() }).catch(() => {});
+    onCommittedRef.current?.({ concept: current, verdict, fav: false });
 
     setTimeout(() => {
       writeDeck(d => (d[0]?.id === current.id ? d.slice(1) : d.filter(c => c.id !== current.id)));
@@ -158,6 +167,7 @@ export function useSwipeDeck(initialDeck: Concept[], onTap?: () => void, getInco
     setParticles(sparks);
     setTimeout(() => setParticles([]), 700);
     recordVerdict(current, 'valid', SESSION_ID, { favorite: true, private: getIncognitoRef.current?.() }).catch(() => {});
+    onCommittedRef.current?.({ concept: current, verdict: 'valid', fav: true });
     setTimeout(() => {
       writeDeck(d => (d[0]?.id === current.id ? d.slice(1) : d.filter(c => c.id !== current.id)));
       treatedRef.current = [...treatedRef.current, { concept: current, verdict: 'valid' as SwipeVerdict, fav: true }].slice(-6);
