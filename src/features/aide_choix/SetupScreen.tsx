@@ -123,13 +123,15 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
                   className="min-h-[72px] w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm leading-relaxed text-slate-200 outline-none focus:border-amber-400" />
               </div>
 
-              {/* Échelle de notation 1→5 */}
-              <div>
-                <label className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Repère de notation (1 → 5)</label>
-                <textarea value={c.scale ?? ''} placeholder="Ex. 1 = … · 3 = … · 5 = …" rows={2}
-                  onChange={e => { const next = [...criteria]; next[i] = { ...c, scale: e.target.value }; saveCriteria(next); }}
-                  className="min-h-[48px] w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs leading-relaxed text-slate-300 outline-none focus:border-amber-400" />
-              </div>
+              {/* Repère de notation 1→5 (seulement en mode chiffré) */}
+              {scaleMode === 'numeric' && (
+                <div>
+                  <label className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Repère de notation (1 → 5)</label>
+                  <textarea value={c.scale ?? ''} placeholder="Ex. 1 = … · 3 = … · 5 = …" rows={2}
+                    onChange={e => { const next = [...criteria]; next[i] = { ...c, scale: e.target.value }; saveCriteria(next); }}
+                    className="min-h-[48px] w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs leading-relaxed text-slate-300 outline-none focus:border-amber-400" />
+                </div>
+              )}
 
               {c.checklist && c.checklist.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1">

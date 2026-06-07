@@ -1,4 +1,4 @@
-// Étape 2 — Notation : chaque projet, chaque critère noté 1–5 (chacun son tour).
+// Étape 2 — Notation : chaque critère noté Mauvais/Moyen/Bon (ou 1–5), chacun son tour.
 import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACScore, ACSession } from './types';
 import { listProjects, listScores, setScore, setStage, QUAL_SCALE } from './db';
