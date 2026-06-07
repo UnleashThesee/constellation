@@ -70,6 +70,13 @@ export const DEFAULT_CRITERIA: Omit<Criterion, 'id'>[] = [
   },
 ];
 
+// Échelle qualitative de notation (Bon = la meilleure valeur, donc la plus haute).
+export const QUAL_SCALE = [
+  { v: 1, label: 'Mauvais' },
+  { v: 2, label: 'Moyen' },
+  { v: 3, label: 'Bon' },
+] as const;
+
 // Variables catégorielles : des FILTRES (non notés), pour regrouper les projets.
 export const CATEGORICAL_DIMS = [
   { key: 'essence', label: 'Essence', options: ['Upscale', 'Démocratisation', 'Invention'] },
@@ -113,6 +120,7 @@ export async function createSession(input: {
     criteria: makeCriteria(input.criteria ?? DEFAULT_CRITERIA),
     topGroupSize: 6,
     duelMode: 'roundRobin',
+    scaleMode: 'qualitative',
     createdAt: now,
     updatedAt: now,
   };

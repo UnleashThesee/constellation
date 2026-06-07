@@ -15,7 +15,10 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
   const [parts, setParts] = useState(session.participants.map(p => p.name));
   const [editing, setEditing] = useState<ACProject | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [scaleMode, setScaleMode] = useState<'qualitative' | 'numeric'>(session.scaleMode ?? 'qualitative');
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const saveScaleMode = async (m: 'qualitative' | 'numeric') => { setScaleMode(m); await patchSession(session.id, { scaleMode: m }); };
 
   const reload = () => listProjects(session.id).then(setProjects);
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [session.id]);
@@ -82,6 +85,20 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
               saveCriteria(makeCriteria(DEFAULT_CRITERIA));
             }
           }}>↺ Recharger les 5 méta-critères recommandés</Btn>
+        </div>
+
+        {/* Échelle de notation (étape 2) */}
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-black/10 p-2.5">
+          <span className="text-xs text-slate-400">Échelle de notation :</span>
+          <div className="inline-flex overflow-hidden rounded-lg border border-white/10">
+            {([['qualitative', 'Mauvais / Moyen / Bon'], ['numeric', '1 → 5']] as const).map(([m, label]) => (
+              <button key={m} onClick={() => saveScaleMode(m)}
+                className={`px-3 py-1.5 text-xs font-semibold transition ${scaleMode === m ? 'bg-amber-400 text-slate-900' : 'text-slate-300 hover:bg-white/5'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-[11px] text-slate-500">{scaleMode === 'qualitative' ? 'Plus rapide ; les duels (étape 3) trancheront le détail.' : 'Plus fin, mais plus lent à noter.'}</span>
         </div>
         <div className="space-y-2">
           {criteria.map((c, i) => (

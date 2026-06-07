@@ -1,10 +1,16 @@
 // Étape 2 — Notation : chaque projet, chaque critère noté 1–5 (chacun son tour).
 import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACScore, ACSession } from './types';
-import { listProjects, listScores, setScore, setStage } from './db';
+import { listProjects, listScores, setScore, setStage, QUAL_SCALE } from './db';
 import { computeTriTally } from './logic';
 import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress } from './ui';
 import { MetaChips } from './meta';
+
+const QUAL_ACTIVE: Record<number, string> = {
+  1: 'bg-rose-500 text-white',
+  2: 'bg-slate-400 text-slate-900',
+  3: 'bg-emerald-500 text-white',
+};
 
 export function NotationScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
   const [projects, setProjects] = useState<ACProject[]>([]);
@@ -35,6 +41,7 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
   const isProjectDone = (p: ACProject) => session.criteria.every(c => scoreOf(p.id, c.id) !== undefined);
   const doneCount = survivors.filter(isProjectDone).length;
   const current = survivors[i];
+  const qualitative = session.scaleMode === 'qualitative';
 
   // avancement de chacun (modèle « chacun son tour »)
   const progress: Record<string, { done: number; total: number }> = {};
@@ -56,7 +63,7 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <Guide id="notation" title="Étape 2 — La vraie notation (chacun seul, ~40 min)">
-        <GuideLine tag="Quoi faire">Note chaque projet survivant sur les 5 critères, de 1 à 5. Garde les sous-variables « en tête » sous chaque critère.</GuideLine>
+        <GuideLine tag="Quoi faire">Note chaque projet survivant sur les 5 critères ({qualitative ? 'Mauvais / Moyen / Bon' : 'de 1 à 5'}). Garde les sous-variables « en tête » sous chaque critère.</GuideLine>
         <GuideLine tag="Chacun son tour">Sur un seul appareil : note tout, puis passe la main au suivant via « Qui es-tu ? ». Les 3 doivent passer.</GuideLine>
         <GuideLine tag="Pourquoi">Tes notes seront converties en classement : ta sévérité ou ta générosité n'influencera pas le résultat, seul ton ordre compte.</GuideLine>
         <GuideLine tag="Ensuite">On affiche le classement global et les projets « à discuter » (là où vos avis divergent).</GuideLine>
@@ -98,14 +105,26 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
                       </div>
                     )}
                   </div>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {[1, 2, 3, 4, 5].map(n => (
-                      <button key={n} onClick={() => setVal(current.id, c.id, n)}
-                        className={`rounded-lg py-2 text-sm font-bold transition
-                          ${val === n ? 'bg-amber-400 text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{n}</button>
-                    ))}
-                  </div>
-                  {c.scale && <p className="mt-1 text-[10.5px] leading-snug text-slate-500">{c.scale}</p>}
+                  {qualitative ? (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {QUAL_SCALE.map(q => (
+                        <button key={q.v} onClick={() => setVal(current.id, c.id, q.v)}
+                          className={`rounded-lg py-2.5 text-sm font-bold transition
+                            ${val === q.v ? QUAL_ACTIVE[q.v] : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{q.label}</button>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {[1, 2, 3, 4, 5].map(n => (
+                          <button key={n} onClick={() => setVal(current.id, c.id, n)}
+                            className={`rounded-lg py-2 text-sm font-bold transition
+                              ${val === n ? 'bg-amber-400 text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{n}</button>
+                        ))}
+                      </div>
+                      {c.scale && <p className="mt-1 text-[10.5px] leading-snug text-slate-500">{c.scale}</p>}
+                    </>
+                  )}
                 </div>
               );
             })}
