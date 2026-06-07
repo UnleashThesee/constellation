@@ -3,6 +3,7 @@ import { MotionConfig } from 'framer-motion';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { SwipeScreen } from './features/swipe/SwipeScreen';
 import { SwipeScreenV3 } from './features/swipe/SwipeScreenV3';
+import { AideChoix } from './features/aide_choix/AideChoix';
 import { MapScreen } from './features/map/MapScreen';
 import { CombinatorScreen } from './features/combinator/CombinatorScreen';
 import { IdeasScreen } from './features/ideas/IdeasScreen';
@@ -110,7 +111,7 @@ function tabFromPath(pathname: string): TabId {
   return VALID_TABS.includes(seg as TabId) ? seg as TabId : 'swipe';
 }
 
-export default function App() {
+function MainApp() {
   const [state, setState] = useState<AppState>('loading');
   const navigate = useNavigate();
   const location = useLocation();
@@ -206,4 +207,11 @@ export default function App() {
       </ToastProvider>
     </MotionConfig>
   );
+}
+
+// Aide au choix : mini-app autonome (sans le chrome Constellation) sur /choix.
+export default function App() {
+  const location = useLocation();
+  if (location.pathname.startsWith('/choix')) return <AideChoix />;
+  return <MainApp />;
 }
