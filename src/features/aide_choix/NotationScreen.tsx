@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACScore, ACSession } from './types';
 import { listProjects, listScores, setScore, setStage } from './db';
 import { computeTriTally } from './logic';
-import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState } from './ui';
+import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress } from './ui';
 import { MetaChips } from './meta';
 
 export function NotationScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
@@ -36,6 +36,14 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
   const doneCount = survivors.filter(isProjectDone).length;
   const current = survivors[i];
 
+  // avancement de chacun (modèle « chacun son tour »)
+  const progress: Record<string, { done: number; total: number }> = {};
+  for (const part of session.participants) {
+    const done = survivors.filter(p => session.criteria.every(c =>
+      scores.some(s => s.projectId === p.id && s.participantId === part.id && s.criterionId === c.id))).length;
+    progress[part.id] = { done, total: survivors.length };
+  }
+
   if (!me) {
     return (
       <Card className="mx-auto max-w-md p-6 text-center">
@@ -47,6 +55,15 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
+      <Guide id="notation" title="Étape 2 — La vraie notation (chacun seul, ~40 min)">
+        <GuideLine tag="Quoi faire">Note chaque projet survivant sur les 5 critères, de 1 à 5. Garde les sous-variables « en tête » sous chaque critère.</GuideLine>
+        <GuideLine tag="Chacun son tour">Sur un seul appareil : note tout, puis passe la main au suivant via « Qui es-tu ? ». Les 3 doivent passer.</GuideLine>
+        <GuideLine tag="Pourquoi">Tes notes seront converties en classement : ta sévérité ou ta générosité n'influencera pas le résultat, seul ton ordre compte.</GuideLine>
+        <GuideLine tag="Ensuite">On affiche le classement global et les projets « à discuter » (là où vos avis divergent).</GuideLine>
+      </Guide>
+
+      <ParticipantProgress participants={session.participants} progress={progress} label="Avancement :" />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <WhoAmI participants={session.participants} currentId={me} onPick={(id) => { setMe(id); setI(0); }} />
         <span className="text-sm text-slate-400">{doneCount} / {survivors.length} projets notés</span>
@@ -88,6 +105,7 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
                           ${val === n ? 'bg-amber-400 text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{n}</button>
                     ))}
                   </div>
+                  {c.scale && <p className="mt-1 text-[10.5px] leading-snug text-slate-500">{c.scale}</p>}
                 </div>
               );
             })}

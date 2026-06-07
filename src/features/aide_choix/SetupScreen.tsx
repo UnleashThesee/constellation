@@ -5,7 +5,7 @@ import {
   listProjects, addProjectFromFile, addTextProject, deleteProject, patchProject,
   patchSession, setStage, CATEGORICAL_DIMS, capitalIntensity, DEFAULT_CRITERIA, makeCriteria,
 } from './db';
-import { Btn, Card, ProjectMedia } from './ui';
+import { Btn, Card, ProjectMedia, Guide, GuideLine } from './ui';
 import { MetaChips, MetaEditor } from './meta';
 
 export function SetupScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
@@ -51,6 +51,13 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      <Guide id="setup" title="Étape 0 — Réglage : comment marche l'outil">
+        <GuideLine tag="Le but">Choisir, à plusieurs, lesquels de vos ~50 projets lancer — en 3 étapes qui resserrent peu à peu.</GuideLine>
+        <GuideLine tag="Le parcours">1. Tri rapide (on jette les projets morts) → 2. Notation des survivants sur 5 critères → 3. Duels entre les meilleurs → verdict.</GuideLine>
+        <GuideLine tag="À 3 sur un seul appareil">Aux étapes 1 et 2, chacun passe à son tour (bouton « Qui es-tu ? »). L'étape 3 se fait ensemble.</GuideLine>
+        <GuideLine tag="Ici, maintenant">Importe tes projets, vérifie les participants et les 5 critères, puis lance l'étape 1. Rien n'est noté à ce stade.</GuideLine>
+      </Guide>
+
       {/* Participants */}
       <Card className="p-5">
         <h2 className="mb-3 text-lg font-bold text-white">Les participants</h2>

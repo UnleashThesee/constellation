@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ACDuel, ACProject, ACScore, ACSession } from './types';
 import { listProjects, listScores, listDuels, exportSession, setStage } from './db';
 import { computeNotation, computeTriTally, computeDuelStandings } from './logic';
-import { Btn, Card, ProjectMedia } from './ui';
+import { Btn, Card, ProjectMedia, Guide, GuideLine } from './ui';
 
 export function FinalScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
   const [projects, setProjects] = useState<ACProject[]>([]);
@@ -41,6 +41,11 @@ export function FinalScreen({ session, onChanged }: { session: ACSession; onChan
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <Guide id="final" title="Le verdict">
+        <GuideLine tag="Ce que c'est">L'ordre dans lequel lancer vos projets, issu des duels (plus de victoires = plus haut).</GuideLine>
+        <GuideLine tag="Choix clair">Si un projet bat tous les autres en tête-à-tête, il est signalé comme le choix net.</GuideLine>
+        <GuideLine tag="Garder une trace">« Exporter » télécharge tout le parcours en JSON (décisions, classements, duels).</GuideLine>
+      </Guide>
       <div className="text-center">
         <p className="text-sm uppercase tracking-widest text-amber-300">Verdict</p>
         <h2 className="text-2xl font-black text-white">Ce qu'on lance — dans l'ordre</h2>

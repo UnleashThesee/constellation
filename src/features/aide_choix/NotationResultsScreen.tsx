@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACScore, ACSession } from './types';
 import { listProjects, listScores, patchSession, setStage } from './db';
 import { computeNotation, computeTriTally } from './logic';
-import { Btn, Card, Dot, ProjectMedia } from './ui';
+import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine } from './ui';
 
 export function NotationResultsScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
   const [projects, setProjects] = useState<ACProject[]>([]);
@@ -36,6 +36,11 @@ export function NotationResultsScreen({ session, onChanged }: { session: ACSessi
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
+      <Guide id="notationResults" title="Étape 2 — Résultats de la notation">
+        <GuideLine tag="Le classement">Issu de vos notes transformées en rangs (sévère/généreux neutralisé). En haut = le mieux placé.</GuideLine>
+        <GuideLine tag="« À discuter »">Les projets marqués en rouge sont ceux où vos avis divergent le plus — discutez-les en priorité, c'est là qu'il y a de l'info cachée.</GuideLine>
+        <GuideLine tag="Groupe de tête">Choisis combien de projets (5–8) passent aux duels. Ne gardez que le haut du panier.</GuideLine>
+      </Guide>
       <Card className="p-4">
         <p className="text-sm text-slate-300">
           Notes converties en <b className="text-amber-300">classements</b> (par personne et par critère) : ta sévérité ou ta générosité n'influence plus le résultat — seul ton <i>ordre</i> compte.

@@ -119,6 +119,47 @@ export function Stepper({ stage, onJump }: { stage: Stage; onJump?: (s: Stage) =
   );
 }
 
+/** Encart d'aide repliable, pour expliquer chaque étape. Ouvert par défaut. */
+export function Guide({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useLocalState<boolean>(`ac:guide:${id}`, true);
+  return (
+    <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.06]">
+      <button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left">
+        <span className="flex items-center gap-2 text-sm font-bold text-amber-200">💡 {title}</span>
+        <span className="text-xs text-amber-300/70">{open ? '▲ masquer' : '▼ afficher l\'aide'}</span>
+      </button>
+      {open && <div className="space-y-1.5 px-4 pb-3 text-sm leading-relaxed text-slate-300">{children}</div>}
+    </div>
+  );
+}
+
+/** Une ligne d'aide « étiquette : texte ». */
+export function GuideLine({ tag, children }: { tag: string; children: React.ReactNode }) {
+  return (
+    <p><span className="font-semibold text-amber-200/90">{tag} :</span> {children}</p>
+  );
+}
+
+/** Suivi d'avancement par participant (modèle « chacun son tour »). */
+export function ParticipantProgress({ participants, progress, label }:
+  { participants: Participant[]; progress: Record<string, { done: number; total: number }>; label?: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {label && <span className="text-xs uppercase tracking-wider text-slate-500">{label}</span>}
+      {participants.map(p => {
+        const d = progress[p.id] ?? { done: 0, total: 0 };
+        const complete = d.total > 0 && d.done >= d.total;
+        return (
+          <span key={p.id} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold
+            ${complete ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/5 text-slate-300'}`}>
+            <Dot color={p.color} />{p.name} {complete ? '✓ fini' : `${d.done}/${d.total}`}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Petit hook d'état persistant en mémoire de session (qui suis-je). */
 export function useLocalState<T>(key: string, initial: T): [T, (v: T) => void] {
   const [v, setV] = useState<T>(() => {

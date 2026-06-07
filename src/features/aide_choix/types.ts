@@ -28,6 +28,7 @@ export interface Criterion {
   definition: string;
   weight: number;        // pondération relative (défaut 1)
   checklist?: string[];  // sous-variables « gardées en tête » au moment de noter
+  scale?: string;        // repère de notation, ex. « 1 = … · 5 = … »
 }
 
 /** Métadonnées d'un projet : variables catégorielles (filtres) + intensité capitalistique. */

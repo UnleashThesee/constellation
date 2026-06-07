@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACSession, ACTriVote, TriVote } from './types';
 import { listProjects, listTriVotes, patchProject, setStage } from './db';
 import { computeTriTally, nonThreshold } from './logic';
-import { Btn, Card, Dot, ProjectMedia } from './ui';
+import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine } from './ui';
 
 const VOTE_CHIP: Record<TriVote, string> = {
   oui: 'bg-emerald-500/20 text-emerald-300',
@@ -68,6 +68,11 @@ export function TriResultsScreen({ session, onChanged }: { session: ACSession; o
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
+      <Guide id="triResults" title="Étape 1 — Résultats du tri">
+        <GuideLine tag="Ce que tu vois">Les 3 votes de chacun, projet par projet (pastille = personne).</GuideLine>
+        <GuideLine tag="La règle">Éliminé automatiquement si au moins {threshold} « Non » sur {session.participants.length}. Tu peux repêcher ou éliminer à la main.</GuideLine>
+        <GuideLine tag="Ensuite">Seuls les projets gardés passent à la notation détaillée (étape 2).</GuideLine>
+      </Guide>
       <Card className="p-4">
         <p className="text-sm text-slate-300">
           Règle : un projet est éliminé si <b className="text-rose-300">au moins {threshold} « Non »</b> sur {session.participants.length}.

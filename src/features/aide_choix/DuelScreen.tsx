@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ACDuel, ACProject, ACScore, ACSession } from './types';
 import { listProjects, listScores, listDuels, upsertDuel, setStage } from './db';
 import { allPairs, computeNotation, computeTriTally, duelKey, computeDuelStandings } from './logic';
-import { Btn, Card, Dot, ProjectMedia } from './ui';
+import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine } from './ui';
 import { MetaChips } from './meta';
 
 export function DuelScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
@@ -82,6 +82,11 @@ export function DuelScreen({ session, onChanged }: { session: ACSession; onChang
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
+      <Guide id="duels" title="Étape 3 — Les duels (vous trois ensemble)">
+        <GuideLine tag="Quoi faire">Pour chaque paire, cliquez le projet que vous préférez lancer en premier. Tranchez ensemble.</GuideLine>
+        <GuideLine tag="Pourquoi">On compare 2 par 2 : le cerveau choisit bien mieux entre deux options qu'en donnant une note absolue.</GuideLine>
+        <GuideLine tag="Le classement">Chaque victoire compte (score Copeland). Faites toutes les paires pour un classement fiable ; le verdict apparaît à la fin.</GuideLine>
+      </Guide>
       <div className="flex items-center justify-between">
         <span className="text-sm text-slate-400">Duel {Math.min(idx + 1, pairs.length)} / {pairs.length} · {decidedCount} décidés</span>
         <span className="text-xs text-slate-500">Mode : toutes les paires (Copeland)</span>

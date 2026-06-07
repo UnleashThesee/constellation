@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACSession, ACTriVote, TriVote } from './types';
 import { listProjects, listTriVotes, setTriVote, setStage } from './db';
-import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState } from './ui';
+import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress } from './ui';
 
 const VOTES: { v: TriVote; label: string; key: string; cls: string }[] = [
   { v: 'non', label: 'Non', key: '←', cls: 'bg-rose-500/90 hover:bg-rose-500 text-white' },
@@ -26,6 +26,13 @@ export function TriScreen({ session, onChanged }: { session: ACSession; onChange
 
   const doneCount = projects.filter(p => myVotes.has(p.id)).length;
   const current = projects[i];
+
+  // avancement de chacun (modèle « chacun son tour »)
+  const progress: Record<string, { done: number; total: number }> = {};
+  for (const part of session.participants) {
+    const done = new Set(votes.filter(v => v.participantId === part.id).map(v => v.projectId)).size;
+    progress[part.id] = { done, total: projects.length };
+  }
 
   const vote = async (v: TriVote) => {
     if (!current || !me) return;
@@ -60,6 +67,15 @@ export function TriScreen({ session, onChanged }: { session: ACSession; onChange
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
+      <Guide id="tri" title="Étape 1 — Le grand tri (chacun seul, ~20 min)">
+        <GuideLine tag="Quoi faire">Passe tous les projets et donne ton réflexe : Oui / Peut-être / Non. À l'instinct, sans réfléchir longtemps.</GuideLine>
+        <GuideLine tag="Chacun son tour">Sur un seul appareil : fais tout le paquet, puis passe la main au suivant via « Qui es-tu ? ». Les 3 doivent passer.</GuideLine>
+        <GuideLine tag="Pourquoi">But : éliminer vite les projets clairement morts pour ne pas perdre de temps dessus.</GuideLine>
+        <GuideLine tag="Ensuite">On compare les 3 tris ; un projet rejeté par au moins 2 personnes sur 3 est éliminé.</GuideLine>
+      </Guide>
+
+      <ParticipantProgress participants={session.participants} progress={progress} label="Avancement :" />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <WhoAmI participants={session.participants} currentId={me} onPick={(id) => { setMe(id); setI(0); }} />
         <span className="text-sm text-slate-400">{doneCount} / {projects.length} traités</span>
