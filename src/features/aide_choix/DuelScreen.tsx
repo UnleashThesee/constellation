@@ -4,6 +4,7 @@ import type { ACDuel, ACProject, ACScore, ACSession } from './types';
 import { listProjects, listScores, listDuels, upsertDuel, setStage } from './db';
 import { allPairs, computeNotation, computeTriTally, duelKey, computeDuelStandings } from './logic';
 import { Btn, Card, Dot, ProjectMedia } from './ui';
+import { MetaChips } from './meta';
 
 export function DuelScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
   const [projects, setProjects] = useState<ACProject[]>([]);
@@ -66,9 +67,12 @@ export function DuelScreen({ session, onChanged }: { session: ACSession; onChang
       <button onClick={onPick}
         className="group flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/20 text-left transition hover:border-amber-400 hover:bg-amber-400/5">
         <ProjectMedia project={p} className="aspect-[16/10] w-full" rounded="rounded-none" />
-        <div className="flex items-center justify-between p-3">
-          <span className="font-bold text-white">{p.title}</span>
-          <span className="rounded-lg bg-white/5 px-2 py-1 text-xs text-slate-400 group-hover:bg-amber-400 group-hover:text-slate-900">Choisir {side}</span>
+        <div className="flex items-center justify-between gap-2 p-3">
+          <span className="min-w-0">
+            <span className="block truncate font-bold text-white">{p.title}</span>
+            <span className="mt-1 block"><MetaChips meta={p.meta} /></span>
+          </span>
+          <span className="shrink-0 rounded-lg bg-white/5 px-2 py-1 text-xs text-slate-400 group-hover:bg-amber-400 group-hover:text-slate-900">Choisir {side}</span>
         </div>
       </button>
     );

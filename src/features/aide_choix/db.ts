@@ -30,13 +30,61 @@ const uid = () =>
   (globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 // ── Critères par défaut (modifiables au setup) ───────────────────────────────
+// 5 méta-critères notés. Une seule note par critère, mais on garde ses
+// sous-variables en tête (checklist) au moment de noter — 5 notes au lieu de 12.
 export const DEFAULT_CRITERIA: Omit<Criterion, 'id'>[] = [
-  { name: 'Impact', definition: 'Ce que ça change si ça marche. Ampleur du bénéfice.', weight: 1 },
-  { name: 'Faisabilité', definition: 'Est-ce réaliste avec nos moyens, nos compétences, notre temps ?', weight: 1 },
-  { name: 'Effort', definition: 'Coût en temps/énergie. (Note haute = peu d\'effort.)', weight: 1 },
-  { name: 'Envie', definition: 'À quel point l\'équipe a envie de le faire.', weight: 1 },
-  { name: 'Différenciation', definition: 'Originalité, avantage par rapport à ce qui existe.', weight: 1 },
+  {
+    name: 'Attractivité de la demande',
+    definition: 'Y a-t-il un vrai besoin, large, qui peut payer ?',
+    checklist: ['Pain point réel', 'Taille du marché', 'Solvabilité du client'],
+    weight: 1,
+  },
+  {
+    name: 'Position concurrentielle',
+    definition: 'Peut-on entrer et prendre de la place ?',
+    checklist: ["Capacité d'insertion concurrentielle", 'Buzzabilité (se faire remarquer / surfer sur un porteur)'],
+    weight: 1,
+  },
+  {
+    name: 'Économie du modèle',
+    definition: 'La machine à cash est-elle saine et rentable vite ?',
+    checklist: ['Scalabilité', 'Rapidité du ROI'],
+    weight: 1,
+  },
+  {
+    name: 'Effort de réalisation',
+    definition: 'Combien de travail pour le sortir et le maintenir ? (note haute = peu d\'effort)',
+    checklist: ['Facilité de prototypage', 'Maintenance post-launch'],
+    weight: 1,
+  },
+  {
+    name: 'Risque & autonomie',
+    definition: 'Qu\'est-ce qui peut nous contraindre ou nous tuer, et est-on libres ? (note haute = peu de risque / très autonome)',
+    checklist: ['Faible risque réglementaire', 'Indépendance aux acteurs extérieurs', 'Facilité d\'exit'],
+    weight: 1,
+  },
 ];
+
+// Variables catégorielles : des FILTRES (non notés), pour regrouper les projets.
+export const CATEGORICAL_DIMS = [
+  { key: 'essence', label: 'Essence', options: ['Upscale', 'Démocratisation', 'Invention'] },
+  { key: 'clientCategory', label: 'Catégorie client', options: ['Ultra-riche', 'Aisé', 'Classe moyenne', 'Grand public', 'Gratuit'] },
+  { key: 'revenueType', label: 'Type de revenu', options: ['Abonnement', 'Licence', 'Pay-as-you-go', 'Fixe', 'Freemium'] },
+  { key: 'projectType', label: 'Type', options: ['Physique', 'Conseil', 'Logiciel', 'Communauté'] },
+] as const;
+
+// TOR → une seule dimension « intensité capitalistique » (3 drapeaux).
+export const RESOURCE_FLAGS = [
+  { key: 'loan', label: 'Prêts' },
+  { key: 'stock', label: 'Stock' },
+  { key: 'externalInput', label: 'Apport externe' },
+] as const;
+
+/** Niveau d'intensité capitalistique : nb de ressources à immobiliser (0–3). */
+export function capitalIntensity(meta?: import('./types').ProjectMeta): number {
+  if (!meta) return 0;
+  return (meta.loan ? 1 : 0) + (meta.stock ? 1 : 0) + (meta.externalInput ? 1 : 0);
+}
 
 const PALETTE = ['#eab308', '#38bdf8', '#fb7185', '#34d399', '#a78bfa', '#f97316'];
 

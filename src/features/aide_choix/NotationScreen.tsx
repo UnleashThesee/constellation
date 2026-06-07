@@ -4,6 +4,7 @@ import type { ACProject, ACScore, ACSession } from './types';
 import { listProjects, listScores, setScore, setStage } from './db';
 import { computeTriTally } from './logic';
 import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState } from './ui';
+import { MetaChips } from './meta';
 
 export function NotationScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
   const [projects, setProjects] = useState<ACProject[]>([]);
@@ -60,6 +61,7 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
               <h3 className="text-xl font-bold text-white">{current.title}</h3>
               <span className="text-xs text-slate-500">Projet {i + 1} / {survivors.length}</span>
               {current.description && <p className="mt-1 text-sm text-slate-300">{current.description}</p>}
+              <div className="mt-1.5"><MetaChips meta={current.meta} /></div>
             </div>
           </div>
           <div className="space-y-3 border-t border-white/10 p-4">
@@ -67,10 +69,17 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
               const val = scoreOf(current.id, c.id);
               return (
                 <div key={c.id}>
-                  <div className="mb-1 flex items-baseline justify-between gap-2">
-                    <span className="text-sm font-semibold text-white" title={c.definition}>{c.name}
-                      {c.definition && <span className="ml-2 text-[11px] font-normal text-slate-500">{c.definition}</span>}
-                    </span>
+                  <div className="mb-1">
+                    <span className="text-sm font-semibold text-white">{c.name}</span>
+                    {c.definition && <span className="ml-2 text-[11px] font-normal text-slate-500">{c.definition}</span>}
+                    {c.checklist && c.checklist.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <span className="text-[10px] uppercase tracking-wider text-slate-500">en tête :</span>
+                        {c.checklist.map((s, k) => (
+                          <span key={k} className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-400">{s}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-5 gap-1.5">
                     {[1, 2, 3, 4, 5].map(n => (

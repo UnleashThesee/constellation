@@ -26,7 +26,22 @@ export interface Criterion {
   id: string;
   name: string;
   definition: string;
-  weight: number; // pondération relative (défaut 1)
+  weight: number;        // pondération relative (défaut 1)
+  checklist?: string[];  // sous-variables « gardées en tête » au moment de noter
+}
+
+/** Métadonnées d'un projet : variables catégorielles (filtres) + intensité capitalistique. */
+export interface ProjectMeta {
+  // catégorielles (non notées, servent à regrouper/filtrer)
+  essence?: string;          // Upscale / Démocratisation / Invention
+  clientCategory?: string;   // ultra-riche → gratuit
+  revenueType?: string;      // abo, licence, pay-as-you-go, fixe, freemium…
+  projectType?: string;      // physique / conseil / logiciel / communauté
+  // TOR → une seule dimension « besoins en ressources / intensité capitalistique »
+  loan?: boolean;            // prêts
+  loanSize?: number;         // jauge de taille du prêt (0..3)
+  stock?: boolean;
+  externalInput?: boolean;   // apport externe
 }
 
 export interface ACSession {
@@ -50,6 +65,7 @@ export interface ACProject {
   blob?: Blob;            // fichier importé (image/PDF) stocké localement
   order: number;
   eliminated?: boolean;   // verdict de l'étape 1 (peut être surchargé à la main)
+  meta?: ProjectMeta;     // variables catégorielles + ressources
   createdAt: number;
 }
 
