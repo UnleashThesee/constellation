@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ACProject, ACSession, Criterion, ProjectMeta } from './types';
 import {
   listProjects, addProjectFromFile, addTextProject, deleteProject, patchProject,
-  patchSession, setStage, CATEGORICAL_DIMS, capitalIntensity,
+  patchSession, setStage, CATEGORICAL_DIMS, capitalIntensity, DEFAULT_CRITERIA, makeCriteria,
 } from './db';
 import { Btn, Card, ProjectMedia } from './ui';
 import { MetaChips, MetaEditor } from './meta';
@@ -68,8 +68,13 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
 
       {/* Critères */}
       <Card className="p-5">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-bold text-white">Les 5 critères <span className="text-slate-400">(étape 2)</span></h2>
+          <Btn variant="soft" className="text-xs" onClick={() => {
+            if (confirm('Remplacer les critères actuels par les 5 méta-critères recommandés ? (les notes déjà saisies seraient à refaire)')) {
+              saveCriteria(makeCriteria(DEFAULT_CRITERIA));
+            }
+          }}>↺ Recharger les 5 méta-critères recommandés</Btn>
         </div>
         <div className="space-y-2">
           {criteria.map((c, i) => (
