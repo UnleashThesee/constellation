@@ -30,42 +30,56 @@ const uid = () =>
   (globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 // ── Critères par défaut (modifiables au setup) ───────────────────────────────
-// 5 méta-critères notés. Une seule note par critère, mais on garde ses
-// sous-variables en tête (checklist) au moment de noter — 5 notes au lieu de 12.
+// 7 méta-critères notés. Une seule note par critère, mais on garde ses
+// sous-variables en tête (checklist) au moment de noter.
 export const DEFAULT_CRITERIA: Omit<Criterion, 'id'>[] = [
   {
-    name: 'Attractivité de la demande',
-    definition: 'La force du besoin que le projet adresse : est-il réel, partagé par assez de monde, et ces gens ont-ils les moyens (et la volonté) de payer ? On juge la demande, pas l\'idée ni la solution.',
-    checklist: ['Pain point réel (douleur ressentie, pas supposée)', 'Taille du marché (combien de clients potentiels)', 'Solvabilité du client (capacité + volonté de payer)'],
-    scale: '1 = besoin marginal ou hypothétique · 3 = besoin réel mais niche ou peu solvable · 5 = douleur forte, marché large, clients prêts à payer',
+    name: 'Intensité du besoin',
+    definition: 'Le problème est-il réel et douloureux ? On mesure UNIQUEMENT la force de la douleur, pas le nombre de gens concernés (ça, c\'est le critère suivant). Un besoin brûlant sur petit marché et un besoin tiède sur gros marché ne sont pas le même pari.',
+    checklist: ['Pain point réel (douleur ressentie, pas supposée), isolé de la taille du marché'],
+    scale: '1 = gadget / besoin hypothétique · 3 = inconfort réel · 5 = douleur brûlante, urgente',
+    weight: 1,
+  },
+  {
+    name: 'Marché solvable',
+    definition: 'Combien de gens ont ce besoin ET ont les moyens (et la volonté) de payer ? La taille du marché ne vaut que multipliée par la capacité à payer.',
+    checklist: ['Taille du marché (combien de clients potentiels)', 'Solvabilité du client (capacité + volonté de payer)'],
+    scale: '1 = niche pauvre ou marché qui ne paie pas · 3 = marché correct · 5 = large ET solvable',
     weight: 1,
   },
   {
     name: 'Position concurrentielle',
-    definition: 'Notre capacité à entrer sur ce marché et à y prendre une place défendable malgré les acteurs déjà installés — et à nous faire remarquer (PR, viralité, effet de mode, surf sur un porteur).',
+    definition: 'Peut-on entrer sur ce marché malgré les acteurs déjà installés, et se faire remarquer (PR, viralité, effet de mode, surf sur un porteur) ?',
     checklist: ["Capacité d'insertion concurrentielle (angle d'entrée, barrière franchissable)", 'Buzzabilité (se faire remarquer / surfer sur un porteur ou une tendance)'],
     scale: '1 = marché verrouillé, on serait noyés · 3 = entrée possible mais disputée · 5 = angle d\'entrée clair + fort potentiel de visibilité',
     weight: 1,
   },
   {
     name: 'Économie du modèle',
-    definition: 'La santé de la machine à cash : marges, capacité à grandir sans exploser les coûts, et délai avant que ça devienne rentable.',
+    definition: 'Ça scale et ça rapporte vite ? Marges, capacité à grandir sans exploser les coûts, et délai avant que ça devienne rentable.',
     checklist: ['Scalabilité (croître sans que les coûts suivent à l\'identique)', 'Rapidité du ROI (combien de temps avant que ça rapporte)'],
-    scale: '1 = marges faibles, peu scalable, rentabilité lointaine · 3 = correct mais lent ou plafonné · 5 = marges solides, scalable, ROI rapide',
+    scale: '1 = peu scalable, rentabilité lointaine · 3 = correct mais lent ou plafonné · 5 = scalable et rentable vite',
     weight: 1,
   },
   {
     name: 'Effort de réalisation',
-    definition: 'La quantité de travail pour sortir une première version ET la maintenir en vie ensuite. ⚠ Note inversée : note HAUTE = PEU d\'effort.',
+    definition: 'Dur à sortir (1ʳᵉ version) et à maintenir ensuite ? ⚠ Note inversée : Bon = PEU d\'effort.',
     checklist: ['Facilité de prototypage (vitesse pour une 1ʳᵉ version)', 'Maintenance post-launch (charge pour la garder vivante)'],
     scale: '1 = chantier lourd à construire ET à entretenir · 3 = effort moyen · 5 = prototype rapide, maintenance légère',
     weight: 1,
   },
   {
-    name: 'Risque & autonomie',
-    definition: 'Ce qui peut nous contraindre ou nous tuer (réglementation, dépendance à un acteur extérieur) et notre liberté de manœuvre, y compris pour sortir/revendre. ⚠ Note inversée : note HAUTE = PEU de risque / très autonome.',
-    checklist: ['Faible risque réglementaire (lois, licences, interdictions)', 'Indépendance aux acteurs extérieurs (plateformes, fournisseurs, un seul gros client)', 'Facilité d\'exit (pouvoir arrêter ou revendre sans tout perdre)'],
-    scale: '1 = très exposé / dépendant / difficile à quitter · 3 = risques gérables · 5 = peu de risque, indépendant, sortie facile',
+    name: 'Risque externe',
+    definition: 'Qu\'est-ce qui peut nous contraindre ou nous tuer depuis l\'extérieur : réglementation, ou dépendance à un acteur (plateforme, fournisseur, un seul gros client) ? Deux menaces subies. ⚠ Note inversée : Bon = PEU de risque.',
+    checklist: ['Faible risque réglementaire (lois, licences, interdictions)', 'Indépendance aux acteurs extérieurs (plateformes, fournisseurs, un seul gros client)'],
+    scale: '1 = très exposé / très dépendant · 3 = risques gérables · 5 = peu exposé, indépendant',
+    weight: 1,
+  },
+  {
+    name: 'Sortie',
+    definition: 'Peut-on revendre ou se dégager proprement plus tard ? Ce n\'est pas une menace mais une option de liquidité (qu\'est-ce qu\'on en fait à terme) — une question stratégique distincte du risque.',
+    checklist: ['Facilité d\'exit (pouvoir arrêter ou revendre sans tout perdre)'],
+    scale: '1 = piège, impossible à quitter · 3 = sortie possible avec efforts · 5 = revente / sortie facile',
     weight: 1,
   },
 ];

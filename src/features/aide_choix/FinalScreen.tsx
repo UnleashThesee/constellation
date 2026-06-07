@@ -47,10 +47,10 @@ export function FinalScreen({ session, onChanged }: { session: ACSession; onChan
         <GuideLine tag="Garder une trace">« Exporter » télécharge tout le parcours en JSON (décisions, classements, duels).</GuideLine>
       </Guide>
       <div className="text-center">
-        <p className="text-sm uppercase tracking-widest text-amber-300">Verdict</p>
+        <p className="text-sm uppercase tracking-widest text-[#F7A24A]">Verdict</p>
         <h2 className="text-2xl font-black text-white">Ce qu'on lance — dans l'ordre</h2>
         {standings.condorcetWinner && (
-          <p className="mt-1 text-sm text-emerald-300">★ Choix clair : <b>{byId.get(standings.condorcetWinner)?.title}</b></p>
+          <p className="mt-1 text-sm text-[#6FA85A]">★ Choix clair : <b>{byId.get(standings.condorcetWinner)?.title}</b></p>
         )}
       </div>
 
@@ -63,7 +63,7 @@ export function FinalScreen({ session, onChanged }: { session: ACSession; onChan
           return (
             <div key={rankIdx} className="flex flex-col items-center gap-2">
               <ProjectMedia project={p!} className="h-20 w-24" />
-              <div className={`flex ${h} w-full flex-col items-center justify-start rounded-t-xl border border-amber-400/30 bg-gradient-to-b from-amber-400/15 to-transparent p-2 text-center`}>
+              <div className={`flex ${h} w-full flex-col items-center justify-start rounded-t-xl border border-[#F58F20]/30 bg-gradient-to-b from-[#F58F20]/15 to-transparent p-2 text-center`}>
                 <span className="text-2xl">{medals[rankIdx]}</span>
                 <span className="text-sm font-bold text-white">{p?.title}</span>
                 <span className="text-[11px] text-slate-400">{s.wins}V · {s.losses}D</span>
@@ -75,11 +75,11 @@ export function FinalScreen({ session, onChanged }: { session: ACSession; onChan
 
       {/* Ordre complet */}
       <Card className="p-4">
-        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-300">Ordre de lancement</h3>
+        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#F7A24A]">Ordre de lancement</h3>
         <div className="space-y-1.5">
           {order.map((s, i) => (
             <div key={s.projectId} className="flex items-center gap-3 rounded-lg bg-black/20 p-2">
-              <span className="w-6 text-center text-lg font-black text-amber-300">{i + 1}</span>
+              <span className="w-6 text-center text-lg font-black text-[#F7A24A]">{i + 1}</span>
               <ProjectMedia project={byId.get(s.projectId)!} className="h-10 w-12" />
               <span className="flex-1 truncate font-semibold text-white">{byId.get(s.projectId)?.title}</span>
               <span className="text-xs text-slate-400">Copeland {s.copeland >= 0 ? '+' : ''}{s.copeland}</span>

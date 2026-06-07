@@ -9,7 +9,7 @@ import { MetaChips } from './meta';
 const QUAL_ACTIVE: Record<number, string> = {
   1: 'bg-rose-500 text-white',
   2: 'bg-slate-400 text-slate-900',
-  3: 'bg-emerald-500 text-white',
+  3: 'bg-[#467434] text-white',
 };
 
 export function NotationScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
@@ -63,7 +63,7 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <Guide id="notation" title="Étape 2 — La vraie notation (chacun seul, ~40 min)">
-        <GuideLine tag="Quoi faire">Note chaque projet survivant sur les 5 critères ({qualitative ? 'Mauvais / Moyen / Bon' : 'de 1 à 5'}). Garde les sous-variables « en tête » sous chaque critère.</GuideLine>
+        <GuideLine tag="Quoi faire">Note chaque projet survivant sur les {session.criteria.length} critères ({qualitative ? 'Mauvais / Moyen / Bon' : 'de 1 à 5'}). Garde les sous-variables « en tête » sous chaque critère.</GuideLine>
         <GuideLine tag="Chacun son tour">Sur un seul appareil : note tout, puis passe la main au suivant via « Qui es-tu ? ». Les 3 doivent passer.</GuideLine>
         <GuideLine tag="Pourquoi">Tes notes seront converties en classement : ta sévérité ou ta générosité n'influencera pas le résultat, seul ton ordre compte.</GuideLine>
         <GuideLine tag="Ensuite">On affiche le classement global et les projets « à discuter » (là où vos avis divergent).</GuideLine>
@@ -119,7 +119,7 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
                         {[1, 2, 3, 4, 5].map(n => (
                           <button key={n} onClick={() => setVal(current.id, c.id, n)}
                             className={`rounded-lg py-2 text-sm font-bold transition
-                              ${val === n ? 'bg-amber-400 text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{n}</button>
+                              ${val === n ? 'bg-[#F58F20] text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{n}</button>
                         ))}
                       </div>
                       {c.scale && <p className="mt-1 text-[10.5px] leading-snug text-slate-500">{c.scale}</p>}

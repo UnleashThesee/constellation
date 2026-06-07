@@ -6,7 +6,7 @@ import { computeTriTally, nonThreshold } from './logic';
 import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine } from './ui';
 
 const VOTE_CHIP: Record<TriVote, string> = {
-  oui: 'bg-emerald-500/20 text-emerald-300',
+  oui: 'bg-[#467434]/20 text-[#6FA85A]',
   'peut-etre': 'bg-slate-500/20 text-slate-300',
   non: 'bg-rose-500/20 text-rose-300',
 };
@@ -79,13 +79,13 @@ export function TriResultsScreen({ session, onChanged }: { session: ACSession; o
           Tu peux repêcher/éliminer à la main.
         </p>
         <div className="mt-2 flex gap-4 text-sm">
-          <span className="text-emerald-300">Gardés : <b>{survivors.length}</b></span>
+          <span className="text-[#6FA85A]">Gardés : <b>{survivors.length}</b></span>
           <span className="text-rose-300">Éliminés : <b>{dropped.length}</b></span>
         </div>
       </Card>
 
       <div>
-        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-emerald-300">On garde ({survivors.length})</h3>
+        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#6FA85A]">On garde ({survivors.length})</h3>
         <div className="space-y-2">{survivors.map(p => <Row key={p.id} p={p} />)}</div>
       </div>
 

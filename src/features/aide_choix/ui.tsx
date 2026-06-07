@@ -18,7 +18,7 @@ export function Btn({ variant = 'soft', className = '', ...rest }:
   React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant }) {
   const base = 'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed';
   const styles: Record<BtnVariant, string> = {
-    primary: 'bg-amber-400 text-slate-900 hover:bg-amber-300',
+    primary: 'bg-[#F58F20] text-slate-900 hover:bg-[#F7A24A]',
     ghost: 'text-slate-300 hover:text-white hover:bg-white/5',
     danger: 'bg-rose-500/90 text-white hover:bg-rose-500',
     soft: 'bg-white/5 text-slate-100 hover:bg-white/10 border border-white/10',
@@ -27,12 +27,12 @@ export function Btn({ variant = 'soft', className = '', ...rest }:
 }
 
 export function Card({ className = '', children }: { className?: string; children: React.ReactNode }) {
-  return <div className={`rounded-2xl bg-[#101d3d] border border-[#22335c] ${className}`}>{children}</div>;
+  return <div className={`rounded-2xl bg-[#363636] border border-[#4a4a4a] ${className}`}>{children}</div>;
 }
 
 export function ProgressBar({ value, max, tone = 'amber' }: { value: number; max: number; tone?: 'amber' | 'emerald' }) {
   const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
-  const bar = tone === 'amber' ? 'bg-amber-400' : 'bg-emerald-400';
+  const bar = tone === 'amber' ? 'bg-[#F58F20]' : 'bg-[#558A40]';
   return (
     <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
       <div className={`h-full ${bar} transition-all`} style={{ width: `${pct}%` }} />
@@ -58,12 +58,12 @@ export function ProjectMedia({ project, className = '', rounded = 'rounded-xl' }
     return (
       <div className={`relative overflow-hidden bg-slate-800 ${rounded} ${className}`}>
         <embed src={`${url}#toolbar=0&navpanes=0`} type="application/pdf" className="h-full w-full" />
-        <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">PDF</span>
+        <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-[#F7A24A]">PDF</span>
       </div>
     );
   }
   return (
-    <div className={`flex items-center justify-center bg-gradient-to-br from-indigo-600/40 to-sky-700/40 ${rounded} ${className}`}>
+    <div className={`flex items-center justify-center bg-gradient-to-br from-[#F58F20]/40 to-[#467434]/40 ${rounded} ${className}`}>
       <span className="px-3 text-center text-lg font-black text-white/90 line-clamp-3">{project.title}</span>
     </div>
   );
@@ -84,7 +84,7 @@ export function WhoAmI({ participants, currentId, onPick, compact = false }:
         return (
           <button key={p.id} onClick={() => onPick(p.id)}
             className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition
-              ${active ? 'border-amber-400 bg-amber-400/15 text-amber-200' : 'border-white/10 text-slate-300 hover:bg-white/5'}`}>
+              ${active ? 'border-[#F58F20] bg-[#F58F20]/15 text-[#F9B877]' : 'border-white/10 text-slate-300 hover:bg-white/5'}`}>
             <Dot color={p.color} />{p.name}
           </button>
         );
@@ -109,7 +109,7 @@ export function Stepper({ stage, onJump }: { stage: Stage; onJump?: (s: Stage) =
             <button disabled={!onJump || sIdx > idx}
               onClick={() => onJump?.(s)}
               className={`rounded px-2 py-1 font-semibold transition
-                ${here ? 'bg-amber-400 text-slate-900' : done ? 'text-emerald-300 hover:bg-white/5' : 'text-slate-500'}`}>
+                ${here ? 'bg-[#F58F20] text-slate-900' : done ? 'text-[#6FA85A] hover:bg-white/5' : 'text-slate-500'}`}>
               {STAGE_LABEL[s].replace(/Étape \d+ · /, '')}
             </button>
           </span>
@@ -123,10 +123,10 @@ export function Stepper({ stage, onJump }: { stage: Stage; onJump?: (s: Stage) =
 export function Guide({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   const [open, setOpen] = useLocalState<boolean>(`ac:guide:${id}`, true);
   return (
-    <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.06]">
+    <div className="rounded-xl border border-[#F58F20]/30 bg-[#F58F20]/[0.06]">
       <button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left">
-        <span className="flex items-center gap-2 text-sm font-bold text-amber-200">💡 {title}</span>
-        <span className="text-xs text-amber-300/70">{open ? '▲ masquer' : '▼ afficher l\'aide'}</span>
+        <span className="flex items-center gap-2 text-sm font-bold text-[#F9B877]">💡 {title}</span>
+        <span className="text-xs text-[#F7A24A]/70">{open ? '▲ masquer' : '▼ afficher l\'aide'}</span>
       </button>
       {open && <div className="space-y-1.5 px-4 pb-3 text-sm leading-relaxed text-slate-300">{children}</div>}
     </div>
@@ -136,7 +136,7 @@ export function Guide({ id, title, children }: { id: string; title: string; chil
 /** Une ligne d'aide « étiquette : texte ». */
 export function GuideLine({ tag, children }: { tag: string; children: React.ReactNode }) {
   return (
-    <p><span className="font-semibold text-amber-200/90">{tag} :</span> {children}</p>
+    <p><span className="font-semibold text-[#F9B877]/90">{tag} :</span> {children}</p>
   );
 }
 
@@ -151,7 +151,7 @@ export function ParticipantProgress({ participants, progress, label }:
         const complete = d.total > 0 && d.done >= d.total;
         return (
           <span key={p.id} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold
-            ${complete ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/5 text-slate-300'}`}>
+            ${complete ? 'bg-[#467434]/20 text-[#8ABF74]' : 'bg-white/5 text-slate-300'}`}>
             <Dot color={p.color} />{p.name} {complete ? '✓ fini' : `${d.done}/${d.total}`}
           </span>
         );

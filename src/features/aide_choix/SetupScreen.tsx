@@ -56,9 +56,9 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
     <div className="mx-auto max-w-5xl space-y-6">
       <Guide id="setup" title="Étape 0 — Réglage : comment marche l'outil">
         <GuideLine tag="Le but">Choisir, à plusieurs, lesquels de vos ~50 projets lancer — en 3 étapes qui resserrent peu à peu.</GuideLine>
-        <GuideLine tag="Le parcours">1. Tri rapide (on jette les projets morts) → 2. Notation des survivants sur 5 critères → 3. Duels entre les meilleurs → verdict.</GuideLine>
+        <GuideLine tag="Le parcours">1. Tri rapide (on jette les projets morts) → 2. Notation des survivants sur plusieurs critères → 3. Duels entre les meilleurs → verdict.</GuideLine>
         <GuideLine tag="À 3 sur un seul appareil">Aux étapes 1 et 2, chacun passe à son tour (bouton « Qui es-tu ? »). L'étape 3 se fait ensemble.</GuideLine>
-        <GuideLine tag="Ici, maintenant">Importe tes projets, vérifie les participants et les 5 critères, puis lance l'étape 1. Rien n'est noté à ce stade.</GuideLine>
+        <GuideLine tag="Ici, maintenant">Importe tes projets, vérifie les participants et les critères, puis lance l'étape 1. Rien n'est noté à ce stade.</GuideLine>
       </Guide>
 
       {/* Participants */}
@@ -70,7 +70,7 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
               <span className="inline-block h-4 w-4 shrink-0 rounded-full" style={{ background: session.participants[i]?.color }} />
               <input value={name} onChange={e => {
                 const next = [...parts]; next[i] = e.target.value; saveParticipants(next);
-              }} className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
+              }} className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-[#F58F20]" />
             </div>
           ))}
         </div>
@@ -79,12 +79,12 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
       {/* Critères */}
       <Card className="p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-bold text-white">Les 5 critères <span className="text-slate-400">(étape 2)</span></h2>
+          <h2 className="text-lg font-bold text-white">Les {criteria.length} critères <span className="text-slate-400">(étape 2)</span></h2>
           <Btn variant="soft" className="text-xs" onClick={() => {
-            if (confirm('Remplacer les critères actuels par les 5 méta-critères recommandés ? (les notes déjà saisies seraient à refaire)')) {
+            if (confirm('Remplacer les critères actuels par les méta-critères recommandés ? (les notes déjà saisies seraient à refaire)')) {
               saveCriteria(makeCriteria(DEFAULT_CRITERIA));
             }
-          }}>↺ Recharger les 5 méta-critères recommandés</Btn>
+          }}>↺ Recharger les critères recommandés</Btn>
         </div>
 
         {/* Échelle de notation (étape 2) */}
@@ -93,7 +93,7 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
           <div className="inline-flex overflow-hidden rounded-lg border border-white/10">
             {([['qualitative', 'Mauvais / Moyen / Bon'], ['numeric', '1 → 5']] as const).map(([m, label]) => (
               <button key={m} onClick={() => saveScaleMode(m)}
-                className={`px-3 py-1.5 text-xs font-semibold transition ${scaleMode === m ? 'bg-amber-400 text-slate-900' : 'text-slate-300 hover:bg-white/5'}`}>
+                className={`px-3 py-1.5 text-xs font-semibold transition ${scaleMode === m ? 'bg-[#F58F20] text-slate-900' : 'text-slate-300 hover:bg-white/5'}`}>
                 {label}
               </button>
             ))}
@@ -107,11 +107,11 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
               <div className="flex items-center gap-2">
                 <input value={c.name} onChange={e => {
                   const next = [...criteria]; next[i] = { ...c, name: e.target.value }; saveCriteria(next);
-                }} className="flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-amber-400" />
+                }} className="flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-[#F58F20]" />
                 <label className="text-[11px] text-slate-500">poids</label>
                 <input type="number" min={0} max={9} step={1} value={c.weight} onChange={e => {
                   const next = [...criteria]; next[i] = { ...c, weight: Math.max(0, +e.target.value) }; saveCriteria(next);
-                }} className="w-14 rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-sm text-white outline-none focus:border-amber-400" />
+                }} className="w-14 rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-sm text-white outline-none focus:border-[#F58F20]" />
                 <Btn variant="ghost" onClick={() => saveCriteria(criteria.filter((_, k) => k !== i))} title="Supprimer">✕</Btn>
               </div>
 
@@ -120,7 +120,7 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
                 <label className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Description</label>
                 <textarea value={c.definition} placeholder="Définition / ce qu'on juge vraiment…" rows={3}
                   onChange={e => { const next = [...criteria]; next[i] = { ...c, definition: e.target.value }; saveCriteria(next); }}
-                  className="min-h-[72px] w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm leading-relaxed text-slate-200 outline-none focus:border-amber-400" />
+                  className="min-h-[72px] w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm leading-relaxed text-slate-200 outline-none focus:border-[#F58F20]" />
               </div>
 
               {/* Repère de notation 1→5 (seulement en mode chiffré) */}
@@ -129,7 +129,7 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
                   <label className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">Repère de notation (1 → 5)</label>
                   <textarea value={c.scale ?? ''} placeholder="Ex. 1 = … · 3 = … · 5 = …" rows={2}
                     onChange={e => { const next = [...criteria]; next[i] = { ...c, scale: e.target.value }; saveCriteria(next); }}
-                    className="min-h-[48px] w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs leading-relaxed text-slate-300 outline-none focus:border-amber-400" />
+                    className="min-h-[48px] w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs leading-relaxed text-slate-300 outline-none focus:border-[#F58F20]" />
                 </div>
               )}
 
@@ -164,13 +164,13 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
             <span className="text-[11px] uppercase tracking-wider text-slate-500">Filtrer&nbsp;:</span>
             {CATEGORICAL_DIMS.map(d => (
               <select key={d.key} value={filters[d.key] ?? ''} onChange={e => setFilters(f => ({ ...f, [d.key]: e.target.value }))}
-                className="rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-xs text-slate-200 outline-none focus:border-amber-400">
+                className="rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-xs text-slate-200 outline-none focus:border-[#F58F20]">
                 <option value="">{d.label}</option>
                 {d.options.map(o => <option key={o} value={o}>{o}</option>)}
               </select>
             ))}
             <select value={filters._capi ?? ''} onChange={e => setFilters(f => ({ ...f, _capi: e.target.value }))}
-              className="rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-xs text-slate-200 outline-none focus:border-amber-400">
+              className="rounded-lg border border-white/10 bg-black/20 px-2 py-1 text-xs text-slate-200 outline-none focus:border-[#F58F20]">
               <option value="">Intensité capi.</option>
               <option value="1">≥ légère</option>
               <option value="2">≥ moyenne</option>
@@ -196,7 +196,7 @@ export function SetupScreen({ session, onChanged }: { session: ACSession; onChan
                     className="mt-1 w-full rounded bg-black/20 px-2 py-1 text-xs text-white outline-none focus:bg-black/40" />
                   <div className="mt-1 min-h-[18px]"><MetaChips meta={p.meta} /></div>
                   <button onClick={() => setEditing(p)}
-                    className="absolute left-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 opacity-0 transition group-hover:opacity-100">⚙ Variables</button>
+                    className="absolute left-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-[#F7A24A] opacity-0 transition group-hover:opacity-100">⚙ Variables</button>
                   <button onClick={async () => { await deleteProject(p.id); reload(); }}
                     className="absolute right-1 top-1 hidden rounded bg-black/70 px-1.5 text-xs text-rose-300 group-hover:block">✕</button>
                 </div>

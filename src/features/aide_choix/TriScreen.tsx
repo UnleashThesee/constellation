@@ -7,7 +7,7 @@ import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, Gui
 const VOTES: { v: TriVote; label: string; key: string; cls: string }[] = [
   { v: 'non', label: 'Non', key: '←', cls: 'bg-rose-500/90 hover:bg-rose-500 text-white' },
   { v: 'peut-etre', label: 'Peut-être', key: '↓', cls: 'bg-slate-500/70 hover:bg-slate-500 text-white' },
-  { v: 'oui', label: 'Oui', key: '→', cls: 'bg-emerald-500/90 hover:bg-emerald-500 text-white' },
+  { v: 'oui', label: 'Oui', key: '→', cls: 'bg-[#467434]/90 hover:bg-[#467434] text-white' },
 ];
 
 export function TriScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
@@ -92,12 +92,12 @@ export function TriScreen({ session, onChanged }: { session: ACSession; onChange
             </div>
             {current.description && <p className="mb-3 text-sm text-slate-300">{current.description}</p>}
             {myVotes.has(current.id) && (
-              <p className="mb-2 text-xs text-amber-300">Déjà voté : <b>{myVotes.get(current.id)}</b> — tu peux changer.</p>
+              <p className="mb-2 text-xs text-[#F7A24A]">Déjà voté : <b>{myVotes.get(current.id)}</b> — tu peux changer.</p>
             )}
             <div className="grid grid-cols-3 gap-2">
               {VOTES.map(b => (
                 <button key={b.v} onClick={() => vote(b.v)}
-                  className={`rounded-xl px-3 py-4 text-base font-bold transition ${b.cls} ${myVotes.get(current.id) === b.v ? 'ring-2 ring-amber-300' : ''}`}>
+                  className={`rounded-xl px-3 py-4 text-base font-bold transition ${b.cls} ${myVotes.get(current.id) === b.v ? 'ring-2 ring-[#F7A24A]' : ''}`}>
                   {b.label}<span className="ml-2 opacity-60">{b.key}</span>
                 </button>
               ))}

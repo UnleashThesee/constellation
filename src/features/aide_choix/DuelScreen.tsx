@@ -65,14 +65,14 @@ export function DuelScreen({ session, onChanged }: { session: ACSession; onChang
     const p = byId.get(pid); if (!p) return null;
     return (
       <button onClick={onPick}
-        className="group flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/20 text-left transition hover:border-amber-400 hover:bg-amber-400/5">
+        className="group flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/20 text-left transition hover:border-[#F58F20] hover:bg-[#F58F20]/5">
         <ProjectMedia project={p} className="aspect-[16/10] w-full" rounded="rounded-none" />
         <div className="flex items-center justify-between gap-2 p-3">
           <span className="min-w-0">
             <span className="block truncate font-bold text-white">{p.title}</span>
             <span className="mt-1 block"><MetaChips meta={p.meta} /></span>
           </span>
-          <span className="shrink-0 rounded-lg bg-white/5 px-2 py-1 text-xs text-slate-400 group-hover:bg-amber-400 group-hover:text-slate-900">Choisir {side}</span>
+          <span className="shrink-0 rounded-lg bg-white/5 px-2 py-1 text-xs text-slate-400 group-hover:bg-[#F58F20] group-hover:text-slate-900">Choisir {side}</span>
         </div>
       </button>
     );
@@ -101,7 +101,7 @@ export function DuelScreen({ session, onChanged }: { session: ACSession; onChang
           </div>
           <div className="flex items-center justify-between">
             <Btn variant="ghost" disabled={idx === 0} onClick={() => setIdx(i => Math.max(0, i - 1))}>← Duel précédent</Btn>
-            {current?.winnerId && <span className="text-sm text-emerald-300">Gagnant : <b>{byId.get(current.winnerId)?.title}</b></span>}
+            {current?.winnerId && <span className="text-sm text-[#6FA85A]">Gagnant : <b>{byId.get(current.winnerId)?.title}</b></span>}
             <Btn variant="ghost" disabled={idx >= pairs.length - 1} onClick={() => setIdx(i => Math.min(pairs.length - 1, i + 1))}>Duel suivant →</Btn>
           </div>
         </>
@@ -109,16 +109,16 @@ export function DuelScreen({ session, onChanged }: { session: ACSession; onChang
 
       {/* Classement provisoire */}
       <Card className="p-4">
-        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-300">Classement des duels (Copeland)</h3>
+        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#F7A24A]">Classement des duels (Copeland)</h3>
         {standings.condorcetWinner && (
-          <p className="mb-2 text-sm text-emerald-300">★ Vainqueur de Condorcet : <b>{byId.get(standings.condorcetWinner)?.title}</b> (bat tous les autres).</p>
+          <p className="mb-2 text-sm text-[#6FA85A]">★ Vainqueur de Condorcet : <b>{byId.get(standings.condorcetWinner)?.title}</b> (bat tous les autres).</p>
         )}
         <div className="space-y-1">
           {standings.standings.map((s, i) => (
             <div key={s.projectId} className="flex items-center gap-3 text-sm">
               <span className="w-5 text-center font-black text-slate-500">{i + 1}</span>
               <span className="flex-1 truncate text-white">{byId.get(s.projectId)?.title}</span>
-              <span className="text-emerald-300">{s.wins}V</span>
+              <span className="text-[#6FA85A]">{s.wins}V</span>
               <span className="text-rose-300">{s.losses}D</span>
             </div>
           ))}

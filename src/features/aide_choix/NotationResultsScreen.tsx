@@ -43,13 +43,13 @@ export function NotationResultsScreen({ session, onChanged }: { session: ACSessi
       </Guide>
       <Card className="p-4">
         <p className="text-sm text-slate-300">
-          Notes converties en <b className="text-amber-300">classements</b> (par personne et par critère) : ta sévérité ou ta générosité n'influence plus le résultat — seul ton <i>ordre</i> compte.
+          Notes converties en <b className="text-[#F7A24A]">classements</b> (par personne et par critère) : ta sévérité ou ta générosité n'influence plus le résultat — seul ton <i>ordre</i> compte.
         </p>
       </Card>
 
       {/* Classement global */}
       <div>
-        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-amber-300">Classement global</h3>
+        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#F7A24A]">Classement global</h3>
         <div className="space-y-2">
           {res.ranking.map((r, idx) => {
             const p = byId.get(r.projectId); if (!p) return null;
@@ -57,8 +57,8 @@ export function NotationResultsScreen({ session, onChanged }: { session: ACSessi
             const hot = (dis?.spread ?? 0) >= disagreeThreshold;
             const top = topIds.has(r.projectId);
             return (
-              <div key={r.projectId} className={`flex items-center gap-3 rounded-xl border p-2 ${top ? 'border-amber-400/40 bg-amber-400/5' : 'border-white/10 bg-black/20'}`}>
-                <span className={`w-7 text-center text-lg font-black ${idx < 3 ? 'text-amber-300' : 'text-slate-500'}`}>{idx + 1}</span>
+              <div key={r.projectId} className={`flex items-center gap-3 rounded-xl border p-2 ${top ? 'border-[#F58F20]/40 bg-[#F58F20]/5' : 'border-white/10 bg-black/20'}`}>
+                <span className={`w-7 text-center text-lg font-black ${idx < 3 ? 'text-[#F7A24A]' : 'text-slate-500'}`}>{idx + 1}</span>
                 <ProjectMedia project={p} className="h-11 w-14 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-white">{p.title}</div>
@@ -69,7 +69,7 @@ export function NotationResultsScreen({ session, onChanged }: { session: ACSessi
                     ⚠ à discuter
                   </span>
                 )}
-                {top && <span className="shrink-0 rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-slate-900">TOP</span>}
+                {top && <span className="shrink-0 rounded-full bg-[#F58F20] px-2 py-0.5 text-[11px] font-bold text-slate-900">TOP</span>}
               </div>
             );
           })}
@@ -79,7 +79,7 @@ export function NotationResultsScreen({ session, onChanged }: { session: ACSessi
       <div className="grid gap-5 md:grid-cols-2">
         {/* Gagnants par critère */}
         <Card className="p-4">
-          <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-sky-300">En tête par critère</h3>
+          <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#6FA85A]">En tête par critère</h3>
           <div className="space-y-1.5">
             {session.criteria.map(c => {
               const winner = res.criterionWinners[c.id];
@@ -127,7 +127,7 @@ export function NotationResultsScreen({ session, onChanged }: { session: ACSessi
           Groupe de tête :
           <input type="number" min={2} max={Math.max(2, survivors.length)} value={topN}
             onChange={e => setTopN(Math.min(survivors.length, Math.max(2, +e.target.value)))}
-            className="w-16 rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-white outline-none focus:border-amber-400" />
+            className="w-16 rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-white outline-none focus:border-[#F58F20]" />
           projets
         </label>
         <div className="flex gap-2">

@@ -10,7 +10,7 @@ const CAP_LABEL = ['nulle', 'légère', 'moyenne', 'forte'];
 export function CapitalBadge({ meta, showLabel = false }: { meta?: ProjectMeta; showLabel?: boolean }) {
   const n = capitalIntensity(meta);
   if (n === 0 && !meta?.loanSize) return null;
-  const tone = n >= 3 ? 'text-rose-300' : n === 2 ? 'text-amber-300' : 'text-emerald-300';
+  const tone = n >= 3 ? 'text-rose-300' : n === 2 ? 'text-[#F7A24A]' : 'text-[#6FA85A]';
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${tone}`} title="Intensité capitalistique : ressources à immobiliser avant que ça tourne.">
       <span className="tracking-tighter">{'●'.repeat(n)}{'○'.repeat(3 - n)}</span>
@@ -51,7 +51,7 @@ export function MetaEditor({ project, onClose, onSaved }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-[#22335c] bg-[#101d3d] p-5" onClick={e => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-[#4a4a4a] bg-[#363636] p-5" onClick={e => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-bold text-white">Variables — {project.title}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
@@ -69,7 +69,7 @@ export function MetaEditor({ project, onClose, onSaved }:
                   {dim.options.map(opt => (
                     <button key={opt} onClick={() => set({ [dim.key]: val === opt ? undefined : opt } as Partial<ProjectMeta>)}
                       className={`rounded-full border px-2.5 py-1 text-xs font-medium transition
-                        ${val === opt ? 'border-amber-400 bg-amber-400/15 text-amber-200' : 'border-white/10 text-slate-300 hover:bg-white/5'}`}>
+                        ${val === opt ? 'border-[#F58F20] bg-[#F58F20]/15 text-[#F9B877]' : 'border-white/10 text-slate-300 hover:bg-white/5'}`}>
                       {opt}
                     </button>
                   ))}
@@ -99,7 +99,7 @@ export function MetaEditor({ project, onClose, onSaved }:
             <div className="flex gap-1.5">
               {[1, 2, 3].map(n => (
                 <button key={n} onClick={() => set({ loanSize: meta.loanSize === n ? 0 : n })}
-                  className={`rounded-lg px-3 py-1 text-sm font-bold transition ${(meta.loanSize ?? 0) >= n ? 'bg-amber-400 text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+                  className={`rounded-lg px-3 py-1 text-sm font-bold transition ${(meta.loanSize ?? 0) >= n ? 'bg-[#F58F20] text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>
                   {'▲'.repeat(n)}
                 </button>
               ))}

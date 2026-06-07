@@ -50,12 +50,12 @@ export function AideChoix() {
           {creating && (
             <Card className="space-y-3 p-5">
               <input value={name} onChange={e => setName(e.target.value)} placeholder="Nom de la session (ex. Projets 2026)"
-                className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white outline-none focus:border-amber-400" />
+                className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white outline-none focus:border-[#F58F20]" />
               <div className="grid grid-cols-3 gap-2">
                 {names.map((n, i) => (
                   <input key={i} value={n} onChange={e => { const nx = [...names]; nx[i] = e.target.value; setNames(nx); }}
                     placeholder={`Personne ${i + 1}`}
-                    className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white outline-none focus:border-amber-400" />
+                    className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white outline-none focus:border-[#F58F20]" />
                 ))}
               </div>
               <div className="flex justify-end gap-2">
@@ -115,7 +115,7 @@ export function AideChoix() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#0a1430] px-4 py-6 text-slate-100" style={{ colorScheme: 'dark' }}>
+    <div className="min-h-screen bg-[#262626] px-4 py-6 text-slate-100" style={{ colorScheme: 'dark' }}>
       {children}
     </div>
   );
