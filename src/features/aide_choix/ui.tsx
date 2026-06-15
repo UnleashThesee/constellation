@@ -1,4 +1,4 @@
-// Aide au choix — primitives d'interface partagées (bleu nuit + accent jaune).
+// Aide au choix — primitives d'interface partagées (gris #363636 + accent orange).
 import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, Participant, Stage } from './types';
 import { STAGE_ORDER } from './types';

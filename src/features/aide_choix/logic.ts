@@ -94,8 +94,6 @@ export function computeNotation(
     byCrit.get(s.criterionId)!.set(s.projectId, s.value);
   }
 
-  const totalWeight = criteria.reduce((a, c) => a + (c.weight || 0), 0) || 1;
-
   // rang normalisé par (participant, critère)
   // ranksByPC : participant -> critère -> (projet -> rang)
   const ranksByPC = new Map<string, Map<string, Map<string, number>>>();
@@ -183,7 +181,6 @@ export function computeNotation(
     return { projectId, spread, positions };
   }).sort((a, b) => b.spread - a.spread);
 
-  void totalWeight;
   return { ranking, perCriterion, criterionWinners, personalRanking, disagreement };
 }
 

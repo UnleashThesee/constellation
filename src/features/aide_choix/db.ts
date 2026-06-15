@@ -32,20 +32,23 @@ const uid = () =>
 // ── Critères par défaut (modifiables au setup) ───────────────────────────────
 // 7 méta-critères notés. Une seule note par critère, mais on garde ses
 // sous-variables en tête (checklist) au moment de noter.
+// Besoin + Marché ont un poids 2 (les « gates » : pas de besoin/marché = pas de
+// business). Ça reste compensable, pas éliminatoire — c'est volontaire vu la
+// granularité (3 niveaux, 3 juges).
 export const DEFAULT_CRITERIA: Omit<Criterion, 'id'>[] = [
   {
     name: 'Intensité du besoin',
     definition: 'Le problème est-il réel et douloureux ? On mesure UNIQUEMENT la force de la douleur, pas le nombre de gens concernés (ça, c\'est le critère suivant). Un besoin brûlant sur petit marché et un besoin tiède sur gros marché ne sont pas le même pari.',
     checklist: ['Pain point réel (douleur ressentie, pas supposée), isolé de la taille du marché'],
     scale: '1 = gadget / besoin hypothétique · 3 = inconfort réel · 5 = douleur brûlante, urgente',
-    weight: 1,
+    weight: 2, // gate « y a-t-il un business ? » → compte double
   },
   {
     name: 'Marché solvable',
     definition: 'Combien de gens ont ce besoin ET ont les moyens (et la volonté) de payer ? La taille du marché ne vaut que multipliée par la capacité à payer.',
     checklist: ['Taille du marché (combien de clients potentiels)', 'Solvabilité du client (capacité + volonté de payer)'],
     scale: '1 = niche pauvre ou marché qui ne paie pas · 3 = marché correct · 5 = large ET solvable',
-    weight: 1,
+    weight: 2, // gate « y a-t-il un business ? » → compte double
   },
   {
     name: 'Position concurrentielle',
@@ -133,7 +136,6 @@ export async function createSession(input: {
     participants: makeParticipants(input.participantNames),
     criteria: makeCriteria(input.criteria ?? DEFAULT_CRITERIA),
     topGroupSize: 6,
-    duelMode: 'roundRobin',
     scaleMode: 'qualitative',
     createdAt: now,
     updatedAt: now,
@@ -205,9 +207,6 @@ export async function deleteProject(id: string): Promise<void> {
 export async function setTriVote(sessionId: string, projectId: string, participantId: string, vote: TriVote): Promise<void> {
   await acdb.triVotes.put({ id: `${projectId}:${participantId}`, sessionId, projectId, participantId, vote });
 }
-export async function clearTriVote(projectId: string, participantId: string): Promise<void> {
-  await acdb.triVotes.delete(`${projectId}:${participantId}`);
-}
 export async function listTriVotes(sessionId: string): Promise<ACTriVote[]> {
   return acdb.triVotes.where('sessionId').equals(sessionId).toArray();
 }
@@ -238,5 +237,3 @@ export async function exportSession(sessionId: string): Promise<string> {
   const lightProjects = projects.map(({ blob, ...p }) => { void blob; return p; });
   return JSON.stringify({ version: 1, session, projects: lightProjects, triVotes, scores, duels }, null, 2);
 }
-
-export { uid };

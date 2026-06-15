@@ -95,6 +95,7 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
                 <div key={c.id}>
                   <div className="mb-1">
                     <span className="text-sm font-semibold text-white">{c.name}</span>
+                    {c.weight > 1 && <span className="ml-1.5 rounded bg-[#F58F20]/20 px-1.5 py-0.5 text-[10px] font-bold text-[#F9B877]" title="Ce critère compte plus dans le classement.">×{c.weight}</span>}
                     {c.definition && <span className="ml-2 text-[11px] font-normal text-slate-500">{c.definition}</span>}
                     {c.checklist && c.checklist.length > 0 && (
                       <div className="mt-1 flex flex-wrap gap-1">
