@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACSession, ACTriVote, TriVote } from './types';
 import { listProjects, listTriVotes, setTriVote, setStage, markStageDone } from './db';
-import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress, StageBarrier } from './ui';
+import { Btn, Card, ProgressBar, ProjectPanel, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress, StageBarrier } from './ui';
 
 const VOTES: { v: TriVote; label: string; key: string; cls: string }[] = [
   { v: 'non', label: 'Non', key: '←', cls: 'bg-rose-500/90 hover:bg-rose-500 text-white' },
@@ -66,7 +66,7 @@ export function TriScreen({ session, onChanged }: { session: ACSession; onChange
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <Guide id="tri" title="Étape 1 — Le grand tri (chacun seul, ~20 min)">
         <GuideLine tag="Quoi faire">Passe tous les projets et donne ton réflexe : Oui / Peut-être / Non. À l'instinct, sans réfléchir longtemps.</GuideLine>
         <GuideLine tag="Chacun son tour">Sur un seul appareil : fais tout le paquet, puis passe la main au suivant via « Qui es-tu ? ». Les 3 doivent passer.</GuideLine>
@@ -83,12 +83,16 @@ export function TriScreen({ session, onChanged }: { session: ACSession; onChange
       <ProgressBar value={doneCount} max={projects.length} />
 
       {current ? (
-        <Card className="overflow-hidden">
-          <ProjectMedia project={current} className="h-[48vh] w-full" rounded="rounded-none" />
-          <div className="p-4">
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-white">{current.title}</h3>
-              <span className="text-xs text-slate-500">{i + 1} / {projects.length}</span>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          {/* Image du projet — à droite, en grand, collante sur écran large */}
+          <div className="lg:order-2 lg:w-[46%] lg:shrink-0 lg:sticky lg:top-4">
+            <ProjectPanel project={current} />
+          </div>
+          {/* Titre + vote — à gauche */}
+          <Card className="min-w-0 p-4 lg:order-1 lg:flex-1">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <h3 className="break-words text-xl font-bold text-white">{current.title}</h3>
+              <span className="shrink-0 text-xs text-slate-500">{i + 1} / {projects.length}</span>
             </div>
             {current.description && <p className="mb-3 text-sm text-slate-300">{current.description}</p>}
             {myVotes.has(current.id) && (
@@ -102,8 +106,8 @@ export function TriScreen({ session, onChanged }: { session: ACSession; onChange
                 </button>
               ))}
             </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
       ) : (
         <Card className="p-8 text-center text-slate-400">Aucun projet.</Card>
       )}

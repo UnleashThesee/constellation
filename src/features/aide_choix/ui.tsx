@@ -111,6 +111,17 @@ export function ProjectMedia({ project, className = '', rounded = 'rounded-xl', 
   );
 }
 
+/** Panneau d'image du projet, grand et en entier, à afficher à côté pendant
+ *  le tri / la notation. Collant (sticky) sur écran large pour rester visible. */
+export function ProjectPanel({ project }: { project: ACProject }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/30 p-2">
+      <ProjectMedia project={project} className="h-[42vh] w-full lg:h-[74vh]" rounded="rounded-xl" />
+      <div className="mt-1 truncate px-1 text-center text-xs text-slate-400" title={project.title}>{project.title}</div>
+    </div>
+  );
+}
+
 export function Dot({ color }: { color: string }) {
   return <span className="inline-block h-3 w-3 rounded-full" style={{ background: color }} />;
 }

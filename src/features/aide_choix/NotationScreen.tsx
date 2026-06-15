@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACScore, ACSession } from './types';
 import { listProjects, listScores, setScore, setStage, markStageDone, QUAL_SCALE } from './db';
 import { computeTriTally } from './logic';
-import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress, StageBarrier } from './ui';
+import { Btn, Card, ProgressBar, ProjectPanel, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress, StageBarrier } from './ui';
 import { MetaChips } from './meta';
 
 // Styles des boutons de note : chaque niveau a sa couleur, lisible même non choisi.
@@ -62,7 +62,7 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <Guide id="notation" title="Étape 2 — La vraie notation (chacun seul, ~40 min)">
         <GuideLine tag="Quoi faire">Note chaque projet survivant sur les {session.criteria.length} critères ({qualitative ? 'Mauvais / Moyen / Bon' : 'de 1 à 5'}). Garde les sous-variables « en tête » sous chaque critère.</GuideLine>
         <GuideLine tag="Chacun son tour">Sur un seul appareil : note tout, puis passe la main au suivant via « Qui es-tu ? ». Les 3 doivent passer.</GuideLine>
@@ -79,17 +79,21 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
       <ProgressBar value={doneCount} max={survivors.length} tone="emerald" />
 
       {current ? (
-        <Card className="overflow-hidden">
-          <div className="flex gap-4 p-4">
-            <ProjectMedia project={current} className="h-32 w-48 shrink-0" />
-            <div className="min-w-0">
-              <h3 className="text-xl font-bold text-white">{current.title}</h3>
-              <span className="text-xs text-slate-500">Projet {i + 1} / {survivors.length}</span>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          {/* Image du projet — à droite, en grand, collante sur écran large */}
+          <div className="lg:order-2 lg:w-[42%] lg:shrink-0 lg:sticky lg:top-4">
+            <ProjectPanel project={current} />
+          </div>
+          <Card className="min-w-0 overflow-hidden lg:order-1 lg:flex-1">
+            <div className="border-b border-white/10 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="break-words text-xl font-bold text-white">{current.title}</h3>
+                <span className="shrink-0 text-xs text-slate-500">Projet {i + 1} / {survivors.length}</span>
+              </div>
               {current.description && <p className="mt-1 text-sm text-slate-300">{current.description}</p>}
               <div className="mt-1.5"><MetaChips meta={current.meta} /></div>
             </div>
-          </div>
-          <div className="space-y-3 border-t-2 border-black/30 bg-black/20 p-3.5">
+            <div className="space-y-3 bg-black/20 p-3.5">
             {session.criteria.map(c => {
               const val = scoreOf(current.id, c.id);
               return (
@@ -128,8 +132,9 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
                 </div>
               );
             })}
-          </div>
-        </Card>
+            </div>
+          </Card>
+        </div>
       ) : <Card className="p-8 text-center text-slate-400">Aucun projet à noter.</Card>}
 
       <div className="flex items-center justify-between">
