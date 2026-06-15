@@ -6,10 +6,11 @@ import { computeTriTally } from './logic';
 import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress } from './ui';
 import { MetaChips } from './meta';
 
-const QUAL_ACTIVE: Record<number, string> = {
-  1: 'bg-rose-500 text-white',
-  2: 'bg-slate-400 text-slate-900',
-  3: 'bg-[#467434] text-white',
+// Styles des boutons de note : chaque niveau a sa couleur, lisible même non choisi.
+const QUAL_BTN: Record<number, { on: string; off: string }> = {
+  1: { on: 'border-rose-500 bg-rose-500 text-white', off: 'border-rose-500/35 text-rose-200/90 hover:bg-rose-500/10' },
+  2: { on: 'border-slate-300 bg-slate-300 text-slate-900', off: 'border-white/15 text-slate-300 hover:bg-white/8' },
+  3: { on: 'border-[#467434] bg-[#467434] text-white', off: 'border-[#5a9144]/55 text-[#8ABF74] hover:bg-[#467434]/15' },
 };
 
 export function NotationScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
@@ -88,42 +89,40 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
               <div className="mt-1.5"><MetaChips meta={current.meta} /></div>
             </div>
           </div>
-          <div className="space-y-3 border-t border-white/10 p-4">
+          <div className="space-y-3 border-t-2 border-black/30 bg-black/20 p-3.5">
             {session.criteria.map(c => {
               const val = scoreOf(current.id, c.id);
               return (
-                <div key={c.id}>
-                  <div className="mb-1">
-                    <span className="text-sm font-semibold text-white">{c.name}</span>
-                    {c.weight > 1 && <span className="ml-1.5 rounded bg-[#F58F20]/20 px-1.5 py-0.5 text-[10px] font-bold text-[#F9B877]" title="Ce critère compte plus dans le classement.">×{c.weight}</span>}
-                    {c.definition && <span className="ml-2 text-[11px] font-normal text-slate-500">{c.definition}</span>}
-                    {c.checklist && c.checklist.length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        <span className="text-[10px] uppercase tracking-wider text-slate-500">en tête :</span>
-                        {c.checklist.map((s, k) => (
-                          <span key={k} className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-400">{s}</span>
-                        ))}
-                      </div>
-                    )}
+                <div key={c.id} className="rounded-xl border border-white/10 bg-[#404040] p-3.5">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-[15px] font-bold text-white">{c.name}</span>
+                    {c.weight > 1 && <span className="rounded bg-[#F58F20]/25 px-1.5 py-0.5 text-[10px] font-bold text-[#F9B877]" title="Ce critère compte plus dans le classement.">×{c.weight}</span>}
                   </div>
+                  {c.definition && <p className="mt-1 text-[12.5px] leading-relaxed text-slate-300">{c.definition}</p>}
+                  {c.checklist && c.checklist.length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1 border-l-2 border-[#F58F20]/50 pl-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#F9B877]/80">en tête</span>
+                      {c.checklist.map((s, k) => (
+                        <span key={k} className="rounded bg-black/30 px-1.5 py-0.5 text-[10.5px] text-slate-300">{s}</span>
+                      ))}
+                    </div>
+                  )}
                   {qualitative ? (
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="mt-3 grid grid-cols-3 gap-2">
                       {QUAL_SCALE.map(q => (
                         <button key={q.v} onClick={() => setVal(current.id, c.id, q.v)}
-                          className={`rounded-lg py-2.5 text-sm font-bold transition
-                            ${val === q.v ? QUAL_ACTIVE[q.v] : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{q.label}</button>
+                          className={`rounded-lg border-2 py-2.5 text-sm font-bold transition ${val === q.v ? QUAL_BTN[q.v].on : QUAL_BTN[q.v].off}`}>{q.label}</button>
                       ))}
                     </div>
                   ) : (
                     <>
-                      <div className="grid grid-cols-5 gap-1.5">
+                      <div className="mt-3 grid grid-cols-5 gap-1.5">
                         {[1, 2, 3, 4, 5].map(n => (
                           <button key={n} onClick={() => setVal(current.id, c.id, n)}
-                            className={`rounded-lg py-2 text-sm font-bold transition
-                              ${val === n ? 'bg-[#F58F20] text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{n}</button>
+                            className={`rounded-lg border-2 py-2 text-sm font-bold transition ${val === n ? 'border-[#F58F20] bg-[#F58F20] text-slate-900' : 'border-white/15 text-slate-300 hover:bg-white/8'}`}>{n}</button>
                         ))}
                       </div>
-                      {c.scale && <p className="mt-1 text-[10.5px] leading-snug text-slate-500">{c.scale}</p>}
+                      {c.scale && <p className="mt-1.5 text-[11px] leading-snug text-slate-400">{c.scale}</p>}
                     </>
                   )}
                 </div>
