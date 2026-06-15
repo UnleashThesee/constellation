@@ -1,9 +1,9 @@
 // Étape 2 — Notation : chaque critère noté Mauvais/Moyen/Bon (ou 1–5), chacun son tour.
 import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACScore, ACSession } from './types';
-import { listProjects, listScores, setScore, setStage, QUAL_SCALE } from './db';
+import { listProjects, listScores, setScore, setStage, markStageDone, QUAL_SCALE } from './db';
 import { computeTriTally } from './logic';
-import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress } from './ui';
+import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress, StageBarrier } from './ui';
 import { MetaChips } from './meta';
 
 // Styles des boutons de note : chaque niveau a sa couleur, lisible même non choisi.
@@ -134,11 +134,17 @@ export function NotationScreen({ session, onChanged }: { session: ACSession; onC
 
       <div className="flex items-center justify-between">
         <Btn variant="ghost" onClick={() => setI(x => Math.max(0, x - 1))} disabled={i === 0}>← Précédent</Btn>
-        <div className="flex gap-2">
-          <Btn variant="ghost" onClick={() => setI(x => Math.min(survivors.length - 1, x + 1))} disabled={i >= survivors.length - 1}>Suivant →</Btn>
-          <Btn variant="primary" onClick={async () => { await setStage(session.id, 'notationResults'); onChanged(); }}>Voir le classement →</Btn>
-        </div>
+        <Btn variant="ghost" onClick={() => setI(x => Math.min(survivors.length - 1, x + 1))} disabled={i >= survivors.length - 1}>Suivant →</Btn>
       </div>
+
+      <StageBarrier
+        participants={session.participants}
+        doneIds={session.stageDone?.notation ?? []}
+        me={me}
+        onToggleMine={async (d) => { if (me) { await markStageDone(session.id, 'notation', me, d); onChanged(); } }}
+        onProceed={async () => { await setStage(session.id, 'notationResults'); onChanged(); }}
+        proceedLabel="Voir le classement →"
+      />
     </div>
   );
 }

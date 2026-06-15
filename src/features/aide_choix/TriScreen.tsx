@@ -1,8 +1,8 @@
 // Étape 1 — Le grand tri. Un projet à la fois, 3 verdicts, à l'instinct.
 import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACSession, ACTriVote, TriVote } from './types';
-import { listProjects, listTriVotes, setTriVote, setStage } from './db';
-import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress } from './ui';
+import { listProjects, listTriVotes, setTriVote, setStage, markStageDone } from './db';
+import { Btn, Card, ProgressBar, ProjectMedia, WhoAmI, useLocalState, Guide, GuideLine, ParticipantProgress, StageBarrier } from './ui';
 
 const VOTES: { v: TriVote; label: string; key: string; cls: string }[] = [
   { v: 'non', label: 'Non', key: '←', cls: 'bg-rose-500/90 hover:bg-rose-500 text-white' },
@@ -110,14 +110,17 @@ export function TriScreen({ session, onChanged }: { session: ACSession; onChange
 
       <div className="flex items-center justify-between">
         <Btn variant="ghost" onClick={() => setI(x => Math.max(0, x - 1))} disabled={i === 0}>← Précédent</Btn>
-        <div className="flex gap-2">
-          <Btn variant="ghost" onClick={() => setI(x => Math.min(projects.length - 1, x + 1))} disabled={i >= projects.length - 1}>Suivant →</Btn>
-          <Btn variant="primary" onClick={async () => { await setStage(session.id, 'triResults'); onChanged(); }}>
-            Comparer les 3 tris →
-          </Btn>
-        </div>
+        <Btn variant="ghost" onClick={() => setI(x => Math.min(projects.length - 1, x + 1))} disabled={i >= projects.length - 1}>Suivant →</Btn>
       </div>
-      <p className="text-center text-xs text-slate-500">Astuce : chacun son tour. Change de personne en haut, puis refais les {projects.length} projets.</p>
+
+      <StageBarrier
+        participants={session.participants}
+        doneIds={session.stageDone?.tri ?? []}
+        me={me}
+        onToggleMine={async (d) => { if (me) { await markStageDone(session.id, 'tri', me, d); onChanged(); } }}
+        onProceed={async () => { await setStage(session.id, 'triResults'); onChanged(); }}
+        proceedLabel="Comparer les 3 tris →"
+      />
     </div>
   );
 }

@@ -53,6 +53,7 @@ export interface ACSession {
   criteria: Criterion[];
   topGroupSize: number;   // taille du groupe de tête pour l'étape 3 (5–8)
   scaleMode?: 'qualitative' | 'numeric'; // notation : Mauvais/Moyen/Bon (défaut) ou 1→5
+  stageDone?: Record<string, string[]>;  // étape → ids des participants ayant validé « terminé »
   createdAt: number;
   updatedAt: number;
 }

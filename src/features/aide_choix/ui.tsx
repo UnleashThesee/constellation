@@ -176,6 +176,55 @@ export function EnvieBadge({ score, showZero = true }: { score: number; showZero
   );
 }
 
+/** Barrière de synchronisation : chacun valide « terminé », l'étape reste
+ *  bloquée tant que les participants n'ont pas tous fini. */
+export function StageBarrier({ participants, doneIds, me, onToggleMine, onProceed, proceedLabel }:
+  {
+    participants: Participant[]; doneIds: string[]; me: string | null;
+    onToggleMine: (done: boolean) => void; onProceed: () => void; proceedLabel: string;
+  }) {
+  const meDone = !!me && doneIds.includes(me);
+  const remaining = participants.filter(p => !doneIds.includes(p.id));
+  const allDone = remaining.length === 0;
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-xs uppercase tracking-wider text-slate-400">Avancement de l'équipe&nbsp;:</span>
+        {participants.map(p => {
+          const d = doneIds.includes(p.id);
+          return (
+            <span key={p.id} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold
+              ${d ? 'bg-[#467434]/20 text-[#8ABF74]' : 'bg-white/5 text-slate-300'}`}>
+              <Dot color={p.color} />{p.name} {d ? '✓ terminé' : '⏳ en cours'}
+            </span>
+          );
+        })}
+      </div>
+
+      {!meDone && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-slate-400">Quand tu as fini ton passage, valide pour passer la main.</span>
+          <Btn variant="primary" disabled={!me} onClick={() => onToggleMine(true)}>✓ J'ai terminé</Btn>
+        </div>
+      )}
+
+      {meDone && !allDone && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-[#8ABF74]">✓ Tu as terminé. En attente de : <b>{remaining.map(p => p.name).join(', ')}</b>.</span>
+          <Btn variant="ghost" onClick={() => onToggleMine(false)}>↩ Je reprends</Btn>
+        </div>
+      )}
+
+      {allDone && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-[#8ABF74]">★ Tout le monde a terminé !</span>
+          <Btn variant="primary" onClick={onProceed}>{proceedLabel}</Btn>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Petit hook d'état persistant en mémoire de session (qui suis-je). */
 export function useLocalState<T>(key: string, initial: T): [T, (v: T) => void] {
   const [v, setV] = useState<T>(() => {

@@ -156,6 +156,17 @@ export async function patchSession(id: string, patch: Partial<ACSession>): Promi
 export async function setStage(id: string, stage: Stage): Promise<void> {
   await patchSession(id, { stage });
 }
+
+/** Marque (ou retire) un participant comme « a terminé » pour une étape. */
+export async function markStageDone(sessionId: string, stage: string, participantId: string, done: boolean): Promise<void> {
+  const s = await getSession(sessionId);
+  if (!s) return;
+  const sd: Record<string, string[]> = { ...(s.stageDone ?? {}) };
+  const cur = new Set(sd[stage] ?? []);
+  if (done) cur.add(participantId); else cur.delete(participantId);
+  sd[stage] = [...cur];
+  await patchSession(sessionId, { stageDone: sd });
+}
 export async function deleteSession(id: string): Promise<void> {
   await acdb.transaction('rw', [acdb.sessions, acdb.projects, acdb.triVotes, acdb.scores, acdb.duels], async () => {
     await acdb.projects.where('sessionId').equals(id).delete();
