@@ -1,16 +1,17 @@
 // Étape 2 — Résultats : classement normalisé par rang, désaccords, groupe de tête.
 import { useEffect, useMemo, useState } from 'react';
-import type { ACProject, ACScore, ACSession } from './types';
-import { listProjects, listScores, patchSession, setStage } from './db';
-import { computeNotation, computeTriTally } from './logic';
-import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine } from './ui';
+import type { ACProject, ACScore, ACSession, ACTriVote } from './types';
+import { listProjects, listScores, listTriVotes, patchSession, setStage } from './db';
+import { computeNotation, computeTriTally, enthusiasmByProject } from './logic';
+import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine, EnvieBadge } from './ui';
 
 export function NotationResultsScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
   const [projects, setProjects] = useState<ACProject[]>([]);
   const [scores, setScores] = useState<ACScore[]>([]);
+  const [votes, setVotes] = useState<ACTriVote[]>([]);
   const [topN, setTopN] = useState(session.topGroupSize);
 
-  useEffect(() => { listProjects(session.id).then(setProjects); listScores(session.id).then(setScores); }, [session.id]);
+  useEffect(() => { listProjects(session.id).then(setProjects); listScores(session.id).then(setScores); listTriVotes(session.id).then(setVotes); }, [session.id]);
 
   const survivors = useMemo(() => {
     const elimAuto = new Map(computeTriTally(projects, [], session.participants.length).map(t => [t.projectId, t]));
@@ -18,9 +19,10 @@ export function NotationResultsScreen({ session, onChanged }: { session: ACSessi
   }, [projects, session.participants.length]);
 
   const byId = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects]);
+  const envie = useMemo(() => enthusiasmByProject(votes), [votes]);
   const res = useMemo(
-    () => computeNotation(survivors.map(p => p.id), scores, session.participants, session.criteria),
-    [survivors, scores, session.participants, session.criteria],
+    () => computeNotation(survivors.map(p => p.id), scores, session.participants, session.criteria, envie),
+    [survivors, scores, session.participants, session.criteria, envie],
   );
 
   // seuil de désaccord notable : >= moitié du nombre de projets restants
@@ -39,6 +41,7 @@ export function NotationResultsScreen({ session, onChanged }: { session: ACSessi
       <Guide id="notationResults" title="Étape 2 — Résultats de la notation">
         <GuideLine tag="Le classement">Issu de vos notes transformées en rangs (sévère/généreux neutralisé). En haut = le mieux placé.</GuideLine>
         <GuideLine tag="« À discuter »">Les projets marqués en rouge sont ceux où vos avis divergent le plus — discutez-les en priorité, c'est là qu'il y a de l'info cachée.</GuideLine>
+        <GuideLine tag="Envie (♥)">Mesure à part, issue du tri (Oui +1, Peut-être 0, Non −1) : l'envie de l'équipe, pas le mérite. Elle départage les ex æquo et signale les tensions (très bon mais peu d'envie, ou l'inverse).</GuideLine>
         <GuideLine tag="Groupe de tête">Choisis combien de projets (5–8) passent aux duels. Ne gardez que le haut du panier.</GuideLine>
       </Guide>
       <Card className="p-4">
@@ -64,6 +67,7 @@ export function NotationResultsScreen({ session, onChanged }: { session: ACSessi
                   <div className="truncate text-sm font-semibold text-white">{p.title}</div>
                   <div className="text-[11px] text-slate-500">rang moyen {r.meanRank.toFixed(2)}</div>
                 </div>
+                <span className="shrink-0"><EnvieBadge score={envie.get(r.projectId) ?? 0} /></span>
                 {hot && (
                   <span className="shrink-0 rounded-full bg-rose-500/20 px-2 py-1 text-[11px] font-bold text-rose-300" title="Vos avis divergent fortement : à discuter.">
                     ⚠ à discuter

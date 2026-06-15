@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   nonThreshold, computeTriTally, ranksFromValues, computeNotation,
-  duelWinner, computeDuelStandings, allPairs, duelKey,
+  duelWinner, computeDuelStandings, allPairs, duelKey, enthusiasmByProject,
 } from './logic';
 import type { ACProject, ACTriVote, ACScore, ACDuel, Participant, Criterion } from './types';
 
@@ -34,6 +34,39 @@ describe('étape 1 — élimination', () => {
     expect(a.eliminated).toBe(true);
     expect(a.counts.non).toBe(2);
     expect(b.eliminated).toBe(false); // 1 seul « Non »
+  });
+});
+
+describe('envie (Oui +1, Peut-être 0, Non −1)', () => {
+  it('additionne sur les participants, de −3 à +3', () => {
+    const votes: ACTriVote[] = [
+      { id: '1', sessionId: 's', projectId: 'a', participantId: 'p1', vote: 'oui' },
+      { id: '2', sessionId: 's', projectId: 'a', participantId: 'p2', vote: 'oui' },
+      { id: '3', sessionId: 's', projectId: 'a', participantId: 'p3', vote: 'oui' },
+      { id: '4', sessionId: 's', projectId: 'b', participantId: 'p1', vote: 'peut-etre' },
+      { id: '5', sessionId: 's', projectId: 'b', participantId: 'p2', vote: 'peut-etre' },
+      { id: '6', sessionId: 's', projectId: 'b', participantId: 'p3', vote: 'peut-etre' },
+      { id: '7', sessionId: 's', projectId: 'c', participantId: 'p1', vote: 'oui' },
+      { id: '8', sessionId: 's', projectId: 'c', participantId: 'p2', vote: 'non' },
+    ];
+    const e = enthusiasmByProject(votes);
+    expect(e.get('a')).toBe(3);   // 3 Oui
+    expect(e.get('b')).toBe(0);   // 3 Peut-être
+    expect(e.get('c')).toBe(0);   // Oui + Non
+  });
+
+  it('départage les ex æquo de mérite par l\'envie (plus d\'envie devant)', () => {
+    // x et y ont des notes strictement identiques → même mérite
+    const ids = ['x', 'y'];
+    const parts = [P('p')];
+    const crits = [C('q')];
+    const sc: ACScore[] = [
+      { id: '1', sessionId: 's', projectId: 'x', participantId: 'p', criterionId: 'q', value: 3 },
+      { id: '2', sessionId: 's', projectId: 'y', participantId: 'p', criterionId: 'q', value: 3 },
+    ];
+    const envie = new Map([['x', 0], ['y', 2]]);
+    const res = computeNotation(ids, sc, parts, crits, envie);
+    expect(res.ranking[0].projectId).toBe('y'); // plus d'envie → devant
   });
 });
 

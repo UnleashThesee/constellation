@@ -1,29 +1,32 @@
 // Choix final — podium, ordre de lancement, justification, export.
 import { useEffect, useMemo, useState } from 'react';
-import type { ACDuel, ACProject, ACScore, ACSession } from './types';
-import { listProjects, listScores, listDuels, exportSession, setStage } from './db';
-import { computeNotation, computeTriTally, computeDuelStandings } from './logic';
-import { Btn, Card, ProjectMedia, Guide, GuideLine } from './ui';
+import type { ACDuel, ACProject, ACScore, ACSession, ACTriVote } from './types';
+import { listProjects, listScores, listDuels, listTriVotes, exportSession, setStage } from './db';
+import { computeNotation, computeTriTally, computeDuelStandings, enthusiasmByProject } from './logic';
+import { Btn, Card, ProjectMedia, Guide, GuideLine, EnvieBadge } from './ui';
 
 export function FinalScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
   const [projects, setProjects] = useState<ACProject[]>([]);
   const [scores, setScores] = useState<ACScore[]>([]);
   const [duels, setDuels] = useState<ACDuel[]>([]);
+  const [votes, setVotes] = useState<ACTriVote[]>([]);
 
   useEffect(() => {
     listProjects(session.id).then(setProjects);
     listScores(session.id).then(setScores);
     listDuels(session.id).then(setDuels);
+    listTriVotes(session.id).then(setVotes);
   }, [session.id]);
 
   const byId = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects]);
+  const envie = useMemo(() => enthusiasmByProject(votes), [votes]);
 
   const topIds = useMemo(() => {
     const elimAuto = new Map(computeTriTally(projects, [], session.participants.length).map(t => [t.projectId, t]));
     const survivors = projects.filter(p => !(p.eliminated ?? elimAuto.get(p.id)?.eliminated ?? false));
-    const res = computeNotation(survivors.map(p => p.id), scores, session.participants, session.criteria);
+    const res = computeNotation(survivors.map(p => p.id), scores, session.participants, session.criteria, envie);
     return res.ranking.slice(0, session.topGroupSize).map(r => r.projectId);
-  }, [projects, scores, session]);
+  }, [projects, scores, session, envie]);
 
   const standings = useMemo(() => computeDuelStandings(topIds, duels), [topIds, duels]);
 
@@ -66,7 +69,7 @@ export function FinalScreen({ session, onChanged }: { session: ACSession; onChan
               <div className={`flex ${h} w-full flex-col items-center justify-start rounded-t-xl border border-[#F58F20]/30 bg-gradient-to-b from-[#F58F20]/15 to-transparent p-2 text-center`}>
                 <span className="text-2xl">{medals[rankIdx]}</span>
                 <span className="text-sm font-bold text-white">{p?.title}</span>
-                <span className="text-[11px] text-slate-400">{s.wins}V · {s.losses}D</span>
+                <span className="text-[11px] text-slate-400" title="victoires – défaites">{s.wins} – {s.losses}</span>
               </div>
             </div>
           );
@@ -82,7 +85,8 @@ export function FinalScreen({ session, onChanged }: { session: ACSession; onChan
               <span className="w-6 text-center text-lg font-black text-[#F7A24A]">{i + 1}</span>
               <ProjectMedia project={byId.get(s.projectId)!} className="h-10 w-12" />
               <span className="flex-1 truncate font-semibold text-white">{byId.get(s.projectId)?.title}</span>
-              <span className="text-xs text-slate-400">Copeland {s.copeland >= 0 ? '+' : ''}{s.copeland}</span>
+              <EnvieBadge score={envie.get(s.projectId) ?? 0} />
+              <span className="text-xs text-slate-400" title="Bilan des duels : victoires moins défaites.">bilan {s.copeland >= 0 ? '+' : ''}{s.copeland}</span>
             </div>
           ))}
         </div>

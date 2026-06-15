@@ -1,31 +1,34 @@
 // Étape 3 — Duels deux par deux sur le groupe de tête (vous trois ensemble).
 import { useEffect, useMemo, useState } from 'react';
-import type { ACDuel, ACProject, ACScore, ACSession } from './types';
-import { listProjects, listScores, listDuels, upsertDuel, setStage } from './db';
-import { allPairs, computeNotation, computeTriTally, duelKey, computeDuelStandings } from './logic';
-import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine } from './ui';
+import type { ACDuel, ACProject, ACScore, ACSession, ACTriVote } from './types';
+import { listProjects, listScores, listDuels, listTriVotes, upsertDuel, setStage } from './db';
+import { allPairs, computeNotation, computeTriTally, duelKey, computeDuelStandings, enthusiasmByProject } from './logic';
+import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine, EnvieBadge } from './ui';
 import { MetaChips } from './meta';
 
 export function DuelScreen({ session, onChanged }: { session: ACSession; onChanged: () => void }) {
   const [projects, setProjects] = useState<ACProject[]>([]);
   const [scores, setScores] = useState<ACScore[]>([]);
   const [duels, setDuels] = useState<ACDuel[]>([]);
+  const [votes, setVotes] = useState<ACTriVote[]>([]);
 
   useEffect(() => {
     listProjects(session.id).then(setProjects);
     listScores(session.id).then(setScores);
     listDuels(session.id).then(setDuels);
+    listTriVotes(session.id).then(setVotes);
   }, [session.id]);
 
   const byId = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects]);
+  const envie = useMemo(() => enthusiasmByProject(votes), [votes]);
 
   // groupe de tête = top N du classement de l'étape 2
   const topIds = useMemo(() => {
     const elimAuto = new Map(computeTriTally(projects, [], session.participants.length).map(t => [t.projectId, t]));
     const survivors = projects.filter(p => !(p.eliminated ?? elimAuto.get(p.id)?.eliminated ?? false));
-    const res = computeNotation(survivors.map(p => p.id), scores, session.participants, session.criteria);
+    const res = computeNotation(survivors.map(p => p.id), scores, session.participants, session.criteria, envie);
     return res.ranking.slice(0, session.topGroupSize).map(r => r.projectId);
-  }, [projects, scores, session]);
+  }, [projects, scores, session, envie]);
 
   const pairs = useMemo(() => allPairs(topIds), [topIds]);
   const duelMap = useMemo(() => new Map(duels.map(d => [d.id, d])), [duels]);
@@ -70,7 +73,7 @@ export function DuelScreen({ session, onChanged }: { session: ACSession; onChang
         <div className="flex items-center justify-between gap-2 p-3">
           <span className="min-w-0">
             <span className="block truncate font-bold text-white">{p.title}</span>
-            <span className="mt-1 block"><MetaChips meta={p.meta} /></span>
+            <span className="mt-1 flex flex-wrap items-center gap-1"><EnvieBadge score={envie.get(pid) ?? 0} /><MetaChips meta={p.meta} /></span>
           </span>
           <span className="shrink-0 rounded-lg bg-white/5 px-2 py-1 text-xs text-slate-400 group-hover:bg-[#F58F20] group-hover:text-slate-900">Choisir {side}</span>
         </div>
@@ -109,17 +112,16 @@ export function DuelScreen({ session, onChanged }: { session: ACSession; onChang
 
       {/* Classement provisoire */}
       <Card className="p-4">
-        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#F7A24A]">Classement des duels (Copeland)</h3>
+        <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-[#F7A24A]">Classement des duels (victoires − défaites)</h3>
         {standings.condorcetWinner && (
-          <p className="mb-2 text-sm text-[#6FA85A]">★ Vainqueur de Condorcet : <b>{byId.get(standings.condorcetWinner)?.title}</b> (bat tous les autres).</p>
+          <p className="mb-2 text-sm text-[#6FA85A]">★ Choix net : <b>{byId.get(standings.condorcetWinner)?.title}</b> — il bat tous les autres en face-à-face.</p>
         )}
         <div className="space-y-1">
           {standings.standings.map((s, i) => (
             <div key={s.projectId} className="flex items-center gap-3 text-sm">
               <span className="w-5 text-center font-black text-slate-500">{i + 1}</span>
               <span className="flex-1 truncate text-white">{byId.get(s.projectId)?.title}</span>
-              <span className="text-[#6FA85A]">{s.wins}V</span>
-              <span className="text-rose-300">{s.losses}D</span>
+              <span title="victoires – défaites" className="tabular-nums text-slate-300">{s.wins} – {s.losses}</span>
             </div>
           ))}
         </div>

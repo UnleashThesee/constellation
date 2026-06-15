@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ACProject, ACSession, ACTriVote, TriVote } from './types';
 import { listProjects, listTriVotes, patchProject, setStage } from './db';
-import { computeTriTally, nonThreshold } from './logic';
-import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine } from './ui';
+import { computeTriTally, nonThreshold, enthusiasmByProject } from './logic';
+import { Btn, Card, Dot, ProjectMedia, Guide, GuideLine, EnvieBadge } from './ui';
 
 const VOTE_CHIP: Record<TriVote, string> = {
   oui: 'bg-[#467434]/20 text-[#6FA85A]',
@@ -26,6 +26,7 @@ export function TriResultsScreen({ session, onChanged }: { session: ACSession; o
     const t = computeTriTally(projects, votes, session.participants.length);
     return new Map(t.map(x => [x.projectId, x]));
   }, [projects, votes, session.participants.length]);
+  const envie = useMemo(() => enthusiasmByProject(votes), [votes]);
 
   // « eliminated » effectif = override manuel (project.eliminated) sinon règle auto
   const isEliminated = (p: ACProject) => p.eliminated ?? tally.get(p.id)?.eliminated ?? false;
@@ -48,6 +49,7 @@ export function TriResultsScreen({ session, onChanged }: { session: ACSession; o
       <div className={`flex items-center gap-3 rounded-xl border p-2 ${elim ? 'border-rose-500/20 bg-rose-500/5 opacity-70' : 'border-white/10 bg-black/20'}`}>
         <ProjectMedia project={p} className="h-12 w-16 shrink-0" />
         <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${elim ? 'text-slate-400 line-through' : 'text-white'}`}>{p.title}</span>
+        <span className="shrink-0"><EnvieBadge score={envie.get(p.id) ?? 0} /></span>
         <div className="flex shrink-0 gap-1">
           {session.participants.map(part => {
             const v = voteOf(p.id, part.id);

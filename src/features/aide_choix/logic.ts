@@ -41,6 +41,19 @@ export function computeTriTally(
   });
 }
 
+// ── Envie / conviction (axe séparé, issu du tri) ─────────────────────────────
+// Oui = +1, Peut-être = 0, Non = −1, additionné sur les participants (−3..+3).
+// Ce n'est PAS du mérite : c'est l'envie spontanée de l'équipe. Sert de repère
+// visible et de départage des ex æquo, sans entrer dans le score de mérite.
+export function enthusiasmByProject(votes: ACTriVote[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const v of votes) {
+    const d = v.vote === 'oui' ? 1 : v.vote === 'non' ? -1 : 0;
+    m.set(v.projectId, (m.get(v.projectId) ?? 0) + d);
+  }
+  return m;
+}
+
 // ── Étape 2 : normalisation par rang (corrige sévère vs généreux) ────────────
 // Pour chaque (participant, critère), on classe les projets du meilleur au pire.
 // Le rang (1 = meilleur) ne dépend pas du niveau d'exigence de la personne.
@@ -82,6 +95,7 @@ export function computeNotation(
   scores: ACScore[],
   participants: Participant[],
   criteria: Criterion[],
+  enthusiasm?: Map<string, number>, // départage des ex æquo (envie issue du tri)
 ): NotationResult {
   const pSet = new Set(projectIds);
   // index : participant -> critère -> (projet -> valeur)
@@ -127,7 +141,13 @@ export function computeNotation(
     const score = weightAcc > 0 ? weightedSum / weightAcc : Number.POSITIVE_INFINITY;
     const meanRank = rankCount > 0 ? rankSum / rankCount : Number.POSITIVE_INFINITY;
     return { projectId, score, meanRank };
-  }).sort((a, b) => a.score - b.score); // rang bas = meilleur
+  }).sort((a, b) => {
+    // mérite d'abord (rang bas = meilleur) ; à égalité, plus d'envie passe devant
+    if (Math.abs(a.score - b.score) > 1e-9) return a.score - b.score;
+    const ea = enthusiasm?.get(a.projectId) ?? 0;
+    const eb = enthusiasm?.get(b.projectId) ?? 0;
+    return eb - ea;
+  });
 
   // par critère : rang moyen sur les participants
   const perCriterion: Record<string, Map<string, number>> = {};

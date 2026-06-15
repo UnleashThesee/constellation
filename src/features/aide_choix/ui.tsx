@@ -160,6 +160,22 @@ export function ParticipantProgress({ participants, progress, label }:
   );
 }
 
+/** Badge « Envie » (−3..+3), issu du tri. Axe séparé du mérite. */
+export function EnvieBadge({ score, showZero = true }: { score: number; showZero?: boolean }) {
+  if (score === 0 && !showZero) return null;
+  const tone = score >= 2 ? 'bg-[#467434]/25 text-[#8ABF74]'
+    : score === 1 ? 'bg-white/10 text-slate-200'
+    : score === 0 ? 'bg-white/8 text-slate-400'
+    : 'bg-[#F58F20]/20 text-[#F9B877]';
+  const sign = score > 0 ? `+${score}` : `${score}`;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-bold ${tone}`}
+      title="Envie / conviction de l'équipe, issue du tri (Oui +1, Peut-être 0, Non −1). Axe distinct du mérite.">
+      ♥ envie {sign}
+    </span>
+  );
+}
+
 /** Petit hook d'état persistant en mémoire de session (qui suis-je). */
 export function useLocalState<T>(key: string, initial: T): [T, (v: T) => void] {
   const [v, setV] = useState<T>(() => {
