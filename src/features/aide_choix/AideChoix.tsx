@@ -10,11 +10,13 @@ import { NotationScreen } from './NotationScreen';
 import { NotationResultsScreen } from './NotationResultsScreen';
 import { DuelScreen } from './DuelScreen';
 import { FinalScreen } from './FinalScreen';
+import { MethodeScreen } from './MethodeScreen';
 
 export function AideChoix() {
   const [sessions, setSessions] = useState<ACSession[]>([]);
   const [active, setActive] = useState<ACSession | null>(null);
   const [creating, setCreating] = useState(false);
+  const [showMethode, setShowMethode] = useState(false);
   const [name, setName] = useState('');
   const [names, setNames] = useState(['', '', '']);
 
@@ -44,8 +46,12 @@ export function AideChoix() {
               <h1 className="text-2xl font-black text-white">Aide au choix</h1>
               <p className="text-sm text-slate-400">Trier, noter, départager ~50 projets à plusieurs.</p>
             </div>
-            <Btn variant="primary" onClick={() => setCreating(c => !c)}>+ Nouvelle session</Btn>
+            <div className="flex gap-2">
+              <Btn variant="soft" onClick={() => setShowMethode(true)}>▶ Comment ça marche</Btn>
+              <Btn variant="primary" onClick={() => setCreating(c => !c)}>+ Nouvelle session</Btn>
+            </div>
           </div>
+          {showMethode && <MethodeScreen onClose={() => setShowMethode(false)} />}
 
           {creating && (
             <Card className="space-y-3 p-5">
