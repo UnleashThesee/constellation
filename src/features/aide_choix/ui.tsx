@@ -1,5 +1,5 @@
 // Aide au choix — primitives d'interface partagées (gris #363636 + accent orange).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ACProject, Participant, Stage } from './types';
 import { STAGE_ORDER } from './types';
 
@@ -40,31 +40,73 @@ export function ProgressBar({ value, max, tone = 'amber' }: { value: number; max
   );
 }
 
-/** URL objet pour un Blob, révoquée au démontage. */
+/** URL objet pour un Blob (robuste sous StrictMode : crée et révoque dans l'effet). */
 export function useBlobUrl(blob?: Blob): string | undefined {
-  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : undefined), [blob]);
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  const [url, setUrl] = useState<string | undefined>(() => (blob ? URL.createObjectURL(blob) : undefined));
+  useEffect(() => {
+    if (!blob) { setUrl(undefined); return; }
+    const u = URL.createObjectURL(blob);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [blob]);
   return url;
 }
 
-/** Affiche un projet : image, aperçu PDF, ou pastille texte. */
-export function ProjectMedia({ project, className = '', rounded = 'rounded-xl' }:
-  { project: ACProject; className?: string; rounded?: string }) {
-  const url = useBlobUrl(project.blob);
-  if (project.kind === 'image' && url) {
-    return <img src={url} alt={project.title} className={`object-cover ${rounded} ${className}`} />;
-  }
-  if (project.kind === 'pdf' && url) {
-    return (
-      <div className={`relative overflow-hidden bg-slate-800 ${rounded} ${className}`}>
-        <embed src={`${url}#toolbar=0&navpanes=0`} type="application/pdf" className="h-full w-full" />
-        <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-[#F7A24A]">PDF</span>
-      </div>
-    );
-  }
+/** Vue plein écran d'un projet (pour lire une infographie en entier). */
+function Lightbox({ url, kind, title, onClose }: { url: string; kind: ACProject['kind']; title: string; onClose: () => void }) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
   return (
-    <div className={`flex items-center justify-center bg-gradient-to-br from-[#F58F20]/40 to-[#467434]/40 ${rounded} ${className}`}>
-      <span className="px-3 text-center text-lg font-black text-white/90 line-clamp-3">{project.title}</span>
+    <div className="fixed inset-0 z-[60] flex flex-col bg-black/92 p-3" onClick={onClose}>
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-1 py-1 text-slate-200">
+        <span className="truncate font-bold">{title}</span>
+        <button onClick={onClose} className="rounded px-3 py-1 text-sm font-semibold hover:bg-white/10">✕ Fermer</button>
+      </div>
+      <div className="flex flex-1 items-center justify-center overflow-auto" onClick={e => e.stopPropagation()}>
+        {kind === 'pdf'
+          ? <embed src={`${url}#toolbar=1`} type="application/pdf" className="h-full w-full max-w-6xl" />
+          : <img src={url} alt={title} className="max-h-full max-w-full object-contain" />}
+      </div>
+      <div className="py-1 text-center text-xs text-slate-500">Clique en dehors ou Échap pour fermer.</div>
+    </div>
+  );
+}
+
+/** Affiche un projet : image, aperçu PDF, ou pastille texte.
+ *  fit='contain' (défaut) montre l'image ENTIÈRE (pas de rognage) ; un bouton ⤢
+ *  ouvre la vue plein écran pour lire les infographies. */
+export function ProjectMedia({ project, className = '', rounded = 'rounded-xl', fit = 'contain', zoomable = true }:
+  { project: ACProject; className?: string; rounded?: string; fit?: 'contain' | 'cover'; zoomable?: boolean }) {
+  const url = useBlobUrl(project.blob);
+  const [zoom, setZoom] = useState(false);
+  const fitClass = fit === 'cover' ? 'object-cover' : 'object-contain';
+  const canZoom = zoomable && !!url && (project.kind === 'image' || project.kind === 'pdf');
+  const isMedia = !!url && (project.kind === 'image' || project.kind === 'pdf');
+
+  let inner: React.ReactNode;
+  if (project.kind === 'image' && url) {
+    inner = <img src={url} alt={project.title} className={`h-full w-full ${fitClass}`} />;
+  } else if (project.kind === 'pdf' && url) {
+    inner = <>
+      <embed src={`${url}#toolbar=0&navpanes=0`} type="application/pdf" className="h-full w-full" />
+      <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-[#F7A24A]">PDF</span>
+    </>;
+  } else {
+    inner = <span className="px-3 text-center text-sm font-black text-white/90 line-clamp-4">{project.title}</span>;
+  }
+
+  return (
+    <div className={`relative flex items-center justify-center overflow-hidden ${isMedia ? 'bg-black/40' : 'bg-gradient-to-br from-[#F58F20]/40 to-[#467434]/40'} ${rounded} ${className}`}>
+      {inner}
+      {canZoom && (
+        <div role="button" tabIndex={0} title="Agrandir pour lire en entier"
+          onClick={e => { e.stopPropagation(); setZoom(true); }}
+          className="absolute right-1 top-1 z-10 flex h-6 w-6 cursor-zoom-in items-center justify-center rounded bg-black/60 text-xs text-white hover:bg-black/80">⤢</div>
+      )}
+      {zoom && url && <Lightbox url={url} kind={project.kind} title={project.title} onClose={() => setZoom(false)} />}
     </div>
   );
 }

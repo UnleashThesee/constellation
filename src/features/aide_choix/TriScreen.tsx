@@ -84,7 +84,7 @@ export function TriScreen({ session, onChanged }: { session: ACSession; onChange
 
       {current ? (
         <Card className="overflow-hidden">
-          <ProjectMedia project={current} className="aspect-[16/10] w-full" rounded="rounded-none" />
+          <ProjectMedia project={current} className="h-[48vh] w-full" rounded="rounded-none" />
           <div className="p-4">
             <div className="mb-1 flex items-center justify-between">
               <h3 className="text-xl font-bold text-white">{current.title}</h3>
