@@ -14,6 +14,7 @@ import { usePresence } from './presence';
 import { directionsUrl } from './maps';
 import { FeteMap } from './FeteMap';
 import { MapLibreMap } from './MapLibreMap';
+import type { PinData } from './pin';
 
 const ME_ID = userId();
 
@@ -61,6 +62,16 @@ export function FeteApp() {
     if (userPos) for (const s of program) m[s.id] = haversine(userPos, { lat: s.lat, lng: s.lng });
     return m;
   }, [program, userPos]);
+
+  const pinData = useMemo(() => {
+    const m: Record<string, PinData> = {};
+    for (const s of program) {
+      const g = gstyle(s.genre); const st = statusById[s.id];
+      const walk = userPos && distById[s.id] !== undefined ? ` · 🚶${walkingMinutes(distById[s.id])}min` : '';
+      m[s.id] = { color: g.color, emoji: g.emoji, name: s.name, sub: `${formatHM(s.start)}–${formatHM(s.end)}${walk}`, live: st === 'live', dim: st === 'past', selected: s.id === focusId };
+    }
+    return m;
+  }, [program, statusById, distById, userPos, focusId]);
 
   const live = useMemo(() => program.filter(s => statusById[s.id] === 'live')
     .sort((a, b) => msUntilEnd(a, now) - msUntilEnd(b, now)), [program, statusById, now]);
@@ -190,8 +201,8 @@ export function FeteApp() {
         {tab === 'map' && (
           <div className="relative h-full">
             {mapProvider === 'google' && apiKey
-              ? <FeteMap apiKey={apiKey} stages={program} statusById={statusById} userPos={userPos} focusId={focusId} onSelect={selectOnMap} others={peers} />
-              : <MapLibreMap stages={program} statusById={statusById} userPos={userPos} focusId={focusId} onSelect={selectOnMap} others={peers} />}
+              ? <FeteMap apiKey={apiKey} stages={program} pinData={pinData} userPos={userPos} focusId={focusId} onSelect={selectOnMap} others={peers} />
+              : <MapLibreMap stages={program} pinData={pinData} userPos={userPos} focusId={focusId} onSelect={selectOnMap} others={peers} />}
 
             {/* contrôles flottants */}
             <div className="absolute left-3 top-3 flex gap-1 rounded-full bg-black/60 p-1 backdrop-blur">
@@ -199,7 +210,7 @@ export function FeteApp() {
               <button onClick={() => setMapProvider('google')} disabled={!apiKey} title={apiKey ? '' : 'Clé Google requise'} className={`rounded-full px-3 py-1 text-xs font-semibold disabled:opacity-40 ${mapProvider === 'google' ? 'bg-fuchsia-500 text-white' : 'text-white/70'}`}>Google</button>
             </div>
             <div className="absolute right-3 top-3 flex flex-col items-end gap-2">
-              {presence.url && presence.anonKey
+              {presence.enabled
                 ? <button onClick={() => setSettingsOpen(true)} className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold backdrop-blur" style={{ color: connected ? '#34d399' : '#fbbf24' }}>👥 {connected ? peers.length + 1 : '…'}</button>
                 : <button onClick={() => setSettingsOpen(true)} className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white/80 backdrop-blur">👥 Se voir</button>}
               {geo.status !== 'ok' && <button onClick={enableGeo} className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia-500 text-lg shadow-lg active:scale-95" aria-label="Ma position">📍</button>}
@@ -396,34 +407,38 @@ function SettingsModal({ apiKey, setApiKey, program, setProgram, presence, onPre
         </div>
         <p className="mt-1 text-[11px] text-white/45">La carte « 3D libre » fonctionne sans clé. La clé ne sert qu'au mode Google.</p>
 
-        {/* Positions partagées (temps réel) */}
-        <div className="mt-5 flex items-center justify-between">
-          <label className="text-sm font-semibold">👥 Voir nos positions</label>
-          <span className="text-xs" style={{ color: connected ? '#34d399' : '#fbbf24' }}>{connected ? `connecté · ${peerCount} ami${peerCount > 1 ? 's' : ''}` : (pr.url && pr.anonKey ? 'hors ligne' : 'non configuré')}</span>
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        {/* Se voir entre amis (simple) */}
+        <div className="mt-6 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/5 p-3">
+          <div className="flex items-center justify-between">
+            <label className="text-base font-bold">👥 Se voir entre amis</label>
+            <span className="text-xs" style={{ color: pr.enabled ? (connected ? '#34d399' : '#fbbf24') : '#9ca3af' }}>
+              {!pr.enabled ? 'désactivé' : connected ? `● en ligne · ${peerCount} ami${peerCount > 1 ? 's' : ''}` : 'connexion…'}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[11px] text-white/55">Gratuit, sans compte. Mets ton prénom et le <b>même code</b> que tes amis : vous apparaissez sur la carte.</p>
           <input value={pr.name} onChange={e => setP({ name: e.target.value })} placeholder="Ton prénom"
-            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-fuchsia-400" />
-          <input value={pr.room} onChange={e => setP({ room: e.target.value })} placeholder="Code de groupe (ex. potes)"
-            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-fuchsia-400" />
+            className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm outline-none focus:border-fuchsia-400" />
+          <div className="mt-2 flex gap-2">
+            <input value={pr.room} onChange={e => setP({ room: e.target.value })} placeholder="Code du groupe (ex. lespotes21)"
+              className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm outline-none focus:border-fuchsia-400" />
+            <button onClick={() => setP({ room: Math.random().toString(36).slice(2, 8) })} className="shrink-0 rounded-xl border border-white/10 px-3 text-xs active:scale-95">🎲 Générer</button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-white/50">Ta couleur :</span>
+            {PRESENCE_COLORS.map(c => (
+              <button key={c} onClick={() => setP({ color: c })} className={`h-7 w-7 rounded-full ${pr.color === c ? 'ring-2 ring-white' : ''}`} style={{ background: c }} aria-label="couleur" />
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            {!pr.enabled
+              ? <button onClick={() => { const c = { ...pr, enabled: true }; setPr(c); onPresence(c); }} disabled={!pr.name.trim() || !pr.room.trim()}
+                  className="flex-1 rounded-xl bg-fuchsia-500 py-2.5 text-sm font-bold active:scale-95 disabled:opacity-40">Rejoindre le groupe</button>
+              : <>
+                  <button onClick={() => { navigator.clipboard?.writeText(pr.room).then(() => setMsg('Code copié !')).catch(() => {}); }} className="flex-1 rounded-xl bg-white/10 py-2.5 text-sm font-semibold active:scale-95">📋 Partager le code « {pr.room} »</button>
+                  <button onClick={() => { const c = { ...pr, enabled: false }; setPr(c); onPresence(c); }} className="rounded-xl border border-white/10 px-3 py-2 text-xs active:scale-95">Quitter</button>
+                </>}
+          </div>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-white/50">Couleur :</span>
-          {PRESENCE_COLORS.map(c => (
-            <button key={c} onClick={() => setP({ color: c })} className={`h-6 w-6 rounded-full ${pr.color === c ? 'ring-2 ring-white' : ''}`} style={{ background: c }} aria-label="couleur" />
-          ))}
-        </div>
-        <input value={pr.url} onChange={e => setP({ url: e.target.value })} placeholder="URL Supabase (https://xxxx.supabase.co)"
-          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs outline-none focus:border-fuchsia-400" />
-        <input value={pr.anonKey} onChange={e => setP({ anonKey: e.target.value })} placeholder="Clé « anon public » Supabase" type="password"
-          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs outline-none focus:border-fuchsia-400" />
-        <div className="mt-2 flex items-center gap-3">
-          <button onClick={() => { onPresence(pr); setMsg('Connexion mise à jour.'); }} disabled={!pr.name.trim()}
-            className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-bold active:scale-95 disabled:opacity-40">Se connecter</button>
-          <button onClick={() => { const off = { ...pr, url: '', anonKey: '' }; setPr(off); onPresence(off); }}
-            className="rounded-xl border border-white/10 px-3 py-2 text-xs active:scale-95">Se déconnecter</button>
-        </div>
-        <p className="mt-1 text-[11px] text-white/45">Gratuit, sans carte bancaire : crée un projet sur supabase.com, et copie l'URL + la clé « anon » (Project Settings → API). Tous ceux qui mettent le même <b>code de groupe</b> se voient sur la carte.</p>
 
         <div className="mt-5 mb-1 flex items-center justify-between">
           <label className="text-sm font-semibold">Programme</label>

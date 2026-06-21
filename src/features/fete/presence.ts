@@ -1,6 +1,7 @@
-// Fête de la Musique — positions partagées en temps réel (Supabase Realtime presence).
-// Le module Supabase est chargé À LA DEMANDE (seulement si configuré) pour ne pas
-// alourdir le reste du site. Sans configuration, la fonctionnalité est inactive.
+// Fête de la Musique — positions partagées en temps réel, SANS compte ni clé.
+// Canal public MQTT (sur WebSocket). Chacun publie sa position sur le topic du
+// « code de groupe » ; tout le monde sur le même code se voit. Module chargé à
+// la demande (seulement si activé) pour ne pas alourdir le reste du site.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from 'react';
 import type { GeoPoint } from './types';
@@ -8,60 +9,83 @@ import type { PresenceConfig } from './store';
 
 export interface Peer { id: string; name: string; color: string; lat?: number; lng?: number; ts: number }
 
+// Broker public gratuit (best-effort, pas de compte). Surcouche WebSocket sécurisée.
+const BROKER = 'wss://broker.emqx.io:8084/mqtt';
+const TOPIC = (room: string) => `fete-musique-dijon/${room.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'public'}`;
+const STALE_MS = 25000; // on oublie un ami sans nouvelles depuis 25 s
+
 export function usePresence(cfg: PresenceConfig, me: { id: string }, pos?: GeoPoint): { peers: Peer[]; connected: boolean } {
   const [peers, setPeers] = useState<Peer[]>([]);
   const [connected, setConnected] = useState(false);
-  const channelRef = useRef<any>(null);
   const clientRef = useRef<any>(null);
-  // valeurs à jour pour le track sans relancer l'abonnement
+  const peersRef = useRef<Map<string, Peer>>(new Map());
   const meta = useRef({ name: cfg.name, color: cfg.color, lat: pos?.lat, lng: pos?.lng });
   meta.current = { name: cfg.name, color: cfg.color, lat: pos?.lat, lng: pos?.lng };
 
-  // (re)connexion quand l'URL / la clé / la salle changent
+  const active = cfg.enabled && !!cfg.name.trim() && !!cfg.room.trim();
+
+  // connexion / reconnexion
   useEffect(() => {
-    setConnected(false); setPeers([]);
-    if (!cfg.url || !cfg.anonKey || !cfg.room) return;
+    setConnected(false); peersRef.current.clear(); setPeers([]);
+    if (!active) return;
     let cancelled = false;
-    let channel: any;
+    let client: any;
+    let pubTimer: any; let pruneTimer: any;
+    const topic = TOPIC(cfg.room);
+
+    const publish = () => {
+      if (!client?.connected) return;
+      const m = meta.current;
+      client.publish(topic, JSON.stringify({ t: 'pos', id: me.id, name: m.name, color: m.color, lat: m.lat, lng: m.lng, ts: Date.now() }), { qos: 0 });
+    };
+
     (async () => {
       try {
-        const { createClient } = await import('@supabase/supabase-js');
+        const mqtt = (await import('mqtt')).default as any;
         if (cancelled) return;
-        const client = createClient(cfg.url, cfg.anonKey, { realtime: { params: { eventsPerSecond: 4 } } });
+        client = mqtt.connect(BROKER, { clientId: `fete_${me.id.slice(0, 8)}_${Math.random().toString(16).slice(2, 6)}`, reconnectPeriod: 4000, connectTimeout: 8000, clean: true });
         clientRef.current = client;
-        channel = client.channel(`fete:${cfg.room}`, { config: { presence: { key: me.id } } });
-        channel.on('presence', { event: 'sync' }, () => {
-          const state = channel.presenceState();
-          const list: Peer[] = [];
-          for (const key of Object.keys(state)) {
-            if (key === me.id) continue;
-            const m = state[key]?.[0];
-            if (m) list.push({ id: key, name: m.name ?? '—', color: m.color ?? '#fff', lat: m.lat, lng: m.lng, ts: m.ts ?? 0 });
-          }
-          if (!cancelled) setPeers(list);
+        client.on('connect', () => { if (cancelled) return; setConnected(true); client.subscribe(topic, { qos: 0 }); publish(); });
+        client.on('reconnect', () => { if (!cancelled) setConnected(false); });
+        client.on('close', () => { if (!cancelled) setConnected(false); });
+        client.on('error', () => { /* best-effort */ });
+        client.on('message', (_t: string, payload: Uint8Array) => {
+          if (cancelled) return;
+          try {
+            const d = JSON.parse(new TextDecoder().decode(payload));
+            if (d.t === 'bye' && d.id) { peersRef.current.delete(d.id); setPeers([...peersRef.current.values()]); return; }
+            if (d.t === 'pos' && d.id && d.id !== me.id) {
+              peersRef.current.set(d.id, { id: d.id, name: d.name ?? '—', color: d.color ?? '#fff', lat: d.lat, lng: d.lng, ts: d.ts ?? Date.now() });
+              setPeers([...peersRef.current.values()]);
+            }
+          } catch { /* ignore */ }
         });
-        channel.subscribe(async (status: string) => {
-          if (status === 'SUBSCRIBED') {
-            if (!cancelled) setConnected(true);
-            await channel.track({ ...meta.current, ts: Date.now() });
-          }
-        });
-        channelRef.current = channel;
+        pubTimer = setInterval(publish, 6000);
+        pruneTimer = setInterval(() => {
+          const cut = Date.now() - STALE_MS; let changed = false;
+          for (const [id, p] of peersRef.current) if (p.ts < cut) { peersRef.current.delete(id); changed = true; }
+          if (changed) setPeers([...peersRef.current.values()]);
+        }, 5000);
       } catch { if (!cancelled) setConnected(false); }
     })();
+
     return () => {
       cancelled = true;
-      try { channel?.unsubscribe(); } catch { /* ignore */ }
-      try { clientRef.current?.removeAllChannels?.(); } catch { /* ignore */ }
-      channelRef.current = null;
+      clearInterval(pubTimer); clearInterval(pruneTimer);
+      try { client?.publish(topic, JSON.stringify({ t: 'bye', id: me.id }), { qos: 0 }); } catch { /* ignore */ }
+      try { client?.end(true); } catch { /* ignore */ }
+      clientRef.current = null;
     };
-  }, [cfg.url, cfg.anonKey, cfg.room, me.id]);
+  }, [active, cfg.room, me.id]);
 
-  // mise à jour de sa propre position / nom / couleur
+  // republie immédiatement quand la position / le nom / la couleur changent
   useEffect(() => {
-    const ch = channelRef.current;
-    if (ch && connected) ch.track({ ...meta.current, ts: Date.now() }).catch(() => {});
-  }, [pos?.lat, pos?.lng, cfg.name, cfg.color, connected]);
+    const c = clientRef.current;
+    if (c?.connected) {
+      const m = meta.current;
+      c.publish(TOPIC(cfg.room), JSON.stringify({ t: 'pos', id: me.id, name: m.name, color: m.color, lat: m.lat, lng: m.lng, ts: Date.now() }), { qos: 0 });
+    }
+  }, [pos?.lat, pos?.lng, cfg.name, cfg.color, cfg.room, me.id]);
 
   return { peers, connected };
 }

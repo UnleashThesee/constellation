@@ -3,21 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl, { Map as MlMap, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Stage, GeoPoint } from './types';
-import type { Status } from './geo';
 import type { Peer } from './presence';
-import { STATUS_COLOR } from './geo';
+import { buildPin, type PinData } from './pin';
 
 // Fond de carte vectoriel libre (OpenStreetMap), sans clé ni compte.
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
-
-function pin(color: string, label: string, live: boolean): HTMLDivElement {
-  const d = document.createElement('div');
-  d.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-  d.innerHTML = `
-    <div style="background:${color};color:#0b0b0b;font:700 11px/1.1 system-ui;padding:3px 7px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4);max-width:150px;overflow:hidden;text-overflow:ellipsis;${live ? 'outline:2px solid #fff;' : ''}">${label}</div>
-    <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ${color};"></div>`;
-  return d;
-}
 
 function friendPin(color: string, name: string): HTMLDivElement {
   const d = document.createElement('div');
@@ -28,9 +18,9 @@ function friendPin(color: string, name: string): HTMLDivElement {
   return d;
 }
 
-export function MapLibreMap({ stages, statusById, userPos, focusId, onSelect, others = [] }: {
+export function MapLibreMap({ stages, pinData, userPos, focusId, onSelect, others = [] }: {
   stages: Stage[];
-  statusById: Record<string, Status>;
+  pinData: Record<string, PinData>;
   userPos?: GeoPoint;
   focusId?: string | null;
   onSelect: (id: string) => void;
@@ -80,22 +70,22 @@ export function MapLibreMap({ stages, statusById, userPos, focusId, onSelect, ot
     return () => { map.remove(); mapRef.current = null; markers.current = {}; userMarker.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // marqueurs des scènes (recréés seulement quand la liste ou les statuts changent)
+  // marqueurs des scènes (recréés seulement quand le contenu change)
   useEffect(() => {
     const map = mapRef.current; if (!map || !ready) return;
-    const sig = stages.map(s => `${s.id}:${statusById[s.id]}`).join('|');
+    const sig = stages.map(s => `${s.id},${s.lat},${s.lng}`).join('|') + '#' + JSON.stringify(pinData);
     if (sig === sigRef.current) return;
     sigRef.current = sig;
     for (const m of Object.values(markers.current)) m.remove();
     markers.current = {};
     for (const s of stages) {
-      const st = statusById[s.id] ?? 'upcoming';
-      const el = pin(STATUS_COLOR[st], s.name, st === 'live');
+      const d = pinData[s.id]; if (!d) continue;
+      const el = buildPin(d);
       el.addEventListener('click', () => onSelect(s.id));
       markers.current[s.id] = new maplibregl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([s.lng, s.lat]).addTo(map);
     }
-  }, [stages, statusById, ready, onSelect]);
+  }, [stages, pinData, ready, onSelect]);
 
   // position utilisateur
   useEffect(() => {

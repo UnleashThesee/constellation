@@ -2,24 +2,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from 'react';
 import type { Stage, GeoPoint } from './types';
-import type { Status } from './geo';
 import type { Peer } from './presence';
-import { STATUS_COLOR } from './geo';
+import { buildPin, type PinData } from './pin';
 import { loadGoogleMaps } from './maps';
 
-function pinEl(color: string, label: string, live: boolean): HTMLDivElement {
-  const d = document.createElement('div');
-  d.style.cssText = `transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;cursor:pointer;`;
-  d.innerHTML = `
-    <div style="background:${color};color:#0b0b0b;font:700 11px/1.1 system-ui;padding:3px 7px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4);max-width:140px;overflow:hidden;text-overflow:ellipsis;${live ? 'outline:2px solid #fff;' : ''}">${label}</div>
-    <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ${color};"></div>`;
-  return d;
-}
-
-export function FeteMap({ apiKey, stages, statusById, userPos, focusId, onSelect, others = [] }: {
+export function FeteMap({ apiKey, stages, pinData, userPos, focusId, onSelect, others = [] }: {
   apiKey: string;
   stages: Stage[];
-  statusById: Record<string, Status>;
+  pinData: Record<string, PinData>;
   userPos?: GeoPoint;
   focusId?: string | null;
   onSelect: (id: string) => void;
@@ -60,17 +50,15 @@ export function FeteMap({ apiKey, stages, statusById, userPos, focusId, onSelect
     const AdvancedMarker = maps.marker?.AdvancedMarkerElement;
     const seen = new Set<string>();
     for (const s of stages) {
+      const d = pinData[s.id]; if (!d) continue;
       seen.add(s.id);
-      const st = statusById[s.id] ?? 'upcoming';
-      const color = STATUS_COLOR[st];
-      const content = pinEl(color, s.name, st === 'live');
+      const content = buildPin(d);
       let m = markersRef.current[s.id];
       if (!m) {
         m = AdvancedMarker
           ? new AdvancedMarker({ map, position: { lat: s.lat, lng: s.lng }, content, title: s.name })
           : new maps.Marker({ map, position: { lat: s.lat, lng: s.lng }, title: s.name });
         m.addListener?.('click', () => onSelect(s.id));
-        if (m.addListener && !AdvancedMarker) { /* classic marker */ }
         markersRef.current[s.id] = m;
       } else if (AdvancedMarker) {
         m.content = content;
@@ -81,7 +69,7 @@ export function FeteMap({ apiKey, stages, statusById, userPos, focusId, onSelect
     for (const id of Object.keys(markersRef.current)) {
       if (!seen.has(id)) { const m = markersRef.current[id]; if (m) m.map = null; delete markersRef.current[id]; }
     }
-  }, [stages, statusById, ready, onSelect]);
+  }, [stages, pinData, ready, onSelect]);
 
   // position utilisateur
   useEffect(() => {

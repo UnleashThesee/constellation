@@ -52,17 +52,16 @@ export function exportProgram(p: Stage[]): string {
 
 // ── Temps réel (positions partagées) ─────────────────────────────────────────
 export interface PresenceConfig {
-  url: string;     // URL du projet Supabase
-  anonKey: string; // clé « anon » publique
-  room: string;    // code de groupe
-  name: string;    // ton prénom affiché
-  color: string;   // ta couleur
+  enabled: boolean; // « se voir » activé
+  room: string;     // code de groupe (canal partagé)
+  name: string;     // ton prénom affiché
+  color: string;    // ta couleur
 }
 const K_PRES = 'fete:presence';
 const COLORS = ['#f472b6', '#22d3ee', '#fbbf24', '#a78bfa', '#34d399', '#fb7185', '#60a5fa', '#f97316'];
 
 export function loadPresence(): PresenceConfig {
-  const def: PresenceConfig = { url: '', anonKey: '', room: 'dijon', name: '', color: COLORS[Math.floor(Math.random() * COLORS.length)] };
+  const def: PresenceConfig = { enabled: false, room: '', name: '', color: COLORS[Math.floor(Math.random() * COLORS.length)] };
   return read<PresenceConfig>(K_PRES, def);
 }
 export function savePresence(c: PresenceConfig) { write(K_PRES, c); }
