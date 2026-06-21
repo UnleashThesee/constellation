@@ -45,7 +45,7 @@ export function FeteApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [genreFilter, setGenreFilter] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<'peek' | 'open'>('peek');
+  const [sheet, setSheet] = useState<'mini' | 'half' | 'full'>('mini');
   const [presence, setPresence] = useState<PresenceConfig>(() => loadPresence());
 
   const userPos = geo.status === 'ok' ? geo.point : undefined;
@@ -90,8 +90,8 @@ export function FeteApp() {
     return arr;
   }, [program, genreFilter, query, sort, userPos, distById]);
 
-  const goToMap = (id: string) => { setFocusId(id); setTab('map'); setSheet('open'); };
-  const selectOnMap = (id: string) => { setFocusId(id); setSheet('open'); };
+  const goToMap = (id: string) => { setFocusId(id); setTab('map'); setSheet('half'); };
+  const selectOnMap = (id: string) => { setFocusId(id); setSheet('half'); };
   const selected = focusId ? program.find(s => s.id === focusId) : undefined;
   const lineupAt = (loc: string) => program.filter(s => s.locationName === loc)
     .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
@@ -216,12 +216,20 @@ export function FeteApp() {
               {geo.status !== 'ok' && <button onClick={enableGeo} className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia-500 text-lg shadow-lg active:scale-95" aria-label="Ma position">📍</button>}
             </div>
 
-            {/* Panneau coulissant : tout se passe ici */}
-            <div className={`absolute inset-x-0 bottom-0 z-10 flex flex-col rounded-t-3xl border-t border-white/10 bg-[#160c24]/95 backdrop-blur-lg transition-[height] duration-300 ${sheet === 'open' ? 'h-[74%]' : 'h-[40%]'}`}>
-              <button onClick={() => setSheet(s => s === 'open' ? 'peek' : 'open')} className="flex w-full shrink-0 flex-col items-center pt-2" aria-label="Déplier">
-                <span className="h-1.5 w-10 rounded-full bg-white/25" />
+            {/* Panneau coulissant : fine barre par défaut, la carte prend l'écran */}
+            <div className={`absolute inset-x-0 bottom-0 z-10 flex flex-col rounded-t-3xl border-t border-white/10 bg-[#160c24]/95 backdrop-blur-lg transition-[height] duration-300 ${sheet === 'full' ? 'h-[82%]' : sheet === 'half' ? 'h-[46%]' : 'h-[86px]'}`}>
+              <button onClick={() => setSheet(s => s === 'mini' ? 'half' : s === 'half' ? 'full' : 'mini')} className="flex w-full shrink-0 flex-col items-center gap-1.5 pt-2" aria-label="Déplier le panneau">
+                <span className="h-1.5 w-10 rounded-full bg-white/30" />
+                {sheet === 'mini' && (
+                  <div className="w-full truncate px-4 pb-2 text-left text-sm">
+                    {selected ? <span className="font-bold">{gstyle(selected.genre).emoji} {selected.name}</span>
+                      : live.length ? <span className="font-bold text-emerald-300">● {live.length} concert{live.length > 1 ? 's' : ''} en ce moment</span>
+                        : upcoming[0] ? <span className="text-white/85">▸ Prochain : <b>{formatHM(upcoming[0].start)}</b> {gstyle(upcoming[0].genre).emoji} {upcoming[0].name} <span className="text-white/45">· dans {formatDuration(msUntilStart(upcoming[0], now))}</span></span>
+                          : <span className="text-white/50">Programme terminé pour aujourd'hui.</span>}
+                  </div>
+                )}
               </button>
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2">
+              {sheet !== 'mini' && <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2">
                 {selected ? (() => {
                   const g = gstyle(selected.genre);
                   const st = statusById[selected.id];
@@ -302,7 +310,7 @@ export function FeteApp() {
                     })}</div>
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
           </div>
         )}
