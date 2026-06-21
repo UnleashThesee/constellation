@@ -9,6 +9,7 @@ import { useNow, useGeolocation } from './hooks';
 import { loadProgram, saveProgram, resetProgram, loadKey, saveKey, parseProgram, exportProgram } from './store';
 import { directionsUrl } from './maps';
 import { FeteMap } from './FeteMap';
+import { MapLibreMap } from './MapLibreMap';
 
 function StatusBadge({ s }: { s: Status }) {
   return (
@@ -26,6 +27,7 @@ export function FeteApp({ onExit }: { onExit?: () => void }) {
   const [program, setProgram] = useState<Stage[]>(() => loadProgram());
   const [apiKey, setApiKey] = useState<string>(() => loadKey());
   const [sort, setSort] = useState<'distance' | 'heure'>('heure');
+  const [mapProvider, setMapProvider] = useState<'libre' | 'google'>('libre');
   const [focusId, setFocusId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [importText, setImportText] = useState('');
@@ -187,9 +189,19 @@ export function FeteApp({ onExit }: { onExit?: () => void }) {
 
         {/* Carte */}
         <section ref={mapAnchor}>
-          <h2 className="mb-2 text-sm font-black uppercase tracking-wider text-fuchsia-300">🗺️ Carte</h2>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-black uppercase tracking-wider text-fuchsia-300">🗺️ Carte</h2>
+            <div className="flex gap-1 rounded-lg border border-white/10 p-0.5 text-xs">
+              <button onClick={() => setMapProvider('libre')}
+                className={`rounded px-2 py-1 font-semibold ${mapProvider === 'libre' ? 'bg-fuchsia-500 text-white' : 'text-slate-300'}`}>3D libre · gratuit</button>
+              <button onClick={() => setMapProvider('google')} disabled={!apiKey} title={apiKey ? '' : 'Ajoute une clé Google dans les réglages'}
+                className={`rounded px-2 py-1 font-semibold disabled:opacity-40 ${mapProvider === 'google' ? 'bg-fuchsia-500 text-white' : 'text-slate-300'}`}>Google 3D · clé</button>
+            </div>
+          </div>
           <div className="h-[60vh]">
-            <FeteMap apiKey={apiKey} stages={program} statusById={statusById} userPos={userPos} focusId={focusId} onSelect={setFocusId} />
+            {mapProvider === 'google' && apiKey
+              ? <FeteMap apiKey={apiKey} stages={program} statusById={statusById} userPos={userPos} focusId={focusId} onSelect={setFocusId} />
+              : <MapLibreMap stages={program} statusById={statusById} userPos={userPos} focusId={focusId} onSelect={setFocusId} />}
           </div>
         </section>
 
