@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { SwipeScreen } from './features/swipe/SwipeScreen';
 import { SwipeScreenV3 } from './features/swipe/SwipeScreenV3';
 import { AideChoix } from './features/aide_choix/AideChoix';
+import { FeteApp } from './features/fete/FeteApp';
 import { MapScreen } from './features/map/MapScreen';
 import { CombinatorScreen } from './features/combinator/CombinatorScreen';
 import { IdeasScreen } from './features/ideas/IdeasScreen';
@@ -213,5 +214,6 @@ function MainApp() {
 export default function App() {
   const location = useLocation();
   if (location.pathname.startsWith('/choix')) return <AideChoix />;
+  if (location.pathname.startsWith('/fete')) return <FeteApp />;
   return <MainApp />;
 }
