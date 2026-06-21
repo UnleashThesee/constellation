@@ -67,7 +67,10 @@ export function MapLibreMap({ stages, pinData, userPos, focusId, onSelect, other
       setReady(true);
     });
     mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; markers.current = {}; userMarker.current = null; };
+    // resize si le conteneur change (rotation, barres mobiles) → évite un canvas noir
+    const ro = new ResizeObserver(() => { try { map.resize(); } catch { /* ignore */ } });
+    if (ref.current) ro.observe(ref.current);
+    return () => { ro.disconnect(); map.remove(); mapRef.current = null; markers.current = {}; userMarker.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // marqueurs des scènes (recréés seulement quand le contenu change)
