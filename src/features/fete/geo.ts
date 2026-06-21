@@ -41,6 +41,14 @@ export function msUntilStart(stage: Pick<Stage, 'start'>, now: number): number {
 export function msUntilEnd(stage: Pick<Stage, 'end'>, now: number): number {
   return Math.max(0, new Date(stage.end).getTime() - now);
 }
+/** ms écoulées depuis le début (>=0). */
+export function msSinceStart(stage: Pick<Stage, 'start'>, now: number): number {
+  return Math.max(0, now - new Date(stage.start).getTime());
+}
+/** durée totale d'un créneau en ms. */
+export function durationMs(stage: Pick<Stage, 'start' | 'end'>): number {
+  return Math.max(0, new Date(stage.end).getTime() - new Date(stage.start).getTime());
+}
 
 /** « 1 h 05 », « 12 min », « 45 s ». */
 export function formatDuration(ms: number): string {

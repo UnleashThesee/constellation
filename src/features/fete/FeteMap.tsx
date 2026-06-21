@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Stage, GeoPoint } from './types';
 import type { Status } from './geo';
+import type { Peer } from './presence';
 import { STATUS_COLOR } from './geo';
 import { loadGoogleMaps } from './maps';
 
@@ -15,18 +16,20 @@ function pinEl(color: string, label: string, live: boolean): HTMLDivElement {
   return d;
 }
 
-export function FeteMap({ apiKey, stages, statusById, userPos, focusId, onSelect }: {
+export function FeteMap({ apiKey, stages, statusById, userPos, focusId, onSelect, others = [] }: {
   apiKey: string;
   stages: Stage[];
   statusById: Record<string, Status>;
   userPos?: GeoPoint;
   focusId?: string | null;
   onSelect: (id: string) => void;
+  others?: Peer[];
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<Record<string, any>>({});
   const userMarkerRef = useRef<any>(null);
+  const peerMarkersRef = useRef<Record<string, any>>({});
   const gmapsRef = useRef<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -93,6 +96,24 @@ export function FeteMap({ apiKey, stages, statusById, userPos, focusId, onSelect
       ? new AdvancedMarker({ map, position: userPos, content: dot, title: 'Ma position', zIndex: 999 })
       : new maps.Marker({ map, position: userPos, title: 'Ma position' });
   }, [userPos, ready]);
+
+  // autres participants (positions partagées)
+  useEffect(() => {
+    const maps = gmapsRef.current; const map = mapRef.current;
+    if (!maps || !map || !ready) return;
+    const AdvancedMarker = maps.marker?.AdvancedMarkerElement;
+    for (const m of Object.values(peerMarkersRef.current)) { if (m) m.map = null; }
+    peerMarkersRef.current = {};
+    for (const p of others) {
+      if (p.lat === undefined || p.lng === undefined) continue;
+      const el = document.createElement('div');
+      el.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
+      el.innerHTML = `<div style="background:rgba(0,0,0,.7);color:${p.color};font:700 10px/1.1 system-ui;padding:2px 6px;border-radius:6px;white-space:nowrap;">${p.name}</div><div style="width:14px;height:14px;border-radius:50%;background:${p.color};border:2px solid #fff;margin-top:2px;"></div>`;
+      peerMarkersRef.current[p.id] = AdvancedMarker
+        ? new AdvancedMarker({ map, position: { lat: p.lat, lng: p.lng }, content: el, title: p.name, zIndex: 800 })
+        : new maps.Marker({ map, position: { lat: p.lat, lng: p.lng }, title: p.name });
+    }
+  }, [others, ready]);
 
   // focus sur une scène
   useEffect(() => {

@@ -3,13 +3,19 @@ import { useMemo, useState } from 'react';
 import type { Stage } from './types';
 import {
   haversine, walkingMinutes, formatDistance, statusOf, msUntilStart, msUntilEnd,
-  formatDuration, formatHM, type Status,
+  msSinceStart, durationMs, formatDuration, formatHM, type Status,
 } from './geo';
 import { useNow, useGeolocation } from './hooks';
-import { loadProgram, saveProgram, resetProgram, loadKey, saveKey, parseProgram, exportProgram } from './store';
+import {
+  loadProgram, saveProgram, resetProgram, loadKey, saveKey, parseProgram, exportProgram,
+  loadPresence, savePresence, userId, PRESENCE_COLORS, type PresenceConfig,
+} from './store';
+import { usePresence } from './presence';
 import { directionsUrl } from './maps';
 import { FeteMap } from './FeteMap';
 import { MapLibreMap } from './MapLibreMap';
+
+const ME_ID = userId();
 
 // ── Identité visuelle par genre ──────────────────────────────────────────────
 const GENRES: Record<string, { emoji: string; color: string }> = {
@@ -31,15 +37,18 @@ export function FeteApp() {
   const { state: geo, enable: enableGeo } = useGeolocation();
   const [program, setProgram] = useState<Stage[]>(() => loadProgram());
   const [apiKey, setApiKey] = useState<string>(() => loadKey());
-  const [tab, setTab] = useState<Tab>('live');
+  const [tab, setTab] = useState<Tab>('map');
   const [sort, setSort] = useState<'distance' | 'heure'>('heure');
   const [mapProvider, setMapProvider] = useState<'libre' | 'google'>('libre');
   const [focusId, setFocusId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [genreFilter, setGenreFilter] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<'peek' | 'open'>('peek');
+  const [presence, setPresence] = useState<PresenceConfig>(() => loadPresence());
 
   const userPos = geo.status === 'ok' ? geo.point : undefined;
+  const { peers, connected } = usePresence(presence, { id: ME_ID }, userPos);
 
   const statusById = useMemo(() => {
     const m: Record<string, Status> = {};
@@ -70,7 +79,11 @@ export function FeteApp() {
     return arr;
   }, [program, genreFilter, query, sort, userPos, distById]);
 
-  const goToMap = (id: string) => { setFocusId(id); setTab('map'); };
+  const goToMap = (id: string) => { setFocusId(id); setTab('map'); setSheet('open'); };
+  const selectOnMap = (id: string) => { setFocusId(id); setSheet('open'); };
+  const selected = focusId ? program.find(s => s.id === focusId) : undefined;
+  const lineupAt = (loc: string) => program.filter(s => s.locationName === loc)
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
   const Dist = ({ id }: { id: string }) => userPos && distById[id] !== undefined
     ? <span className="whitespace-nowrap text-white/55">· {formatDistance(distById[id])} · 🚶 {walkingMinutes(distById[id])} min</span>
@@ -173,19 +186,113 @@ export function FeteApp() {
           </div>
         )}
 
-        {/* ── CARTE ── */}
+        {/* ── CARTE (cœur du produit) ── */}
         {tab === 'map' && (
           <div className="relative h-full">
             {mapProvider === 'google' && apiKey
-              ? <FeteMap apiKey={apiKey} stages={program} statusById={statusById} userPos={userPos} focusId={focusId} onSelect={goToMap} />
-              : <MapLibreMap stages={program} statusById={statusById} userPos={userPos} focusId={focusId} onSelect={setFocusId} />}
-            <div className="pointer-events-auto absolute left-3 top-3 flex gap-1 rounded-full bg-black/60 p-1 backdrop-blur">
+              ? <FeteMap apiKey={apiKey} stages={program} statusById={statusById} userPos={userPos} focusId={focusId} onSelect={selectOnMap} others={peers} />
+              : <MapLibreMap stages={program} statusById={statusById} userPos={userPos} focusId={focusId} onSelect={selectOnMap} others={peers} />}
+
+            {/* contrôles flottants */}
+            <div className="absolute left-3 top-3 flex gap-1 rounded-full bg-black/60 p-1 backdrop-blur">
               <button onClick={() => setMapProvider('libre')} className={`rounded-full px-3 py-1 text-xs font-semibold ${mapProvider === 'libre' ? 'bg-fuchsia-500 text-white' : 'text-white/70'}`}>3D libre</button>
               <button onClick={() => setMapProvider('google')} disabled={!apiKey} title={apiKey ? '' : 'Clé Google requise'} className={`rounded-full px-3 py-1 text-xs font-semibold disabled:opacity-40 ${mapProvider === 'google' ? 'bg-fuchsia-500 text-white' : 'text-white/70'}`}>Google</button>
             </div>
-            {geo.status !== 'ok' && (
-              <button onClick={enableGeo} className="absolute bottom-24 right-3 grid h-11 w-11 place-items-center rounded-full bg-fuchsia-500 text-lg shadow-lg active:scale-95" aria-label="Ma position">📍</button>
-            )}
+            <div className="absolute right-3 top-3 flex flex-col items-end gap-2">
+              {presence.url && presence.anonKey
+                ? <button onClick={() => setSettingsOpen(true)} className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold backdrop-blur" style={{ color: connected ? '#34d399' : '#fbbf24' }}>👥 {connected ? peers.length + 1 : '…'}</button>
+                : <button onClick={() => setSettingsOpen(true)} className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white/80 backdrop-blur">👥 Se voir</button>}
+              {geo.status !== 'ok' && <button onClick={enableGeo} className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia-500 text-lg shadow-lg active:scale-95" aria-label="Ma position">📍</button>}
+            </div>
+
+            {/* Panneau coulissant : tout se passe ici */}
+            <div className={`absolute inset-x-0 bottom-0 z-10 flex flex-col rounded-t-3xl border-t border-white/10 bg-[#160c24]/95 backdrop-blur-lg transition-[height] duration-300 ${sheet === 'open' ? 'h-[74%]' : 'h-[40%]'}`}>
+              <button onClick={() => setSheet(s => s === 'open' ? 'peek' : 'open')} className="flex w-full shrink-0 flex-col items-center pt-2" aria-label="Déplier">
+                <span className="h-1.5 w-10 rounded-full bg-white/25" />
+              </button>
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2">
+                {selected ? (() => {
+                  const g = gstyle(selected.genre);
+                  const st = statusById[selected.id];
+                  const dur = durationMs(selected);
+                  const pct = dur > 0 ? Math.min(100, (msSinceStart(selected, now) / dur) * 100) : 0;
+                  const lu = lineupAt(selected.locationName);
+                  return (
+                    <div>
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <button onClick={() => setFocusId(null)} className="text-xs text-white/60">← Tout voir</button>
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: (st === 'live' ? '#22c55e' : st === 'upcoming' ? '#f59e0b' : '#6b7280') + '22', color: st === 'live' ? '#22c55e' : st === 'upcoming' ? '#f59e0b' : '#9ca3af' }}>{st === 'live' ? '● en cours' : st === 'upcoming' ? 'à venir' : 'terminé'}</span>
+                      </div>
+                      <div className="text-xl font-extrabold leading-tight">{selected.name}</div>
+                      <div className="mt-0.5 text-sm" style={{ color: g.color }}>{g.emoji} {selected.genre}</div>
+                      <div className="mt-0.5 text-sm text-white/60">📍 {selected.locationName} <Dist id={selected.id} /></div>
+
+                      {/* chrono live */}
+                      <div className="mt-3 rounded-2xl bg-white/5 p-3">
+                        {st === 'live' && <>
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: g.color }} /></div>
+                          <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                            <div><div className="text-[10px] uppercase text-white/45">commencé</div><div className="text-sm font-bold">il y a {formatDuration(msSinceStart(selected, now))}</div></div>
+                            <div><div className="text-[10px] uppercase text-white/45">fin dans</div><div className="text-sm font-bold" style={{ color: g.color }}>{formatDuration(msUntilEnd(selected, now))}</div></div>
+                            <div><div className="text-[10px] uppercase text-white/45">durée</div><div className="text-sm font-bold">{formatDuration(dur)}</div></div>
+                          </div>
+                        </>}
+                        {st === 'upcoming' && <div className="text-center text-sm">commence <b style={{ color: g.color }}>dans {formatDuration(msUntilStart(selected, now))}</b> · à {formatHM(selected.start)} · durée {formatDuration(dur)}</div>}
+                        {st === 'past' && <div className="text-center text-sm text-white/50">Terminé (était de {formatHM(selected.start)} à {formatHM(selected.end)})</div>}
+                      </div>
+
+                      {/* enchaînement sur cette scène */}
+                      <div className="mt-3">
+                        <div className="mb-1 text-xs font-black uppercase tracking-wider text-white/60">Sur cette scène</div>
+                        {lu.length <= 1
+                          ? <div className="text-sm text-white/55">Concert unique, jusqu'à {formatHM(selected.end)}.</div>
+                          : <div className="space-y-1">{lu.map(s2 => {
+                              const cur = s2.id === selected.id; const st2 = statusById[s2.id];
+                              return <div key={s2.id} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${cur ? 'bg-white/10' : ''}`}>
+                                <span className="w-20 shrink-0 text-white/55">{formatHM(s2.start)}–{formatHM(s2.end)}</span>
+                                <span className={`flex-1 truncate ${st2 === 'past' ? 'text-white/40' : ''}`}>{s2.name}</span>
+                                {st2 === 'live' && <span className="text-[10px] font-bold text-emerald-400">live</span>}
+                              </div>;
+                            })}</div>}
+                      </div>
+
+                      <div className="mt-3 flex gap-2">
+                        <button onClick={() => setFocusId(selected.id)} className="flex-1 rounded-xl bg-white/10 py-2.5 text-sm font-semibold active:scale-95">📍 Centrer</button>
+                        <a href={directionsUrl(selected.lat, selected.lng, selected.name)} target="_blank" rel="noreferrer" className="flex-1 rounded-xl bg-fuchsia-500 py-2.5 text-center text-sm font-semibold active:scale-95">🚶 Y aller</a>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 text-sm font-black uppercase tracking-wider text-emerald-300"><span className="h-2 w-2 rounded-full bg-emerald-400" /> En ce moment · {live.length}</div>
+                    {live.length === 0
+                      ? <div className="rounded-2xl bg-white/5 p-4 text-center text-sm text-white/55">Aucun concert en cours.</div>
+                      : <div className="space-y-2">{live.map(s => {
+                          const g = gstyle(s.genre); const dur = durationMs(s); const pct = dur > 0 ? Math.min(100, (msSinceStart(s, now) / dur) * 100) : 0;
+                          return (
+                            <button key={s.id} onClick={() => selectOnMap(s.id)} className="block w-full rounded-2xl border bg-white/[.04] p-3 text-left active:scale-[.99]" style={{ borderColor: g.color + '44' }}>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate font-bold">{g.emoji} {s.name}</span>
+                                <span className="shrink-0 text-xs" style={{ color: g.color }}>fin dans {formatDuration(msUntilEnd(s, now))}</span>
+                              </div>
+                              <div className="truncate text-[11px] text-white/55">📍 {s.locationName} <Dist id={s.id} /></div>
+                              <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: g.color }} /></div>
+                            </button>
+                          );
+                        })}</div>}
+                    <div className="mb-2 mt-4 text-sm font-black uppercase tracking-wider text-amber-300">▸ Bientôt</div>
+                    <div className="space-y-1.5">{upcoming.slice(0, 6).map(s => {
+                      const g = gstyle(s.genre);
+                      return <button key={s.id} onClick={() => selectOnMap(s.id)} className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm active:bg-white/5">
+                        <span className="w-12 shrink-0 font-bold text-white/70">{formatHM(s.start)}</span>
+                        <span className="flex-1 truncate">{g.emoji} {s.name}</span>
+                        <span className="shrink-0 text-xs text-white/45">dans {formatDuration(msUntilStart(s, now))}</span>
+                      </button>;
+                    })}</div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -243,6 +350,8 @@ export function FeteApp() {
       {settingsOpen && (
         <SettingsModal
           apiKey={apiKey} setApiKey={setApiKey} program={program} setProgram={setProgram}
+          presence={presence} onPresence={(c) => { setPresence(c); savePresence(c); }}
+          connected={connected} peerCount={peers.length}
           onClose={() => setSettingsOpen(false)} />
       )}
     </div>
@@ -256,12 +365,17 @@ function Chip({ active, onClick, label, color }: { active: boolean; onClick: () 
   );
 }
 
-function SettingsModal({ apiKey, setApiKey, program, setProgram, onClose }: {
+function SettingsModal({ apiKey, setApiKey, program, setProgram, presence, onPresence, connected, peerCount, onClose }: {
   apiKey: string; setApiKey: (v: string) => void;
-  program: Stage[]; setProgram: (p: Stage[]) => void; onClose: () => void;
+  program: Stage[]; setProgram: (p: Stage[]) => void;
+  presence: PresenceConfig; onPresence: (c: PresenceConfig) => void;
+  connected: boolean; peerCount: number;
+  onClose: () => void;
 }) {
   const [importText, setImportText] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  const [pr, setPr] = useState<PresenceConfig>(presence);
+  const setP = (patch: Partial<PresenceConfig>) => setPr(v => ({ ...v, ...patch }));
   const doExport = () => {
     const blob = new Blob([exportProgram(program)], { type: 'application/json' });
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
@@ -281,6 +395,35 @@ function SettingsModal({ apiKey, setApiKey, program, setProgram, onClose }: {
           <button onClick={() => { saveKey(apiKey); setMsg('Clé enregistrée.'); }} className="rounded-xl bg-fuchsia-500 px-3 text-sm font-bold active:scale-95">OK</button>
         </div>
         <p className="mt-1 text-[11px] text-white/45">La carte « 3D libre » fonctionne sans clé. La clé ne sert qu'au mode Google.</p>
+
+        {/* Positions partagées (temps réel) */}
+        <div className="mt-5 flex items-center justify-between">
+          <label className="text-sm font-semibold">👥 Voir nos positions</label>
+          <span className="text-xs" style={{ color: connected ? '#34d399' : '#fbbf24' }}>{connected ? `connecté · ${peerCount} ami${peerCount > 1 ? 's' : ''}` : (pr.url && pr.anonKey ? 'hors ligne' : 'non configuré')}</span>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <input value={pr.name} onChange={e => setP({ name: e.target.value })} placeholder="Ton prénom"
+            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-fuchsia-400" />
+          <input value={pr.room} onChange={e => setP({ room: e.target.value })} placeholder="Code de groupe (ex. potes)"
+            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-fuchsia-400" />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-white/50">Couleur :</span>
+          {PRESENCE_COLORS.map(c => (
+            <button key={c} onClick={() => setP({ color: c })} className={`h-6 w-6 rounded-full ${pr.color === c ? 'ring-2 ring-white' : ''}`} style={{ background: c }} aria-label="couleur" />
+          ))}
+        </div>
+        <input value={pr.url} onChange={e => setP({ url: e.target.value })} placeholder="URL Supabase (https://xxxx.supabase.co)"
+          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs outline-none focus:border-fuchsia-400" />
+        <input value={pr.anonKey} onChange={e => setP({ anonKey: e.target.value })} placeholder="Clé « anon public » Supabase" type="password"
+          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs outline-none focus:border-fuchsia-400" />
+        <div className="mt-2 flex items-center gap-3">
+          <button onClick={() => { onPresence(pr); setMsg('Connexion mise à jour.'); }} disabled={!pr.name.trim()}
+            className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-bold active:scale-95 disabled:opacity-40">Se connecter</button>
+          <button onClick={() => { const off = { ...pr, url: '', anonKey: '' }; setPr(off); onPresence(off); }}
+            className="rounded-xl border border-white/10 px-3 py-2 text-xs active:scale-95">Se déconnecter</button>
+        </div>
+        <p className="mt-1 text-[11px] text-white/45">Gratuit, sans carte bancaire : crée un projet sur supabase.com, et copie l'URL + la clé « anon » (Project Settings → API). Tous ceux qui mettent le même <b>code de groupe</b> se voient sur la carte.</p>
 
         <div className="mt-5 mb-1 flex items-center justify-between">
           <label className="text-sm font-semibold">Programme</label>

@@ -4,6 +4,7 @@ import maplibregl, { Map as MlMap, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Stage, GeoPoint } from './types';
 import type { Status } from './geo';
+import type { Peer } from './presence';
 import { STATUS_COLOR } from './geo';
 
 // Fond de carte vectoriel libre (OpenStreetMap), sans clé ni compte.
@@ -18,17 +19,28 @@ function pin(color: string, label: string, live: boolean): HTMLDivElement {
   return d;
 }
 
-export function MapLibreMap({ stages, statusById, userPos, focusId, onSelect }: {
+function friendPin(color: string, name: string): HTMLDivElement {
+  const d = document.createElement('div');
+  d.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
+  d.innerHTML = `
+    <div style="background:rgba(0,0,0,.7);color:${color};font:700 10px/1.1 system-ui;padding:2px 6px;border-radius:6px;white-space:nowrap;">${name}</div>
+    <div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 3px ${color}55;margin-top:2px;"></div>`;
+  return d;
+}
+
+export function MapLibreMap({ stages, statusById, userPos, focusId, onSelect, others = [] }: {
   stages: Stage[];
   statusById: Record<string, Status>;
   userPos?: GeoPoint;
   focusId?: string | null;
   onSelect: (id: string) => void;
+  others?: Peer[];
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
   const markers = useRef<Record<string, Marker>>({});
   const userMarker = useRef<Marker | null>(null);
+  const peerMarkers = useRef<Record<string, Marker>>({});
   const sigRef = useRef('');
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +57,6 @@ export function MapLibreMap({ stages, statusById, userPos, focusId, onSelect }: 
         zoom: 15, pitch: 52, bearing: -12,
       });
     } catch (e) { setError(e instanceof Error ? e.message : 'Carte indisponible.'); return; }
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     map.on('error', (e) => { if (e?.error?.message) setError(e.error.message); });
     map.on('load', () => {
       // bâtiments en 3D (relief)
@@ -95,6 +106,18 @@ export function MapLibreMap({ stages, statusById, userPos, focusId, onSelect }: 
     dot.style.cssText = 'width:16px;height:16px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 0 0 4px rgba(59,130,246,.35);';
     userMarker.current = new maplibregl.Marker({ element: dot }).setLngLat([userPos.lng, userPos.lat]).addTo(map);
   }, [userPos, ready]);
+
+  // autres participants (positions partagées) — recréation propre à chaque sync
+  useEffect(() => {
+    const map = mapRef.current; if (!map || !ready) return;
+    for (const m of Object.values(peerMarkers.current)) m.remove();
+    peerMarkers.current = {};
+    for (const p of others) {
+      if (p.lat === undefined || p.lng === undefined) continue;
+      peerMarkers.current[p.id] = new maplibregl.Marker({ element: friendPin(p.color, p.name), anchor: 'bottom' })
+        .setLngLat([p.lng, p.lat]).addTo(map);
+    }
+  }, [others, ready]);
 
   // focus sur une scène
   useEffect(() => {

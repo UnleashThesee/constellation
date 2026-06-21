@@ -49,3 +49,31 @@ export function parseProgram(json: string): Stage[] {
 export function exportProgram(p: Stage[]): string {
   return JSON.stringify(p, null, 2);
 }
+
+// ── Temps réel (positions partagées) ─────────────────────────────────────────
+export interface PresenceConfig {
+  url: string;     // URL du projet Supabase
+  anonKey: string; // clé « anon » publique
+  room: string;    // code de groupe
+  name: string;    // ton prénom affiché
+  color: string;   // ta couleur
+}
+const K_PRES = 'fete:presence';
+const COLORS = ['#f472b6', '#22d3ee', '#fbbf24', '#a78bfa', '#34d399', '#fb7185', '#60a5fa', '#f97316'];
+
+export function loadPresence(): PresenceConfig {
+  const def: PresenceConfig = { url: '', anonKey: '', room: 'dijon', name: '', color: COLORS[Math.floor(Math.random() * COLORS.length)] };
+  return read<PresenceConfig>(K_PRES, def);
+}
+export function savePresence(c: PresenceConfig) { write(K_PRES, c); }
+
+/** Identifiant stable de l'appareil/utilisateur (anonyme). */
+export function userId(): string {
+  try {
+    let id = localStorage.getItem('fete:uid');
+    if (!id) { id = (crypto.randomUUID?.() ?? `u-${Date.now()}-${Math.random().toString(36).slice(2)}`); localStorage.setItem('fete:uid', id); }
+    return id;
+  } catch { return `u-${Math.random().toString(36).slice(2)}`; }
+}
+export const PRESENCE_COLORS = COLORS;
+
