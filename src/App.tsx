@@ -5,6 +5,7 @@ import { SwipeScreen } from './features/swipe/SwipeScreen';
 import { SwipeScreenV3 } from './features/swipe/SwipeScreenV3';
 import { AideChoix } from './features/aide_choix/AideChoix';
 import { FeteApp } from './features/fete/FeteApp';
+import { BivouacApp } from './features/bivouac/BivouacApp';
 import { MapScreen } from './features/map/MapScreen';
 import { CombinatorScreen } from './features/combinator/CombinatorScreen';
 import { IdeasScreen } from './features/ideas/IdeasScreen';
@@ -210,10 +211,11 @@ function MainApp() {
   );
 }
 
-// Aide au choix : mini-app autonome (sans le chrome Constellation) sur /choix.
+// Mini-apps autonomes (sans le chrome Constellation), chacune sur sa route.
 export default function App() {
   const location = useLocation();
   if (location.pathname.startsWith('/choix')) return <AideChoix />;
   if (location.pathname.startsWith('/fete')) return <FeteApp />;
+  if (location.pathname.startsWith('/bivouac')) return <BivouacApp />;
   return <MainApp />;
 }
