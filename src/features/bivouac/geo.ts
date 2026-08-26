@@ -260,3 +260,105 @@ export function formatDist(m: number): string {
 export function walkMin(m: number): number {
   return Math.max(1, Math.round((m * 1.25) / 75));
 }
+
+// ── Requêtes « point le plus proche » ────────────────────────────────────────
+// Les distances seules ne suffisent pas à décrire un lieu : pour dire « rivière
+// à 180 m au nord-est » et tracer le trait sur la carte, il faut le point.
+
+export interface NearestHit { dist: number; x: number; y: number }
+
+/** Point du segment [a,b] le plus proche de (px,py). */
+export function closestOnSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): { x: number; y: number; d2: number } {
+  const dx = bx - ax, dy = by - ay;
+  const len = dx * dx + dy * dy;
+  let t = 0;
+  if (len > 0) {
+    t = ((px - ax) * dx + (py - ay) * dy) / len;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+  }
+  const x = ax + t * dx, y = ay + t * dy;
+  const qx = x - px, qy = y - py;
+  return { x, y, d2: qx * qx + qy * qy };
+}
+
+/** Comme nearestSegDist, mais renvoie aussi la position du point trouvé. */
+export function nearestSegPoint(ix: SegIndex, px: number, py: number, maxDist: number): NearestHit | null {
+  if (ix.empty) return null;
+  const cell = ix.cell;
+  const cx = Math.floor(px / cell), cy = Math.floor(py / cell);
+  const maxRing = Math.ceil(maxDist / cell);
+  let best = maxDist * maxDist;
+  let bx = 0, by = 0, found = false;
+  for (let r = 0; r <= maxRing; r++) {
+    const floorDist = (r - 1) * cell;
+    if (r > 0 && floorDist > 0 && floorDist * floorDist > best) break;
+    for (let ixx = cx - r; ixx <= cx + r; ixx++) {
+      for (let iyy = cy - r; iyy <= cy + r; iyy++) {
+        if (r > 0 && Math.abs(ixx - cx) !== r && Math.abs(iyy - cy) !== r) continue;
+        const b = ix.buckets.get(key(ixx, iyy));
+        if (!b) continue;
+        for (let t = 0; t < b.length; t++) {
+          const i = b[t];
+          const c = closestOnSegment(px, py, ix.segs[4 * i], ix.segs[4 * i + 1], ix.segs[4 * i + 2], ix.segs[4 * i + 3]);
+          if (c.d2 < best) { best = c.d2; bx = c.x; by = c.y; found = true; }
+        }
+      }
+    }
+  }
+  return found ? { dist: Math.sqrt(best), x: bx, y: by } : null;
+}
+
+/** Idem pour un index de points. */
+export function nearestPtPoint(ix: PtIndex, px: number, py: number, maxDist: number): NearestHit | null {
+  if (ix.empty) return null;
+  const cell = ix.cell;
+  const cx = Math.floor(px / cell), cy = Math.floor(py / cell);
+  const maxRing = Math.ceil(maxDist / cell);
+  let best = maxDist * maxDist;
+  let bx = 0, by = 0, found = false;
+  for (let r = 0; r <= maxRing; r++) {
+    const floorDist = (r - 1) * cell;
+    if (r > 0 && floorDist > 0 && floorDist * floorDist > best) break;
+    for (let ixx = cx - r; ixx <= cx + r; ixx++) {
+      for (let iyy = cy - r; iyy <= cy + r; iyy++) {
+        if (r > 0 && Math.abs(ixx - cx) !== r && Math.abs(iyy - cy) !== r) continue;
+        const b = ix.buckets.get(key(ixx, iyy));
+        if (!b) continue;
+        for (let t = 0; t < b.length; t++) {
+          const i = b[t];
+          const dx = ix.xs[i] - px, dy = ix.ys[i] - py;
+          const d = dx * dx + dy * dy;
+          if (d < best) { best = d; bx = ix.xs[i]; by = ix.ys[i]; found = true; }
+        }
+      }
+    }
+  }
+  return found ? { dist: Math.sqrt(best), x: bx, y: by } : null;
+}
+
+/** Cap en degrés depuis le nord, sens horaire. */
+export function bearingDeg(fromX: number, fromY: number, toX: number, toY: number): number {
+  return (Math.atan2(toX - fromX, toY - fromY) * (180 / Math.PI) + 360) % 360;
+}
+
+const COMPASS = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ouest', 'ouest', 'nord-ouest'];
+
+/** Direction en toutes lettres (« nord-est »). */
+export function compass(deg: number): string {
+  return COMPASS[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+}
+
+/** Aire approximative d'un anneau lat/lng, en m². */
+export function ringAreaM2(ring: LatLng[]): number {
+  if (ring.length < 3) return 0;
+  const lat0 = ring[0].lat;
+  const kx = Math.cos(rad(lat0)) * (Math.PI / 180) * R;
+  const ky = (Math.PI / 180) * R;
+  let sum = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i].lng * kx, yi = ring[i].lat * ky;
+    const xj = ring[j].lng * kx, yj = ring[j].lat * ky;
+    sum += xj * yi - xi * yj;
+  }
+  return Math.abs(sum) / 2;
+}

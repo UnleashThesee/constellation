@@ -1,20 +1,21 @@
 // Bivouac — moteur de recherche : indexation, balayage de la grille, classement.
-import type { LatLng, Metrics, ParsedOsm, Progress, SearchParams, Spot } from './types';
+import type { LatLng, Metrics, ParsedOsm, Progress, SearchParams, Spot, Surroundings } from './types';
 import {
   makeProj, projX, projY, unprojLat, unprojLng, projectLine, ringBounds,
   buildSegIndex, buildPtIndex, buildPolyIndex, nearestSegDist, nearestPtDist, pointInPolyIndex,
+  nearestSegPoint, nearestPtPoint, bearingDeg,
   type Proj, type SegIndex, type PtIndex, type PolyIndex, type PolyGroup,
 } from './geo';
 import { scoreMetrics } from './criteria';
 
 /** Plafonds de recherche : au-delà, les scores sont de toute façon saturés. */
-const CAP = { water: 3000, edge: 2500, access: 4000, habitat: 3000, noise: 3000 };
+const CAP = { water: 3000, swim: 4000, edge: 2500, access: 4000, habitat: 3000, noise: 3000 };
 
 /** Nombre maximal de points de grille : au-delà on élargit le pas. */
 const MAX_GRID_POINTS = 160_000;
 
 export interface SceneStats {
-  forests: number; waterLines: number; springs: number;
+  forests: number; waterLines: number; swimLines: number; springs: number;
   accessLines: number; noiseLines: number; habitat: number;
 }
 
@@ -24,6 +25,7 @@ export interface Scene {
   forests: PolyIndex;
   forestEdges: SegIndex;
   water: SegIndex;
+  swim: SegIndex;
   springs: PtIndex;
   access: SegIndex;
   noise: SegIndex;
@@ -46,6 +48,7 @@ export function buildScene(osm: ParsedOsm, origin: LatLng): Scene {
   }
 
   const waterLines = osm.water.map(l => projectLine(l, proj));
+  const swimLines = osm.swim.map(l => projectLine(l, proj));
   const accessLines = osm.access.map(l => projectLine(l, proj));
   const noiseLines = osm.noise.map(l => projectLine(l, proj));
   const habitatRings = osm.habitatAreas.map(l => projectLine(l, proj));
@@ -55,6 +58,7 @@ export function buildScene(osm: ParsedOsm, origin: LatLng): Scene {
     forests: buildPolyIndex(forestGroups, 1000),
     forestEdges: buildSegIndex(forestRings, 400),
     water: buildSegIndex(waterLines, 400),
+    swim: buildSegIndex(swimLines, 500),
     springs: buildPtIndex(osm.springs, proj, 800),
     access: buildSegIndex(accessLines, 300),
     noise: buildSegIndex(noiseLines, 600),
@@ -63,6 +67,7 @@ export function buildScene(osm: ParsedOsm, origin: LatLng): Scene {
     stats: {
       forests: osm.forests.length,
       waterLines: osm.water.length,
+      swimLines: osm.swim.length,
       springs: osm.springs.length,
       accessLines: osm.access.length,
       noiseLines: osm.noise.length,
@@ -79,6 +84,7 @@ export function metricsAt(scene: Scene, x: number, y: number, insideForest: bool
   const dHabP = nearestPtDist(scene.habitatPts, x, y, CAP.habitat);
   return {
     dWater: Math.min(dWaterLine, dSpring),
+    dSwim: nearestSegDist(scene.swim, x, y, CAP.swim),
     dEdge: insideForest ? nearestSegDist(scene.forestEdges, x, y, CAP.edge) : 0,
     dAccess: nearestSegDist(scene.access, x, y, CAP.access),
     dHabitat: Math.min(dHabA, dHabP),
@@ -162,10 +168,45 @@ export async function scan(scene: Scene, params: SearchParams, opts: ScanOptions
       lat: unprojLat(scene.proj, c.y),
       lng: unprojLng(scene.proj, c.x),
       metrics: c.m,
+      around: surroundingsAt(scene, c.x, c.y),
       scores,
       total,
     };
   });
+}
+
+/**
+ * Décrit ce qui entoure un point : où se trouve l'eau, la lisière, l'accès.
+ * Réservé aux spots retenus — c'est plus coûteux que la simple distance, et
+ * c'est ce qui permet de dire « rivière à 180 m au nord-est » plutôt qu'un
+ * simple nombre, et de tracer les liaisons sur la carte.
+ */
+export function surroundingsAt(scene: Scene, x: number, y: number): Surroundings {
+  const out: Surroundings = {};
+  const put = (hit: { dist: number; x: number; y: number } | null): Surroundings['water'] => {
+    if (!hit) return undefined;
+    return {
+      point: { lat: unprojLat(scene.proj, hit.y), lng: unprojLng(scene.proj, hit.x) },
+      dist: hit.dist,
+      bearing: bearingDeg(x, y, hit.x, hit.y),
+    };
+  };
+
+  // L'eau la plus proche peut être une source ponctuelle plutôt qu'un tracé.
+  const wLine = nearestSegPoint(scene.water, x, y, CAP.water);
+  const wSpring = nearestPtPoint(scene.springs, x, y, CAP.water);
+  const w = !wLine ? wSpring : !wSpring ? wLine : (wSpring.dist < wLine.dist ? wSpring : wLine);
+  out.water = put(w);
+  out.swim = put(nearestSegPoint(scene.swim, x, y, CAP.swim));
+  out.access = put(nearestSegPoint(scene.access, x, y, CAP.access));
+  out.edge = put(nearestSegPoint(scene.forestEdges, x, y, CAP.edge));
+
+  const hArea = nearestSegPoint(scene.habitatEdges, x, y, CAP.habitat);
+  const hPt = nearestPtPoint(scene.habitatPts, x, y, CAP.habitat);
+  const h = !hArea ? hPt : !hPt ? hArea : (hPt.dist < hArea.dist ? hPt : hArea);
+  out.habitat = put(h);
+
+  return out;
 }
 
 /** Recalcule les scores sans refaire le balayage (changement de pondération). */

@@ -65,6 +65,14 @@ export const CRITERIA: Criterion[] = [
     detail: (m) => `cours d'eau à ${fmt(m.dWater)}`,
   },
   {
+    id: 'swim', emoji: '🏊', label: 'Baignade',
+    hint: "Distance à une eau où l'on peut vraiment nager : rivière ou plan d'eau d'au moins un demi-hectare. Un ruisseau ne compte pas.",
+    defaultWeight: 3,
+    // Assez près pour y descendre à pied en maillot, sans camper sur la berge.
+    score: (m) => band(m.dSwim, -150, 60, 500, 2500),
+    detail: (m) => (m.dSwim >= 3900 ? 'aucune baignade repérée' : `baignade à ${fmt(m.dSwim)}`),
+  },
+  {
     id: 'depth', emoji: '🌲', label: 'Profondeur de forêt',
     hint: "Distance jusqu'à la lisière la plus proche. Plus c'est profond, plus c'est discret et abrité.",
     defaultWeight: 3,
@@ -139,9 +147,11 @@ export function scoreMetrics(m: Metrics, weights: Weights, ctx: CriterionCtx): {
 export interface Preset { id: string; emoji: string; label: string; weights: Weights }
 
 export const PRESETS: Preset[] = [
-  { id: 'wild', emoji: '🌲', label: 'Sauvage & profond', weights: { water: 2, depth: 5, carry: 2, solitude: 4, quiet: 3, flat: 2, drive: 1 } },
-  { id: 'water', emoji: '💧', label: "Au bord de l'eau", weights: { water: 5, depth: 2, carry: 2, solitude: 2, quiet: 2, flat: 2, drive: 2 } },
-  { id: 'easy', emoji: '🚗', label: 'Facile & proche', weights: { water: 2, depth: 1, carry: 4, solitude: 1, quiet: 2, flat: 3, drive: 5 } },
+  // Le cas d'usage principal : se baigner, puis dormir au couvert juste à côté.
+  { id: 'swim', emoji: '🏊', label: 'Baignade & forêt', weights: { water: 1, swim: 5, depth: 4, carry: 2, solitude: 3, quiet: 2, flat: 2, drive: 2 } },
+  { id: 'wild', emoji: '🌲', label: 'Sauvage & profond', weights: { water: 2, swim: 1, depth: 5, carry: 2, solitude: 4, quiet: 3, flat: 2, drive: 1 } },
+  { id: 'water', emoji: '💧', label: "Au bord de l'eau", weights: { water: 5, swim: 3, depth: 2, carry: 2, solitude: 2, quiet: 2, flat: 2, drive: 2 } },
+  { id: 'easy', emoji: '🚗', label: 'Facile & proche', weights: { water: 2, swim: 1, depth: 1, carry: 4, solitude: 1, quiet: 2, flat: 3, drive: 5 } },
   { id: 'balanced', emoji: '⚖️', label: 'Équilibré', weights: defaultWeights() },
 ];
 

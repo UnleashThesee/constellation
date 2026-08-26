@@ -1,6 +1,6 @@
 // Bivouac — conversion des données OSM analysées en GeoJSON pour la carte.
 import type { FeatureCollection } from 'geojson';
-import type { LatLng, ParsedOsm } from './types';
+import type { LatLng, ParsedOsm, Spot, Surroundings } from './types';
 
 export const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] };
 
@@ -22,6 +22,36 @@ export function osmToGeoJson(osm: ParsedOsm | null): { forests: FeatureCollectio
       })),
     },
   };
+}
+
+/**
+ * Traits reliant un spot à ce qui l'entoure : c'est la lecture visuelle de
+ * l'analyse spatiale — on voit d'un coup d'œil où descendre se baigner et par
+ * où arriver, au lieu de lire des distances.
+ */
+export function linksGeoJson(spot: Spot): FeatureCollection {
+  const a = spot.around;
+  if (!a) return EMPTY_FC;
+  const from: [number, number] = [spot.lng, spot.lat];
+  const legs: { key: keyof Surroundings; color: string; label: string }[] = [
+    { key: 'swim', color: '#38bdf8', label: '🏊' },
+    { key: 'water', color: '#7dd3fc', label: '💧' },
+    { key: 'access', color: '#fbbf24', label: '🚗' },
+  ];
+  const features: FeatureCollection['features'] = [];
+  for (const leg of legs) {
+    const hit = a[leg.key];
+    if (!hit) continue;
+    // L'eau utilitaire est masquée si elle se confond avec la baignade.
+    if (leg.key === 'water' && a.swim && Math.abs(a.swim.dist - hit.dist) < 40) continue;
+    const m = Math.round(hit.dist);
+    features.push({
+      type: 'Feature',
+      properties: { color: leg.color, label: `${leg.label} ${m >= 1000 ? (m / 1000).toFixed(1) + ' km' : m + ' m'}` },
+      geometry: { type: 'LineString', coordinates: [from, [hit.point.lng, hit.point.lat]] },
+    });
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 /** Cercle géodésique approché, pour matérialiser la zone de recherche. */

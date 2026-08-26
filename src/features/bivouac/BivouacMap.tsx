@@ -4,11 +4,20 @@ import maplibregl, { Map as MlMap, Marker } from 'maplibre-gl';
 import type { FeatureCollection } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { ParsedOsm, SavedSpot, Spot, LatLng } from './types';
-import { osmToGeoJson, circleGeoJson, EMPTY_FC } from './geojson';
+import { osmToGeoJson, circleGeoJson, linksGeoJson, EMPTY_FC } from './geojson';
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
-/** MNT libre (Terrarium) pour l'ombrage du relief. */
+/** MNT libre (Terrarium) pour l'ombrage et le relief 3D. */
 const DEM_TILES = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+
+/** Imagerie mondiale Esri : bonne résolution partout, sans clé. */
+const SAT_WORLD = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+/** Ortho IGN 20 cm (France) — Géoplateforme, en accès libre. */
+const SAT_IGN = 'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile' +
+  '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/jpeg' +
+  '&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
+
+export type Basemap = 'plan' | 'sat' | 'ign';
 
 type FC = FeatureCollection;
 const EMPTY = EMPTY_FC;
@@ -50,12 +59,15 @@ export interface BivouacMapProps {
   /** Quand actif, un tap sur la carte redéfinit le point de départ. */
   pickMode: boolean;
   relief: boolean;
+  basemap: Basemap;
+  /** Bascule en vue inclinée avec relief réel. */
+  view3d: boolean;
   onSelect: (id: string | null) => void;
   onPick: (p: LatLng) => void;
 }
 
 export function BivouacMap({
-  origin, radiusKm, osm, spots, saved, selectedId, pickMode, relief, onSelect, onPick,
+  origin, radiusKm, osm, spots, saved, selectedId, pickMode, relief, basemap, view3d, onSelect, onPick,
 }: BivouacMapProps) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
@@ -103,6 +115,13 @@ export function BivouacMap({
     });
 
     map.on('load', () => {
+      // Imagerie posée par-dessus le fond vectoriel : basculer d'un fond à
+      // l'autre ne recharge pas le style et ne détruit donc pas les calques.
+      map.addSource('sat-world', { type: 'raster', tiles: [SAT_WORLD], tileSize: 256, maxzoom: 19, attribution: 'Esri, Maxar, Earthstar Geographics' });
+      map.addLayer({ id: 'sat-world', type: 'raster', source: 'sat-world', layout: { visibility: 'none' } });
+      map.addSource('sat-ign', { type: 'raster', tiles: [SAT_IGN], tileSize: 256, maxzoom: 19, attribution: 'IGN — Géoplateforme' });
+      map.addLayer({ id: 'sat-ign', type: 'raster', source: 'sat-ign', layout: { visibility: 'none' } });
+
       map.addSource('zone', { type: 'geojson', data: EMPTY });
       map.addLayer({
         id: 'zone-line', type: 'line', source: 'zone',
@@ -133,6 +152,26 @@ export function BivouacMap({
           'circle-color': ['match', ['get', 'status'], 'good', '#22c55e', 'bad', '#64748b', '#eab308'],
           'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.9,
         },
+      });
+
+      // Liaisons du spot sélectionné vers ce qui compte autour de lui.
+      map.addSource('links', { type: 'geojson', data: EMPTY });
+      map.addLayer({
+        id: 'links-line', type: 'line', source: 'links',
+        layout: { 'line-cap': 'round' },
+        paint: {
+          'line-color': ['get', 'color'], 'line-width': 2.5,
+          'line-dasharray': [2, 1.5], 'line-opacity': 0.95,
+        },
+      });
+      map.addLayer({
+        id: 'links-label', type: 'symbol', source: 'links',
+        layout: {
+          'text-field': ['get', 'label'], 'text-size': 11,
+          'text-font': ['Noto Sans Bold'], 'symbol-placement': 'line-center',
+          'text-allow-overlap': false,
+        },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': '#0b1220', 'text-halo-width': 1.6 },
       });
 
       map.addSource('spots', { type: 'geojson', data: EMPTY });
@@ -233,6 +272,43 @@ export function BivouacMap({
     const s = spots.find(x => x.id === selectedId);
     if (s) map.easeTo({ center: [s.lng, s.lat], zoom: Math.max(map.getZoom(), 14), duration: 700 });
   }, [selectedId, spots, ready]);
+
+  // fond de carte (plan / satellite monde / ortho IGN)
+  useEffect(() => {
+    const map = mapRef.current; if (!map || !ready) return;
+    try {
+      map.setLayoutProperty('sat-world', 'visibility', basemap === 'sat' ? 'visible' : 'none');
+      map.setLayoutProperty('sat-ign', 'visibility', basemap === 'ign' ? 'visible' : 'none');
+      // Sur imagerie, la teinte verte des forêts nuit à la lecture : on l'efface.
+      map.setPaintProperty('forests-fill', 'fill-opacity', basemap === 'plan' ? 0.16 : 0);
+    } catch { /* calques absents */ }
+  }, [basemap, ready]);
+
+  // liaisons vers l'eau et l'accès du spot sélectionné
+  useEffect(() => {
+    const map = mapRef.current; if (!map || !ready) return;
+    const src = map.getSource('links') as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const s = selectedId ? spots.find(x => x.id === selectedId) : null;
+    src.setData(s ? linksGeoJson(s) : EMPTY);
+  }, [selectedId, spots, ready]);
+
+  // vue 3D : relief réel + caméra inclinée
+  useEffect(() => {
+    const map = mapRef.current; if (!map || !ready) return;
+    try {
+      if (view3d) {
+        if (!map.getSource('dem')) {
+          map.addSource('dem', { type: 'raster-dem', tiles: [DEM_TILES], encoding: 'terrarium', tileSize: 256, maxzoom: 13 });
+        }
+        map.setTerrain({ source: 'dem', exaggeration: 1.4 });
+        map.easeTo({ pitch: 62, duration: 900 });
+      } else {
+        map.setTerrain(null);
+        map.easeTo({ pitch: 0, bearing: 0, duration: 700 });
+      }
+    } catch { /* relief indisponible : la carte reste plate */ }
+  }, [view3d, ready]);
 
   // relief ombré (optionnel)
   useEffect(() => {

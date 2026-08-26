@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Progress, SavedSpot, Spot, Weights } from './types';
 import { CRITERIA, PRESETS, scoreColor, showDriveMin, estimateDriveMin } from './criteria';
 import { formatDist, walkMin } from './geo';
-import { searchPlace, type PlaceHit, driveUrl, satelliteUrl, ignUrl, osmUrl, ondeUrl, coordText } from './places';
+import { searchPlace, type PlaceHit, driveUrl, satelliteUrl, ignUrl, osmUrl, ondeUrl, coordText,
+  streetViewUrl, earthUrl, mapillaryUrl } from './places';
+import { describeSpot, shortVerdict } from './describe';
 import { exportSaved, importSaved, mergeSaved, type Settings, type Origin } from './store';
 
 // ── briques ──────────────────────────────────────────────────────────────────
@@ -225,8 +227,9 @@ export function ListPanel({ spots, onSelect, onClose, savedIds }: {
                 {formatDist(s.metrics.crowM)} du départ
                 <span className="font-normal text-white/50"> · ~{showDriveMin(s.metrics.driveMin ?? estimateDriveMin(s.metrics.crowM))} min</span>
               </div>
-              <div className="mt-0.5 truncate text-[11px] text-white/55">
-                💧 {formatDist(s.metrics.dWater)} · 🌲 {formatDist(s.metrics.dEdge)} · 🥾 {walkMin(s.metrics.dAccess)} min
+              <div className="mt-0.5 truncate text-[11px] text-emerald-200/80">{shortVerdict(s)}</div>
+              <div className="truncate text-[11px] text-white/50">
+                🏊 {s.metrics.dSwim >= 3900 ? '—' : formatDist(s.metrics.dSwim)} · 🌲 {formatDist(s.metrics.dEdge)} · 🥾 {walkMin(s.metrics.dAccess)} min
               </div>
             </div>
             {savedIds.has(`${s.lat.toFixed(4)},${s.lng.toFixed(4)}`) && <span className="shrink-0 text-sm">⭐</span>}
@@ -447,6 +450,26 @@ export function SpotCard({ spot, rank, name, isSaved, onSave, onClose }: {
         </div>
         <button onClick={onClose} aria-label="Fermer"
           className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10 active:scale-90">✕</button>
+      </div>
+
+      <div className="space-y-1.5 px-4 pb-1">
+        {describeSpot(spot).map((d, i) => (
+          <div key={i} className="flex gap-2 text-[12.5px] leading-snug">
+            <span className="shrink-0">{d.emoji}</span>
+            <span className={d.tone === 'good' ? 'text-emerald-200' : d.tone === 'warn' ? 'text-amber-200' : 'text-white/75'}>
+              {d.text}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 px-4 pb-2 pt-2">
+        <a href={streetViewUrl(spot)} target="_blank" rel="noreferrer"
+          className="rounded-xl bg-sky-500/90 px-3 py-2 text-xs font-bold active:scale-95">🧍 Street View</a>
+        <a href={earthUrl(spot)} target="_blank" rel="noreferrer"
+          className="rounded-xl bg-sky-500/90 px-3 py-2 text-xs font-bold active:scale-95">🌍 Vue 3D</a>
+        <a href={mapillaryUrl(spot)} target="_blank" rel="noreferrer"
+          className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold active:scale-95">📷 Photos au sol</a>
       </div>
 
       <button onClick={() => setOpenDetail(v => !v)}

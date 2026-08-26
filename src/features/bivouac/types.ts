@@ -17,6 +17,8 @@ export interface ParsedOsm {
   forests: LatLng[][][];
   /** Cours d'eau + contours de plans d'eau, en polylignes. */
   water: LatLng[][];
+  /** Sous-ensemble baignable : rivières et plans d'eau assez grands. */
+  swim: LatLng[][];
   /** Sources / points d'eau ponctuels. */
   springs: LatLng[];
   /** Voies carrossables d'approche (pistes, petites routes, parkings). */
@@ -32,6 +34,8 @@ export interface ParsedOsm {
 /** Distances brutes mesurées autour d'un point candidat, en mètres. */
 export interface Metrics {
   dWater: number;
+  /** Distance à une eau où l'on peut se baigner (rivière, lac). */
+  dSwim: number;
   dEdge: number;    // distance au bord de forêt = « profondeur »
   dAccess: number;
   dHabitat: number;
@@ -44,11 +48,22 @@ export interface Metrics {
   crowM: number;
 }
 
+/** Ce qu'il y a autour d'un spot : de quoi décrire le lieu, pas seulement le noter. */
+export interface Surroundings {
+  water?: { point: LatLng; dist: number; bearing: number };
+  swim?: { point: LatLng; dist: number; bearing: number };
+  access?: { point: LatLng; dist: number; bearing: number };
+  edge?: { point: LatLng; dist: number; bearing: number };
+  habitat?: { point: LatLng; dist: number; bearing: number };
+}
+
 export interface Spot {
   id: string;
   lat: number;
   lng: number;
   metrics: Metrics;
+  /** Renseigné seulement pour les spots retenus (calcul plus coûteux). */
+  around?: Surroundings;
   /** Score 0–100 par critère. */
   scores: Record<string, number>;
   /** Score global pondéré 0–100. */

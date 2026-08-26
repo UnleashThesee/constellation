@@ -1,5 +1,9 @@
 // Bivouac — accès aux données OpenStreetMap via l'API Overpass (gratuite, sans clé).
 import type { BBox, LatLng, OsmElement, OsmPt, ParsedOsm } from './types';
+import { ringAreaM2 } from './geo';
+
+/** Surface minimale d'un plan d'eau pour qu'on puisse y nager (0,5 ha). */
+export const SWIMMABLE_AREA_M2 = 5_000;
 
 /** Miroirs publics, essayés dans l'ordre. */
 export const OVERPASS_MIRRORS = [
@@ -126,7 +130,22 @@ function wayGeom(el: OsmElement): LatLng[] | null {
 }
 
 export function emptyOsm(): ParsedOsm {
-  return { forests: [], water: [], springs: [], access: [], noise: [], habitatPoints: [], habitatAreas: [] };
+  return { forests: [], water: [], swim: [], springs: [], access: [], noise: [], habitatPoints: [], habitatAreas: [] };
+}
+
+/**
+ * Une eau est baignable si c'est une rivière (par définition plus large qu'un
+ * ruisseau) ou un plan d'eau d'au moins un demi-hectare. Un ruisseau, un canal
+ * ou une mare ne comptent pas : on peut y puiser, pas y nager.
+ */
+export function isSwimmable(tags: Record<string, string>, ring?: LatLng[]): boolean {
+  if (tags.waterway === 'river') return true;
+  if (tags.natural === 'water') {
+    const kind = tags.water ?? '';
+    if (/^(pond|reservoir|basin|wastewater|ditch)$/.test(kind)) return false;
+    return !!ring && ringAreaM2(ring) >= SWIMMABLE_AREA_M2;
+  }
+  return false;
 }
 
 /** Classe les éléments Overpass bruts par usage. */
@@ -153,7 +172,12 @@ export function parseOsm(elements: OsmElement[]): ParsedOsm {
       const rings = stitchRings(parts);
       if (rings.length === 0) continue;
       if (isForest) out.forests.push(rings);
-      else if (isWaterArea) for (const r of rings) out.water.push(r);
+      else if (isWaterArea) {
+        for (const r of rings) {
+          out.water.push(r);
+          if (isSwimmable(tags, r)) out.swim.push(r);
+        }
+      }
       continue;
     }
 
@@ -161,8 +185,16 @@ export function parseOsm(elements: OsmElement[]): ParsedOsm {
     if (!g) continue;
 
     if (isForest) { out.forests.push([g]); continue; }
-    if (isWaterArea) { out.water.push(g); continue; }
-    if (tags.waterway === 'river' || tags.waterway === 'stream' || tags.waterway === 'canal') { out.water.push(g); continue; }
+    if (isWaterArea) {
+      out.water.push(g);
+      if (isSwimmable(tags, g)) out.swim.push(g);
+      continue;
+    }
+    if (tags.waterway === 'river' || tags.waterway === 'stream' || tags.waterway === 'canal') {
+      out.water.push(g);
+      if (isSwimmable(tags)) out.swim.push(g);
+      continue;
+    }
     if (tags.landuse === 'residential') { out.habitatAreas.push(g); continue; }
     if (tags.amenity === 'parking') { out.access.push(g); continue; }
     if (tags.railway === 'rail') { out.noise.push(g); continue; }
@@ -305,6 +337,7 @@ export function mergeOsm(parts: ParsedOsm[]): ParsedOsm {
   for (const p of parts) {
     out.forests.push(...p.forests);
     out.water.push(...p.water);
+    out.swim.push(...p.swim);
     out.springs.push(...p.springs);
     out.access.push(...p.access);
     out.noise.push(...p.noise);

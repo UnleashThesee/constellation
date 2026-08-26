@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { LatLng, OsmElement, ParsedOsm, SearchParams } from './types';
 import { makeProj, unprojLat, unprojLng, haversine } from './geo';
-import { parseOsm, stitchRings, buildQuery, buildQueryParts, mergeOsm, emptyOsm } from './overpass';
+import { parseOsm, stitchRings, buildQuery, buildQueryParts, mergeOsm, emptyOsm, isSwimmable } from './overpass';
+import { describeSpot } from './describe';
 import { asc, desc, band, scoreMetrics, defaultWeights, estimateDriveMin, CRITERIA } from './criteria';
 import { buildScene, scan, rescore, resolveStep, metricsAt } from './engine';
 
@@ -15,7 +16,8 @@ function syntheticOsm(): ParsedOsm {
   const forest = [at(-2000, -2000), at(2000, -2000), at(2000, 2000), at(-2000, 2000), at(-2000, -2000)];
   return {
     forests: [[forest]],
-    water: [[at(-2500, 500), at(2500, 500)]],           // ruisseau est-ouest
+    water: [[at(-2500, 500), at(2500, 500)]],           // rivière est-ouest
+    swim: [[at(-2500, 500), at(2500, 500)]],            // …et on peut s'y baigner
     springs: [],
     access: [[at(-2500, -2200), at(2500, -2200)]],      // piste au sud de la forêt
     noise: [[at(6000, -6000), at(6000, 6000)]],         // grand axe très à l'est
@@ -60,7 +62,7 @@ describe('courbes de notation', () => {
   });
 
   it('départage encore deux spots proches sur un petit rayon', () => {
-    const near = { dWater: 200, dEdge: 500, dAccess: 400, dHabitat: 2000, dNoise: 2000, crowM: 800 };
+    const near = { dWater: 200, dSwim: 250, dEdge: 500, dAccess: 400, dHabitat: 2000, dNoise: 2000, crowM: 800 };
     const far = { ...near, crowM: 2200 };
     const w = { ...defaultWeights(), drive: 10 };
     expect(scoreMetrics(near, w, { radiusKm: 3 }).scores.drive)
@@ -69,7 +71,7 @@ describe('courbes de notation', () => {
 });
 
 describe('scoreMetrics', () => {
-  const base = { dWater: 200, dEdge: 500, dAccess: 400, dHabitat: 2000, dNoise: 2000, crowM: 8000 };
+  const base = { dWater: 200, dSwim: 250, dEdge: 500, dAccess: 400, dHabitat: 2000, dNoise: 2000, crowM: 8000 };
 
   it('donne un excellent score à un spot idéal', () => {
     const { total } = scoreMetrics(base, defaultWeights(), { radiusKm: 15 });
@@ -284,5 +286,52 @@ describe('moteur de bout en bout', () => {
     for (let i = 1; i < drivePriority.length; i++) {
       expect(drivePriority[i - 1].total).toBeGreaterThanOrEqual(drivePriority[i].total);
     }
+  });
+});
+
+describe('classification de l\'eau baignable', () => {
+  it('retient les rivières, écarte ruisseaux et canaux', () => {
+    expect(isSwimmable({ waterway: 'river' })).toBe(true);
+    expect(isSwimmable({ waterway: 'stream' })).toBe(false);
+    expect(isSwimmable({ waterway: 'canal' })).toBe(false);
+  });
+
+  it('retient les plans d\'eau assez grands, écarte les mares', () => {
+    // ~300 m de côté ≈ 9 ha
+    const big = [at(0, 0), at(300, 0), at(300, 300), at(0, 300), at(0, 0)];
+    // ~40 m de côté ≈ 0,16 ha
+    const small = [at(0, 0), at(40, 0), at(40, 40), at(0, 40), at(0, 0)];
+    expect(isSwimmable({ natural: 'water' }, big)).toBe(true);
+    expect(isSwimmable({ natural: 'water' }, small)).toBe(false);
+    expect(isSwimmable({ natural: 'water', water: 'pond' }, big)).toBe(false);
+  });
+
+  it('sépare bien les deux couches au parsing', () => {
+    const g = (n: number) => Array.from({ length: n }, (_, i) => ({ lat: 47.3 + i * 0.001, lon: 5 + i * 0.001 }));
+    const p = parseOsm([
+      { type: 'way', id: 1, tags: { waterway: 'river' }, geometry: g(3) },
+      { type: 'way', id: 2, tags: { waterway: 'stream' }, geometry: g(3) },
+    ]);
+    expect(p.water).toHaveLength(2);
+    expect(p.swim).toHaveLength(1);
+  });
+});
+
+describe('description du lieu', () => {
+  const scene = buildScene(syntheticOsm(), ORIGIN);
+
+  it('situe la baignade avec une direction lisible', async () => {
+    const spots = await scan(scene, params(), { requireForest: true });
+    const s = spots[0];
+    expect(s.around?.swim).toBeDefined();
+    const phrases = describeSpot(s).map(d => d.text).join(' ');
+    expect(phrases).toMatch(/[Bb]aignade|baignable/);
+    expect(phrases).toMatch(/nord|sud|est|ouest/);
+  });
+
+  it('signale franchement l\'absence de baignade', () => {
+    const dry = { dWater: 2000, dSwim: 4000, dEdge: 500, dAccess: 400, dHabitat: 2000, dNoise: 2000, crowM: 5000 };
+    const spot = { id: 'x', lat: 0, lng: 0, metrics: dry, scores: {}, total: 50 };
+    expect(describeSpot(spot).some(d => d.tone === 'warn' && /baignable/.test(d.text))).toBe(true);
   });
 });

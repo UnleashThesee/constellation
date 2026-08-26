@@ -66,3 +66,19 @@ export const coordText = (p: LatLng) => `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)
 export function overpassTurboUrl(query: string, p: LatLng): string {
   return `https://overpass-turbo.eu/?Q=${encodeURIComponent(query)}&C=${p.lat.toFixed(5)};${p.lng.toFixed(5)};13`;
 }
+
+/**
+ * Street View au point de vue le plus proche. En forêt il n'y a presque jamais
+ * de prise de vue, mais les routes d'accès sont souvent couvertes : c'est ce
+ * qui se rapproche le plus du « petit bonhomme ».
+ */
+export const streetViewUrl = (p: LatLng) =>
+  `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+
+/** Google Earth : survol 3D incliné, le meilleur aperçu du relief réel. */
+export const earthUrl = (p: LatLng) =>
+  `https://earth.google.com/web/@${p.lat.toFixed(6)},${p.lng.toFixed(6)},0a,600d,35y,0h,55t,0r`;
+
+/** Mapillary : photos au sol contribuées, parfois présentes sur les pistes. */
+export const mapillaryUrl = (p: LatLng) =>
+  `https://www.mapillary.com/app/?lat=${p.lat.toFixed(6)}&lng=${p.lng.toFixed(6)}&z=16`;

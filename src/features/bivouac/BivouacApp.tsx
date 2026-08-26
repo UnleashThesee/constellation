@@ -7,7 +7,7 @@ import { buildQueryParts, fetchOverpass, parseOsm, mergeOsm, pingOverpass, Overp
 import { buildScene, scan, rescore, type Scene } from './engine';
 import { refineSpots } from './refine';
 import { reverseName } from './places';
-import { BivouacMap } from './BivouacMap';
+import { BivouacMap, type Basemap } from './BivouacMap';
 import {
   RoundBtn, ProgressOverlay, OriginPanel, WeightsPanel, ListPanel, SavedPanel, SettingsPanel, SpotCard,
 } from './BivouacPanels';
@@ -42,6 +42,8 @@ export function BivouacApp() {
   const [panel, setPanel] = useState<PanelId>(null);
   const [pickMode, setPickMode] = useState(false);
   const [relief, setRelief] = useState(false);
+  const [basemap, setBasemap] = useState<Basemap>('plan');
+  const [view3d, setView3d] = useState(false);
 
   const [scene, setScene] = useState<Scene | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -224,7 +226,7 @@ export function BivouacApp() {
       <div className="absolute inset-0">
         <BivouacMap
           origin={origin} radiusKm={settings.radiusKm} osm={osm} spots={spots} saved={saved}
-          selectedId={selectedId} pickMode={pickMode} relief={relief}
+          selectedId={selectedId} pickMode={pickMode} relief={relief} basemap={basemap} view3d={view3d}
           onSelect={setSelectedId}
           onPick={p => setOriginAndReset({ ...p, label: 'Point choisi' })}
         />
@@ -254,6 +256,20 @@ export function BivouacApp() {
           <RoundBtn onClick={() => setRelief(v => !v)} active={relief} label="Relief">⛰️</RoundBtn>
           <RoundBtn onClick={() => setPanel('settings')} label="Réglages">⚙️</RoundBtn>
         </div>
+      </div>
+
+      {/* fond de carte + vue 3D, discrets en bas à gauche */}
+      <div className="absolute bottom-3 left-3 z-20 flex flex-col gap-2">
+        <div className="flex gap-1 rounded-full bg-slate-900/75 p-1 backdrop-blur">
+          {([['plan', '🗺️', 'Plan'], ['sat', '🛰️', 'Satellite'], ['ign', '🇫🇷', 'IGN 20 cm (France)']] as const).map(([v, icon, title]) => (
+            <button key={v} onClick={() => setBasemap(v)} title={title} aria-label={title}
+              className={`rounded-full px-2.5 py-1 text-sm ${basemap === v ? 'bg-emerald-500' : ''}`}>{icon}</button>
+          ))}
+        </div>
+        <button onClick={() => setView3d(v => !v)} aria-label="Vue 3D"
+          className={`self-start rounded-full px-3 py-1.5 text-xs font-bold backdrop-blur active:scale-95 ${view3d ? 'bg-emerald-500' : 'bg-slate-900/75'}`}>
+          {view3d ? '3D ✓' : '3D'}
+        </button>
       </div>
 
       {/* mode « placer le départ » */}
