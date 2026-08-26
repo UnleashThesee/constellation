@@ -37,7 +37,9 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  radiusKm: 12,
+  // Volontairement modeste : au-delà, la réponse Overpass devient si grosse
+  // qu'elle expire avant de revenir. On élargit ensuite si le secteur est pauvre.
+  radiusKm: 8,
   gridStep: 150,
   minSeparation: 800,
   maxResults: 40,

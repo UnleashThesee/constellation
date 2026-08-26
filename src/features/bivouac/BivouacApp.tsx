@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LatLng, ParsedOsm, Progress, SavedSpot, SearchParams, Spot } from './types';
 import { bboxAround, haversine } from './geo';
-import { buildQuery, fetchOverpass, parseOsm, OverpassError } from './overpass';
+import { buildQueryParts, fetchOverpass, parseOsm, mergeOsm, pingOverpass, OverpassError, type PingResult } from './overpass';
 import { buildScene, scan, rescore, type Scene } from './engine';
 import { refineSpots } from './refine';
 import { reverseName } from './places';
@@ -35,6 +35,9 @@ export function BivouacApp() {
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string[]>([]);
+  const [ping, setPing] = useState<PingResult[] | null>(null);
+  const [pinging, setPinging] = useState(false);
 
   const [panel, setPanel] = useState<PanelId>(null);
   const [pickMode, setPickMode] = useState(false);
@@ -114,22 +117,42 @@ export function BivouacApp() {
     setError(null); setNotice(null); setSelectedId(null); setPanel(null);
 
     try {
-      setProgress({ phase: 'download', message: 'Téléchargement de la carte OpenStreetMap…' });
       const bbox = bboxAround(origin, settings.radiusKm);
-      const query = buildQuery(bbox);
-      const elements = await fetchOverpass(query, {
-        signal: ctrl.signal,
-        onMirror: (_url, attempt) => setProgress({
-          phase: 'download',
-          message: attempt === 1 ? 'Téléchargement de la carte OpenStreetMap…' : `Miroir ${attempt}…`,
-        }),
-      });
+      const parts = buildQueryParts(bbox);
+      const collected: ParsedOsm[] = [];
+      const skipped: string[] = [];
 
-      if (ctrl.signal.aborted) return;
-      setProgress({ phase: 'parse', message: `Lecture de ${elements.length.toLocaleString('fr-FR')} éléments…` });
+      // Trois requêtes courtes plutôt qu'une énorme : une seule grosse requête
+      // expire avant de revenir dès que la zone dépasse quelques kilomètres.
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const step = `${i + 1}/${parts.length}`;
+        try {
+          const elements = await fetchOverpass(part.query, {
+            signal: ctrl.signal,
+            onMirror: (_url, attempt) => setProgress({
+              phase: 'download',
+              ratio: i / parts.length,
+              message: `Téléchargement ${step} : ${part.label}${attempt > 1 ? ` (miroir ${attempt})` : ''}…`,
+            }),
+          });
+          if (ctrl.signal.aborted) return;
+          collected.push(parseOsm(elements));
+        } catch (e) {
+          if (ctrl.signal.aborted) return;
+          // Une couche secondaire manquante dégrade le résultat sans l'annuler.
+          if (part.essential) throw e;
+          skipped.push(part.label);
+        }
+      }
+
+      setProgress({ phase: 'parse', message: 'Lecture des données…' });
       await new Promise(r => setTimeout(r, 0));
-      const parsed = parseOsm(elements);
+      const parsed = mergeOsm(collected);
       setOsm(parsed);
+      if (skipped.length) {
+        setNotice(`Données incomplètes : ${skipped.join(' et ')} n'ont pas pu être téléchargés. Les critères correspondants sont faussés.`);
+      }
 
       if (parsed.forests.length === 0 && settings.requireForest) {
         setRawSpots([]);
@@ -145,9 +168,8 @@ export function BivouacApp() {
       await analyse(scene, params, ctrl.signal);
     } catch (e) {
       if (ctrl.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return;
-      setError(e instanceof OverpassError ? e.message
-        : e instanceof Error ? e.message
-        : 'Une erreur inattendue est survenue.');
+      if (e instanceof OverpassError) { setError(e.message); setErrorDetails(e.details); }
+      else { setError(e instanceof Error ? e.message : 'Une erreur inattendue est survenue.'); setErrorDetails([]); }
     } finally {
       if (abortRef.current === ctrl) { setProgress(null); abortRef.current = null; }
     }
@@ -250,10 +272,42 @@ export function BivouacApp() {
             <button onClick={() => { setError(null); setNotice(null); }} aria-label="Fermer"
               className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/15 text-xs">✕</button>
           </div>
+          {error && errorDetails.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-[11px] text-white/60">
+              {errorDetails.map((d, i) => <li key={i}>· {d}</li>)}
+            </ul>
+          )}
           {error && (
-            <button onClick={() => void runSearch()} className="mt-2 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold active:scale-95">
-              Réessayer
-            </button>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button onClick={() => void runSearch()} className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold active:scale-95">
+                Réessayer
+              </button>
+              {settings.radiusKm > 6 && (
+                <button onClick={() => { setSettings({ ...settings, radiusKm: 6 }); setError(null); }}
+                  className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold active:scale-95">
+                  Réduire à 6 km
+                </button>
+              )}
+              <button onClick={() => { setPinging(true); setPing(null); pingOverpass().then(setPing).catch(() => setPing([])).finally(() => setPinging(false)); }}
+                disabled={pinging}
+                className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold active:scale-95 disabled:opacity-40">
+                {pinging ? 'Test…' : '🔍 Tester la connexion'}
+              </button>
+            </div>
+          )}
+          {ping && (
+            <div className="mt-2 rounded-lg bg-black/30 p-2 text-[11px] leading-relaxed">
+              {ping.map(p => (
+                <div key={p.mirror} className={p.ok ? 'text-emerald-300' : 'text-rose-300'}>
+                  {p.ok ? '✓' : '✗'} {p.mirror} — {p.detail} ({p.ms} ms)
+                </div>
+              ))}
+              <p className="mt-1 text-white/60">
+                {ping.some(p => p.ok)
+                  ? "Les serveurs répondent : c'est donc la zone demandée qui est trop grande. Réduis le rayon."
+                  : "Aucun serveur ne répond : un bloqueur de pub, un VPN ou le réseau bloque les requêtes. Essaie en 4G, ou dans un autre navigateur."}
+              </p>
+            </div>
           )}
         </div>
       )}

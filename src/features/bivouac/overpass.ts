@@ -6,30 +6,85 @@ export const OVERPASS_MIRRORS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.osm.jp/api/interpreter',
 ];
 
-const ACCESS_HW = 'track|unclassified|residential|service|tertiary';
-const NOISE_HW = 'motorway|trunk|primary|secondary|motorway_link|trunk_link';
+// Volontairement restreint : chaque tag en plus alourdit la réponse, et une
+// réponse trop grosse fait tomber la requête avant même de revenir.
+const ACCESS_HW = 'track|unclassified|tertiary';
+const NOISE_HW = 'motorway|trunk|primary|secondary';
 
-/** Construit la requête Overpass QL pour une emprise donnée. */
+const bb = (b: BBox) =>
+  `${b.south.toFixed(5)},${b.west.toFixed(5)},${b.north.toFixed(5)},${b.east.toFixed(5)}`;
+
+export interface QueryPart {
+  id: 'forest' | 'water' | 'access';
+  label: string;
+  query: string;
+  /** Sans cette partie, la recherche n'a pas de sens. */
+  essential: boolean;
+}
+
+/**
+ * Découpe la collecte en plusieurs requêtes légères plutôt qu'une seule énorme.
+ * Trois requêtes courtes passent là où une seule grosse expire, et l'échec de
+ * l'une n'emporte pas les autres.
+ */
+export function buildQueryParts(b: BBox, timeout = 90): QueryPart[] {
+  const a = bb(b);
+  return [
+    {
+      id: 'forest', label: 'forêts', essential: true,
+      query: `[out:json][timeout:${timeout}];
+(
+  way["landuse"="forest"](${a});
+  way["natural"="wood"](${a});
+  relation["landuse"="forest"](${a});
+  relation["natural"="wood"](${a});
+);
+out geom;`,
+    },
+    {
+      id: 'water', label: "cours d'eau", essential: false,
+      query: `[out:json][timeout:${timeout}];
+(
+  way["waterway"~"^(river|stream|canal)$"](${a});
+  way["natural"="water"](${a});
+  relation["natural"="water"](${a});
+  node["natural"="spring"](${a});
+);
+out geom;`,
+    },
+    {
+      id: 'access', label: 'accès & habitations', essential: false,
+      query: `[out:json][timeout:${timeout}];
+(
+  way["highway"~"^(${ACCESS_HW})$"](${a});
+  way["amenity"="parking"](${a});
+  way["highway"~"^(${NOISE_HW})$"](${a});
+  way["railway"="rail"](${a});
+  node["place"~"^(city|town|village|hamlet|isolated_dwelling|farm)$"](${a});
+  way["landuse"="residential"](${a});
+);
+out geom;`,
+    },
+  ];
+}
+
+/** Requête unique équivalente — sert au lien « ouvrir dans Overpass Turbo ». */
 export function buildQuery(b: BBox, timeout = 180): string {
-  const bb = `${b.south.toFixed(5)},${b.west.toFixed(5)},${b.north.toFixed(5)},${b.east.toFixed(5)}`;
+  const a = bb(b);
   return `[out:json][timeout:${timeout}];
 (
-  way["landuse"="forest"](${bb});
-  way["natural"="wood"](${bb});
-  relation["landuse"="forest"](${bb});
-  relation["natural"="wood"](${bb});
-  way["natural"="water"](${bb});
-  way["waterway"~"^(river|stream|canal)$"](${bb});
-  relation["natural"="water"](${bb});
-  node["natural"="spring"](${bb});
-  way["highway"~"^(${ACCESS_HW})$"](${bb});
-  way["amenity"="parking"](${bb});
-  way["highway"~"^(${NOISE_HW})$"](${bb});
-  way["railway"="rail"](${bb});
-  node["place"~"^(city|town|village|hamlet|isolated_dwelling|farm)$"](${bb});
-  way["landuse"="residential"](${bb});
+  way["landuse"="forest"](${a});
+  way["natural"="wood"](${a});
+  relation["landuse"="forest"](${a});
+  relation["natural"="wood"](${a});
+  way["waterway"~"^(river|stream|canal)$"](${a});
+  way["natural"="water"](${a});
+  way["highway"~"^(${ACCESS_HW})$"](${a});
+  way["highway"~"^(${NOISE_HW})$"](${a});
+  node["place"~"^(city|town|village|hamlet|isolated_dwelling|farm)$"](${a});
 );
 out geom;`;
 }
@@ -70,11 +125,13 @@ function wayGeom(el: OsmElement): LatLng[] | null {
   return el.geometry.map(pt);
 }
 
+export function emptyOsm(): ParsedOsm {
+  return { forests: [], water: [], springs: [], access: [], noise: [], habitatPoints: [], habitatAreas: [] };
+}
+
 /** Classe les éléments Overpass bruts par usage. */
 export function parseOsm(elements: OsmElement[]): ParsedOsm {
-  const out: ParsedOsm = {
-    forests: [], water: [], springs: [], access: [], noise: [], habitatPoints: [], habitatAreas: [],
-  };
+  const out = emptyOsm();
 
   for (const el of elements) {
     const tags = el.tags ?? {};
@@ -117,33 +174,59 @@ export function parseOsm(elements: OsmElement[]): ParsedOsm {
   return out;
 }
 
+// ── erreurs ──────────────────────────────────────────────────────────────────
+
 export type OverpassFailure = 'busy' | 'timeout' | 'network' | 'server';
 
 export class OverpassError extends Error {
   readonly kind: OverpassFailure;
-  constructor(message: string, kind: OverpassFailure) {
+  /** Ce qu'a répondu chaque miroir, pour pouvoir diagnostiquer. */
+  readonly details: string[];
+  constructor(message: string, kind: OverpassFailure, details: string[] = []) {
     super(message);
     this.name = 'OverpassError';
     this.kind = kind;
+    this.details = details;
   }
 }
 
-function classifyFailure(status: number, body: string): OverpassError {
-  if (status === 429) return new OverpassError('Serveur Overpass saturé (trop de requêtes). Réessaie dans un instant ou change de miroir.', 'busy');
-  if (status === 504 || /timed out|timeout/i.test(body)) return new OverpassError("La requête a dépassé le temps imparti : réduis le rayon de recherche.", 'timeout');
-  return new OverpassError(`Overpass a répondu ${status}.`, 'server');
+const host = (url: string) => { try { return new URL(url).hostname; } catch { return url; } };
+
+function classifyStatus(status: number, body: string): { kind: OverpassFailure; text: string } {
+  if (status === 429) return { kind: 'busy', text: 'saturé (429)' };
+  if (status === 504 || /timed out|timeout/i.test(body)) return { kind: 'timeout', text: 'délai dépassé (504)' };
+  if (status === 400) return { kind: 'server', text: 'requête refusée (400)' };
+  return { kind: 'server', text: `réponse ${status}` };
+}
+
+/** Combine le signal d'annulation de l'utilisateur avec un délai maximum. */
+function withDeadline(signal: AbortSignal | undefined, ms: number): AbortSignal | undefined {
+  try {
+    const timer = AbortSignal.timeout(ms);
+    if (!signal) return timer;
+    if (typeof AbortSignal.any === 'function') return AbortSignal.any([signal, timer]);
+  } catch { /* API absente : on garde le signal utilisateur seul */ }
+  return signal;
 }
 
 export interface FetchOpts {
   signal?: AbortSignal;
   mirrors?: string[];
+  /** Délai maximum côté navigateur, en ms. */
+  deadlineMs?: number;
   onMirror?: (url: string, attempt: number) => void;
 }
 
-/** Interroge Overpass en basculant de miroir en miroir en cas d'échec. */
+/**
+ * Interroge Overpass en basculant de miroir en miroir.
+ * En cas d'échec total, l'erreur porte le détail miroir par miroir : c'est la
+ * seule façon de distinguer « serveurs saturés » de « réseau qui bloque ».
+ */
 export async function fetchOverpass(query: string, opts: FetchOpts = {}): Promise<OsmElement[]> {
   const mirrors = opts.mirrors ?? OVERPASS_MIRRORS;
-  let last: unknown = null;
+  const deadline = opts.deadlineMs ?? 150_000;
+  const details: string[] = [];
+  let worst: OverpassFailure = 'network';
 
   for (let i = 0; i < mirrors.length; i++) {
     const url = mirrors[i];
@@ -153,24 +236,80 @@ export async function fetchOverpass(query: string, opts: FetchOpts = {}): Promis
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ data: query }).toString(),
-        signal: opts.signal,
+        signal: withDeadline(opts.signal, deadline),
       });
       if (!res.ok) {
         const body = await res.text().catch(() => '');
-        throw classifyFailure(res.status, body);
+        const c = classifyStatus(res.status, body);
+        details.push(`${host(url)} : ${c.text}`);
+        worst = c.kind;
+        continue;
       }
       const json = await res.json() as { elements?: OsmElement[] };
-      if (!json || !Array.isArray(json.elements)) throw new OverpassError('Réponse Overpass illisible.', 'server');
+      if (!json || !Array.isArray(json.elements)) {
+        details.push(`${host(url)} : réponse illisible`);
+        worst = 'server';
+        continue;
+      }
       return json.elements;
     } catch (e) {
+      // Annulation volontaire de l'utilisateur : on ne tente pas les suivants.
       if (opts.signal?.aborted) throw e;
-      last = e;
-      // on tente le miroir suivant
+      const isTimeout = e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError');
+      details.push(`${host(url)} : ${isTimeout ? 'pas de réponse à temps' : 'connexion impossible'}`);
+      if (isTimeout) worst = 'timeout';
     }
   }
-  if (last instanceof OverpassError) throw last;
-  throw new OverpassError(
-    "Impossible de joindre OpenStreetMap. Vérifie ta connexion (les serveurs Overpass sont parfois saturés le soir).",
-    'network',
-  );
+
+  const message = worst === 'timeout'
+    ? "Les serveurs OpenStreetMap n'ont pas répondu à temps. C'est presque toujours une zone trop grande : réduis le rayon dans les réglages."
+    : worst === 'busy'
+      ? 'Les serveurs OpenStreetMap sont saturés en ce moment. Réessaie dans une minute.'
+      : "Impossible de joindre OpenStreetMap. Réduis le rayon, et vérifie qu'un bloqueur de pub ou un VPN ne bloque pas la requête.";
+  throw new OverpassError(message, worst, details);
+}
+
+export interface PingResult { mirror: string; ok: boolean; detail: string; ms: number }
+
+/**
+ * Requête minuscule pour savoir si Overpass est joignable tout court.
+ * Sépare « le réseau bloque » de « ma requête est trop lourde ».
+ */
+export async function pingOverpass(signal?: AbortSignal): Promise<PingResult[]> {
+  const query = '[out:json][timeout:10];node(1);out;';
+  const out: PingResult[] = [];
+  for (const url of OVERPASS_MIRRORS) {
+    const t0 = Date.now();
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ data: query }).toString(),
+        signal: withDeadline(signal, 15_000),
+      });
+      const ms = Date.now() - t0;
+      if (res.ok) { await res.text().catch(() => ''); out.push({ mirror: host(url), ok: true, detail: 'joignable', ms }); }
+      else out.push({ mirror: host(url), ok: false, detail: classifyStatus(res.status, '').text, ms });
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      const isTimeout = e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError');
+      out.push({ mirror: host(url), ok: false, detail: isTimeout ? 'trop lent' : 'connexion bloquée', ms: Date.now() - t0 });
+    }
+  }
+  return out;
+}
+
+/** Fusionne les données de plusieurs requêtes partielles. */
+export function mergeOsm(parts: ParsedOsm[]): ParsedOsm {
+  const out = emptyOsm();
+  for (const p of parts) {
+    out.forests.push(...p.forests);
+    out.water.push(...p.water);
+    out.springs.push(...p.springs);
+    out.access.push(...p.access);
+    out.noise.push(...p.noise);
+    out.habitatPoints.push(...p.habitatPoints);
+    out.habitatAreas.push(...p.habitatAreas);
+  }
+  return out;
 }

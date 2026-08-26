@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { LatLng, OsmElement, ParsedOsm, SearchParams } from './types';
 import { makeProj, unprojLat, unprojLng, haversine } from './geo';
-import { parseOsm, stitchRings, buildQuery } from './overpass';
+import { parseOsm, stitchRings, buildQuery, buildQueryParts, mergeOsm, emptyOsm } from './overpass';
 import { asc, desc, band, scoreMetrics, defaultWeights, estimateDriveMin, CRITERIA } from './criteria';
 import { buildScene, scan, rescore, resolveStep, metricsAt } from './engine';
 
@@ -155,13 +155,52 @@ describe('stitchRings', () => {
   });
 });
 
-describe('buildQuery', () => {
+describe('construction des requêtes', () => {
+  const BB = { south: 47.1, west: 4.9, north: 47.5, east: 5.2 };
+
   it('injecte l\'emprise et reste une requête Overpass valide', () => {
-    const q = buildQuery({ south: 47.1, west: 4.9, north: 47.5, east: 5.2 });
+    const q = buildQuery(BB);
     expect(q).toContain('[out:json]');
     expect(q).toContain('47.10000,4.90000,47.50000,5.20000');
     expect(q).toContain('out geom;');
     expect(q.match(/\(/g)!.length).toBe(q.match(/\)/g)!.length);
+  });
+
+  it('découpe en parties dont une seule est indispensable', () => {
+    const parts = buildQueryParts(BB);
+    expect(parts).toHaveLength(3);
+    expect(parts.filter(p => p.essential).map(p => p.id)).toEqual(['forest']);
+    for (const p of parts) {
+      expect(p.query).toContain('[out:json]');
+      expect(p.query).toContain('47.10000,4.90000,47.50000,5.20000');
+      expect(p.query).toContain('out geom;');
+      expect(p.query.match(/\(/g)!.length).toBe(p.query.match(/\)/g)!.length);
+    }
+  });
+
+  it('couvre entre les trois parties tout ce que parseOsm sait classer', () => {
+    const all = buildQueryParts(BB).map(p => p.query).join('\n');
+    for (const tag of ['landuse"="forest', 'natural"="wood', 'waterway', 'natural"="spring',
+      'amenity"="parking', 'railway"="rail', 'place', 'landuse"="residential']) {
+      expect(all).toContain(tag);
+    }
+  });
+});
+
+describe('mergeOsm', () => {
+  it('concatène les couches de plusieurs requêtes partielles', () => {
+    const a = { ...emptyOsm(), forests: [[[{ lat: 0, lng: 0 }]]] };
+    const b = { ...emptyOsm(), springs: [{ lat: 1, lng: 1 }] };
+    const m = mergeOsm([a, b]);
+    expect(m.forests).toHaveLength(1);
+    expect(m.springs).toHaveLength(1);
+    expect(m.water).toHaveLength(0);
+  });
+
+  it('rend une structure vide exploitable', () => {
+    const m = mergeOsm([]);
+    expect(m.forests).toEqual([]);
+    expect(m.habitatPoints).toEqual([]);
   });
 });
 
