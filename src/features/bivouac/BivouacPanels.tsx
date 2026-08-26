@@ -103,6 +103,16 @@ export function ProgressOverlay({ progress, elapsed, onCancel }: {
 
 // ── point de départ ──────────────────────────────────────────────────────────
 
+/** Départs tout prêts : les massifs où l'on trouve vraiment eau et forêt. */
+const SUGGESTED: (Origin & { emoji: string })[] = [
+  { emoji: '🏙️', label: 'Dijon', lat: 47.3220, lng: 5.0415 },
+  { emoji: '🌲', label: 'Morvan — Lac des Settons', lat: 47.1856, lng: 4.0450 },
+  { emoji: '💧', label: 'Morvan — Lac de Chaumeçon', lat: 47.2492, lng: 3.9600 },
+  { emoji: '🏔️', label: 'Jura — Clairvaux-les-Lacs', lat: 46.5744, lng: 5.7500 },
+  { emoji: '🏞️', label: 'Jura — Lac de Vouglans', lat: 46.4200, lng: 5.6800 },
+  { emoji: '🍇', label: 'Vallée de l\'Ouche', lat: 47.2600, lng: 4.8500 },
+];
+
 export function OriginPanel({ origin, onPick, onPickOnMap, onClose }: {
   origin: Origin; onPick: (o: Origin) => void; onPickOnMap: () => void; onClose: () => void;
 }) {
@@ -142,6 +152,15 @@ export function OriginPanel({ origin, onPick, onPickOnMap, onClose }: {
       <input value={q} onChange={e => setQ(e.target.value)} autoFocus
         placeholder="Ville, adresse, lieu-dit… (partout dans le monde)"
         className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none placeholder:text-white/35 focus:border-emerald-400" />
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {SUGGESTED.map(o => (
+          <button key={o.label} onClick={() => onPick(o)}
+            className="rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold active:scale-95">
+            {o.emoji} {o.label}
+          </button>
+        ))}
+      </div>
 
       <div className="mt-3 flex gap-2">
         <button onClick={useGps} disabled={busy}
@@ -361,11 +380,11 @@ export function SettingsPanel({ settings, onChange, onClose, onRescan, sceneRead
       ) : undefined}>
       <div className="divide-y divide-white/10">
         <Row label="Rayon de recherche" hint={heavy
-          ? '⚠️ Au-delà de 18 km, le téléchargement OpenStreetMap devient long (et peut échouer aux heures de pointe).'
+          ? "⚠️ Au-delà de 18 km, la zone est découpée en tuiles : ça marche, mais le téléchargement peut prendre plusieurs minutes."
           : 'Zone explorée autour du point de départ.'}>
           {settings.radiusKm} km
         </Row>
-        <input type="range" min={3} max={30} step={1} value={settings.radiusKm} className={slider}
+        <input type="range" min={3} max={45} step={1} value={settings.radiusKm} className={slider}
           onChange={e => set({ radiusKm: Number(e.target.value) })} />
 
         <Row label="Finesse du balayage" hint="Distance entre deux points testés. Plus fin = plus précis mais plus lent.">
@@ -383,6 +402,27 @@ export function SettingsPanel({ settings, onChange, onClose, onRescan, sceneRead
         <Row label="Nombre de résultats">{settings.maxResults}</Row>
         <input type="range" min={5} max={80} step={5} value={settings.maxResults} className={slider}
           onChange={e => set({ maxResults: Number(e.target.value) })} />
+
+        <div className="py-3">
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <span>
+              <span className="text-sm font-semibold">🏊 Exiger une baignade proche</span>
+              <p className="mt-1 text-[11px] text-white/45">
+                Filtre strict : seuls les coins situés à moins de la distance choisie d'une rivière
+                ou d'un plan d'eau baignable sont retenus.
+              </p>
+            </span>
+            <input type="checkbox" checked={settings.maxSwimM != null} className="h-5 w-5 shrink-0 accent-emerald-400"
+              onChange={e => set({ maxSwimM: e.target.checked ? 800 : null })} />
+          </label>
+          {settings.maxSwimM != null && (
+            <>
+              <div className="mt-2 text-right text-sm font-bold text-emerald-300">à moins de {formatDist(settings.maxSwimM)}</div>
+              <input type="range" min={200} max={3000} step={100} value={settings.maxSwimM} className={slider}
+                onChange={e => set({ maxSwimM: Number(e.target.value) })} />
+            </>
+          )}
+        </div>
 
         <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
           <span>

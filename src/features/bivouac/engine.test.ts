@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { LatLng, OsmElement, ParsedOsm, SearchParams } from './types';
 import { makeProj, unprojLat, unprojLng, haversine } from './geo';
-import { parseOsm, stitchRings, buildQuery, buildQueryParts, mergeOsm, emptyOsm, isSwimmable } from './overpass';
+import { parseOsm, stitchRings, buildQuery, buildQueryParts, mergeOsm, emptyOsm, isSwimmable, tileBBox } from './overpass';
 import { describeSpot } from './describe';
 import { asc, desc, band, scoreMetrics, defaultWeights, estimateDriveMin, CRITERIA } from './criteria';
 import { buildScene, scan, rescore, resolveStep, metricsAt } from './engine';
@@ -303,7 +303,10 @@ describe('classification de l\'eau baignable', () => {
     const small = [at(0, 0), at(40, 0), at(40, 40), at(0, 40), at(0, 0)];
     expect(isSwimmable({ natural: 'water' }, big)).toBe(true);
     expect(isSwimmable({ natural: 'water' }, small)).toBe(false);
-    expect(isSwimmable({ natural: 'water', water: 'pond' }, big)).toBe(false);
+    // C'est la surface qui tranche, pas l'étiquette : un grand étang se baigne,
+    // une mare non.
+    expect(isSwimmable({ natural: 'water', water: 'pond' }, big)).toBe(true);
+    expect(isSwimmable({ natural: 'water', water: 'pond' }, small)).toBe(false);
   });
 
   it('sépare bien les deux couches au parsing', () => {
@@ -333,5 +336,59 @@ describe('description du lieu', () => {
     const dry = { dWater: 2000, dSwim: 4000, dEdge: 500, dAccess: 400, dHabitat: 2000, dNoise: 2000, crowM: 5000 };
     const spot = { id: 'x', lat: 0, lng: 0, metrics: dry, scores: {}, total: 50 };
     expect(describeSpot(spot).some(d => d.tone === 'warn' && /baignable/.test(d.text))).toBe(true);
+  });
+});
+
+describe('retenues et lacs (Morvan, Jura)', () => {
+  const bigRing = [at(0, 0), at(400, 0), at(400, 400), at(0, 400), at(0, 0)];
+
+  it('accepte une retenue : ce sont les lacs où l\'on se baigne', () => {
+    expect(isSwimmable({ natural: 'water', water: 'reservoir' }, bigRing)).toBe(true);
+    expect(isSwimmable({ landuse: 'reservoir' }, bigRing)).toBe(true);
+    expect(isSwimmable({ natural: 'water', water: 'lake' }, bigRing)).toBe(true);
+  });
+
+  it('écarte toujours ce qui est impropre', () => {
+    expect(isSwimmable({ natural: 'water', water: 'wastewater' }, bigRing)).toBe(false);
+    expect(isSwimmable({ landuse: 'basin' }, bigRing)).toBe(false);
+  });
+
+  it('classe une retenue cartographiée en landuse', () => {
+    const ring = bigRing.map(p => ({ lat: p.lat, lon: p.lng }));
+    const p = parseOsm([{ type: 'way', id: 1, tags: { landuse: 'reservoir' }, geometry: ring }]);
+    expect(p.water).toHaveLength(1);
+    expect(p.swim).toHaveLength(1);
+  });
+});
+
+describe('tuilage des grandes emprises', () => {
+  it('laisse une petite zone en une seule requête', () => {
+    expect(tileBBox({ south: 47.2, west: 4.9, north: 47.4, east: 5.2 })).toHaveLength(1);
+  });
+
+  it('découpe une grande zone en tuiles qui la recouvrent exactement', () => {
+    const b = { south: 46.5, west: 4.0, north: 47.5, east: 5.5 };
+    const tiles = tileBBox(b);
+    expect(tiles.length).toBeGreaterThan(1);
+    expect(Math.min(...tiles.map(t => t.south))).toBeCloseTo(b.south, 9);
+    expect(Math.max(...tiles.map(t => t.north))).toBeCloseTo(b.north, 9);
+    expect(Math.min(...tiles.map(t => t.west))).toBeCloseTo(b.west, 9);
+    expect(Math.max(...tiles.map(t => t.east))).toBeCloseTo(b.east, 9);
+  });
+});
+
+describe('filtre strict de baignade', () => {
+  const scene = buildScene(syntheticOsm(), ORIGIN);
+
+  it('ne retient que les points assez proches d\'une baignade', async () => {
+    const spots = await scan(scene, params({ maxResults: 60, minSeparation: 300 }),
+      { requireForest: true, maxSwimM: 400 });
+    expect(spots.length).toBeGreaterThan(0);
+    for (const s of spots) expect(s.metrics.dSwim).toBeLessThanOrEqual(400);
+  });
+
+  it('sans contrainte, des points plus éloignés apparaissent', async () => {
+    const spots = await scan(scene, params({ maxResults: 60, minSeparation: 300 }), { requireForest: true });
+    expect(spots.some(s => s.metrics.dSwim > 400)).toBe(true);
   });
 });

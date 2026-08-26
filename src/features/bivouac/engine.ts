@@ -105,6 +105,8 @@ export function resolveStep(radiusKm: number, requested: number): number {
 
 export interface ScanOptions {
   requireForest: boolean;
+  /** Écarte d'office les points trop loin d'une eau baignable. */
+  maxSwimM?: number | null;
   onProgress?: (p: Progress) => void;
   signal?: AbortSignal;
 }
@@ -129,6 +131,7 @@ export async function scan(scene: Scene, params: SearchParams, opts: ScanOptions
       const inside = pointInPolyIndex(scene.forests, x, y);
       if (opts.requireForest && !inside) continue;
       const m = metricsAt(scene, x, y, inside);
+      if (opts.maxSwimM != null && m.dSwim > opts.maxSwimM) continue;
       const { total } = scoreMetrics(m, params.weights, ctx);
       cands.push({ x, y, m, total });
     }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LatLng, ParsedOsm, Progress, SavedSpot, SearchParams, Spot } from './types';
 import { bboxAround, haversine } from './geo';
-import { buildQueryParts, fetchOverpass, parseOsm, mergeOsm, pingOverpass, OverpassError, type PingResult } from './overpass';
+import { buildQueryParts, tileBBox, fetchOverpass, parseOsm, mergeOsm, pingOverpass, OverpassError, type PingResult } from './overpass';
 import { buildScene, scan, rescore, type Scene } from './engine';
 import { refineSpots } from './refine';
 import { reverseName } from './places';
@@ -34,7 +34,7 @@ export function BivouacApp() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notices, setNotices] = useState<string[]>([]);
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [ping, setPing] = useState<PingResult[] | null>(null);
   const [pinging, setPinging] = useState(false);
@@ -90,15 +90,18 @@ export function BivouacApp() {
   const analyse = useCallback(async (scene: Scene, p: SearchParams, signal: AbortSignal) => {
     const found = await scan(scene, p, {
       requireForest: settings.requireForest,
+      maxSwimM: settings.maxSwimM,
       onProgress: setProgress,
       signal,
     });
 
     if (found.length === 0) {
       setRawSpots([]);
-      setError(settings.requireForest
-        ? "Aucun coin boisé trouvé dans ce rayon. Agrandis la zone, ou décoche « Uniquement en forêt » dans les réglages."
-        : 'Aucun point exploitable dans ce rayon. Essaie un rayon plus large.');
+      setError(settings.maxSwimM != null
+        ? `Aucun coin boisé à moins de ${settings.maxSwimM} m d'une baignade dans ce rayon. Assouplis cette exigence ou élargis la zone.`
+        : settings.requireForest
+          ? "Aucun coin boisé trouvé dans ce rayon. Agrandis la zone, ou décoche « Uniquement en forêt » dans les réglages."
+          : 'Aucun point exploitable dans ce rayon. Essaie un rayon plus large.');
       return;
     }
 
@@ -107,8 +110,8 @@ export function BivouacApp() {
     setProgress({ phase: 'refine', message: 'Pente et temps de route réels…' });
     const r = await refineSpots(found, p.origin, 30, signal);
     setRawSpots(r.spots);
-    setNotice(r.notes.length ? r.notes.join(' · ') : null);
-  }, [settings.requireForest, settings.refine]);
+    if (r.notes.length) setNotices(prev => [...prev, ...r.notes]);
+  }, [settings.requireForest, settings.maxSwimM, settings.refine]);
 
   /** Recherche complète : téléchargement OSM puis analyse. */
   const runSearch = useCallback(async () => {
@@ -116,44 +119,61 @@ export function BivouacApp() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     startedAt.current = Date.now(); setElapsed(0);
-    setError(null); setNotice(null); setSelectedId(null); setPanel(null);
+    setError(null); setNotices([]); setSelectedId(null); setPanel(null);
 
     try {
       const bbox = bboxAround(origin, settings.radiusKm);
-      const parts = buildQueryParts(bbox);
+      // Au-delà d'une trentaine de km, même une requête thématique passe mal :
+      // on découpe l'emprise en tuiles pour couvrir le Morvan ou le Jura.
+      const tiles = tileBBox(bbox);
       const collected: ParsedOsm[] = [];
-      const skipped: string[] = [];
+      const skipped = new Set<string>();
+      const total = tiles.length * 3;
+      let done = 0;
 
-      // Trois requêtes courtes plutôt qu'une énorme : une seule grosse requête
-      // expire avant de revenir dès que la zone dépasse quelques kilomètres.
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        const step = `${i + 1}/${parts.length}`;
-        try {
-          const elements = await fetchOverpass(part.query, {
-            signal: ctrl.signal,
-            onMirror: (_url, attempt) => setProgress({
-              phase: 'download',
-              ratio: i / parts.length,
-              message: `Téléchargement ${step} : ${part.label}${attempt > 1 ? ` (miroir ${attempt})` : ''}…`,
-            }),
-          });
-          if (ctrl.signal.aborted) return;
-          collected.push(parseOsm(elements));
-        } catch (e) {
-          if (ctrl.signal.aborted) return;
-          // Une couche secondaire manquante dégrade le résultat sans l'annuler.
-          if (part.essential) throw e;
-          skipped.push(part.label);
+      for (const tile of tiles) {
+        for (const part of buildQueryParts(tile)) {
+          try {
+            const elements = await fetchOverpass(part.query, {
+              signal: ctrl.signal,
+              onMirror: (_url, attempt) => setProgress({
+                phase: 'download',
+                ratio: done / total,
+                message: tiles.length > 1
+                  ? `Téléchargement ${done + 1}/${total} : ${part.label}${attempt > 1 ? ` (miroir ${attempt})` : ''}…`
+                  : `Téléchargement : ${part.label}${attempt > 1 ? ` (miroir ${attempt})` : ''}…`,
+              }),
+            });
+            if (ctrl.signal.aborted) return;
+            collected.push(parseOsm(elements));
+          } catch (e) {
+            if (ctrl.signal.aborted) return;
+            // Une couche secondaire manquante dégrade le résultat sans l'annuler.
+            if (part.essential && tiles.length === 1) throw e;
+            skipped.add(part.label);
+          }
+          done++;
         }
+      }
+      if (collected.length === 0) {
+        throw new OverpassError(
+          "Aucune donnée n'a pu être téléchargée. Réduis le rayon, ou réessaie plus tard.",
+          'network', []);
       }
 
       setProgress({ phase: 'parse', message: 'Lecture des données…' });
       await new Promise(r => setTimeout(r, 0));
       const parsed = mergeOsm(collected);
       setOsm(parsed);
-      if (skipped.length) {
-        setNotice(`Données incomplètes : ${skipped.join(' et ')} n'ont pas pu être téléchargés. Les critères correspondants sont faussés.`);
+      if (skipped.size > 0) {
+        setNotices(prev => [...prev, `Données partielles : ${[...skipped].join(' et ')} — certaines zones n'ont pas pu être téléchargées.`]);
+      }
+      // Dire franchement ce qui a été trouvé : sans ça, « aucun spot au bord de
+      // l'eau » reste incompréhensible.
+      setNotices(prev => [...prev,
+        `Trouvé : ${parsed.forests.length} zones boisées, ${parsed.water.length} cours d'eau, ${parsed.swim.length} eaux baignables.`]);
+      if (parsed.swim.length === 0) {
+        setNotices(prev => [...prev, "Aucune rivière ni plan d'eau baignable recensé dans ce rayon. Élargis la zone, ou déplace le départ (Morvan, Jura…)."]);
       }
 
       if (parsed.forests.length === 0 && settings.requireForest) {
@@ -281,11 +301,13 @@ export function BivouacApp() {
       )}
 
       {/* message d'erreur / d'information */}
-      {(error || notice) && !progress && (
+      {(error || notices.length > 0) && !progress && (
         <div className={`absolute inset-x-3 ${hasResults ? 'top-20' : 'bottom-28'} z-30 rounded-2xl border p-3 text-sm backdrop-blur ${error ? 'border-rose-400/40 bg-rose-500/15' : 'border-amber-400/40 bg-amber-500/15'}`}>
           <div className="flex items-start gap-2">
-            <span className="flex-1 leading-snug">{error ?? notice}</span>
-            <button onClick={() => { setError(null); setNotice(null); }} aria-label="Fermer"
+            <span className="flex-1 leading-snug">
+              {error ?? notices.map((n, i) => <span key={i} className="block">{i > 0 ? '· ' : ''}{n}</span>)}
+            </span>
+            <button onClick={() => { setError(null); setNotices([]); }} aria-label="Fermer"
               className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/15 text-xs">✕</button>
           </div>
           {error && errorDetails.length > 0 && (

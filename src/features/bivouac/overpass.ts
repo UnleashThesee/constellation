@@ -52,9 +52,11 @@ out geom;`,
       id: 'water', label: "cours d'eau", essential: false,
       query: `[out:json][timeout:${timeout}];
 (
-  way["waterway"~"^(river|stream|canal)$"](${a});
+  way["waterway"~"^(river|stream|canal|riverbank)$"](${a});
   way["natural"="water"](${a});
   relation["natural"="water"](${a});
+  way["landuse"="reservoir"](${a});
+  relation["landuse"="reservoir"](${a});
   node["natural"="spring"](${a});
 );
 out geom;`,
@@ -139,13 +141,41 @@ export function emptyOsm(): ParsedOsm {
  * ou une mare ne comptent pas : on peut y puiser, pas y nager.
  */
 export function isSwimmable(tags: Record<string, string>, ring?: LatLng[]): boolean {
-  if (tags.waterway === 'river') return true;
-  if (tags.natural === 'water') {
+  if (tags.waterway === 'river' || tags.waterway === 'riverbank') return true;
+  const isArea = tags.natural === 'water' || tags.landuse === 'reservoir' || tags.landuse === 'basin';
+  if (isArea) {
     const kind = tags.water ?? '';
-    if (/^(pond|reservoir|basin|wastewater|ditch)$/.test(kind)) return false;
+    // On n'écarte que ce qui est franchement impropre. Surtout PAS les retenues :
+    // les Settons, Pannecière ou Chaumeçon dans le Morvan sont des réservoirs, et
+    // ce sont précisément les lacs où l'on se baigne.
+    if (/^(wastewater|sewage|salt_pond|basin|fishpond)$/.test(kind)) return false;
+    if (tags.landuse === 'basin') return false;
     return !!ring && ringAreaM2(ring) >= SWIMMABLE_AREA_M2;
   }
   return false;
+}
+
+/**
+ * Découpe une emprise en tuiles.
+ * Au-delà d'une trentaine de kilomètres, une requête d'un seul tenant dépasse
+ * les limites d'Overpass : on la fractionne pour pouvoir couvrir le Morvan ou
+ * le Jura depuis Dijon.
+ */
+export function tileBBox(b: BBox, maxSpanDeg = 0.3): BBox[] {
+  const nLat = Math.max(1, Math.ceil((b.north - b.south) / maxSpanDeg));
+  const nLng = Math.max(1, Math.ceil((b.east - b.west) / maxSpanDeg));
+  const dLat = (b.north - b.south) / nLat;
+  const dLng = (b.east - b.west) / nLng;
+  const out: BBox[] = [];
+  for (let i = 0; i < nLat; i++) {
+    for (let j = 0; j < nLng; j++) {
+      out.push({
+        south: b.south + i * dLat, north: b.south + (i + 1) * dLat,
+        west: b.west + j * dLng, east: b.west + (j + 1) * dLng,
+      });
+    }
+  }
+  return out;
 }
 
 /** Classe les éléments Overpass bruts par usage. */
@@ -162,7 +192,7 @@ export function parseOsm(elements: OsmElement[]): ParsedOsm {
     }
 
     const isForest = tags.landuse === 'forest' || tags.natural === 'wood';
-    const isWaterArea = tags.natural === 'water';
+    const isWaterArea = tags.natural === 'water' || tags.landuse === 'reservoir';
 
     if (el.type === 'relation') {
       const parts = (el.members ?? [])
@@ -190,7 +220,7 @@ export function parseOsm(elements: OsmElement[]): ParsedOsm {
       if (isSwimmable(tags, g)) out.swim.push(g);
       continue;
     }
-    if (tags.waterway === 'river' || tags.waterway === 'stream' || tags.waterway === 'canal') {
+    if (tags.waterway === 'river' || tags.waterway === 'stream' || tags.waterway === 'canal' || tags.waterway === 'riverbank') {
       out.water.push(g);
       if (isSwimmable(tags)) out.swim.push(g);
       continue;

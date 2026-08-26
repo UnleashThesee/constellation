@@ -33,6 +33,8 @@ export interface Settings {
   minSeparation: number;
   maxResults: number;
   requireForest: boolean;
+  /** Distance maximale à une eau baignable, en m. null = pas de contrainte. */
+  maxSwimM: number | null;
   refine: boolean;
 }
 
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
   minSeparation: 800,
   maxResults: 40,
   requireForest: true,
+  maxSwimM: null,
   refine: true,
 };
 
